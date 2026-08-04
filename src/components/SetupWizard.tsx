@@ -34,6 +34,8 @@ export function SetupWizard({ onDone, onCancel }: Props) {
   const [testState, setTestState] = useState<'idle' | 'loading' | 'ok' | 'fail'>('idle');
   const [testMsg, setTestMsg] = useState('');
   const [copied, setCopied] = useState(false);
+  /** הגדרות ארגון שכבר קיימות בגיליון — מגיע ממכשיר אחר שהוגדר קודם */
+  const [found, setFound] = useState<OrgConfig | null>(null);
 
   const set = (patch: Partial<OrgConfig>) => setCfg(prev => ({ ...prev, ...patch }));
 
@@ -68,6 +70,13 @@ export function SetupWizard({ onDone, onCancel }: Props) {
       if (data.ok) {
         setTestState('ok');
         setTestMsg(data.sheet ? `מחובר לגיליון "${data.sheet}"` : 'החיבור תקין');
+
+        // אם כבר הוגדר ארגון בגיליון הזה (למשל ממכשיר אחר) — מציעים
+        // לטעון אותו במקום למלא הכל שוב.
+        try {
+          const c = await (await fetch(`${url}?action=getConfig`)).json();
+          if (c?.data?.orgName?.he) setFound(c.data);
+        } catch { /* אין הגדרות שמורות — ממשיכים רגיל */ }
       } else {
         setTestState('fail');
         setTestMsg(data.error || 'הכתובת ענתה, אבל לא בפורמט הצפוי. ודא שהדבקת את הקוד המלא ופרסמת מחדש.');
@@ -90,7 +99,7 @@ export function SetupWizard({ onDone, onCancel }: Props) {
   };
 
   const finish = () => {
-    saveOrg({
+    const saved = saveOrg({
       ...cfg,
       configured: true,
       shortName: cfg.shortName.trim() || cfg.orgName.he.trim(),
@@ -106,6 +115,18 @@ export function SetupWizard({ onDone, onCancel }: Props) {
         ru: cfg.signerName.ru.trim() || cfg.signerName.he.trim(),
       },
     });
+
+    // מעלים את ההגדרות גם לגיליון, כדי שמכשיר נוסף של אותו ארגון יצטרך
+    // רק להדביק את כתובת הגיליון והשאר ייטען לבד. נכשל בשקט — ההגדרות
+    // כבר נשמרו מקומית והאפליקציה עובדת בכל מקרה.
+    if (saved.gsUrl) {
+      fetch(saved.gsUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: 'saveConfig', data: saved }),
+      }).catch(() => undefined);
+    }
+
     onDone();
   };
 
@@ -298,12 +319,21 @@ export function SetupWizard({ onDone, onCancel }: Props) {
                   </button>
                   <span className="mx-2">ומדביקים בעורך. שומרים.</span>
                 </Step>
-                <Step n={4}>בוחרים בתפריט הפונקציות את <b>setupSheet</b> ולוחצים <b>Run</b> (מאשרים הרשאות)</Step>
+                <Step n={4}>
+                  בוחרים בתפריט הפונקציות למעלה את <b>setupSheet</b> ולוחצים <b>הפעלה</b> <Eng>Run</Eng>
+                  <div className="mt-1.5 bg-amber-500/10 text-amber-300/90 rounded-lg px-3 py-2 text-[11px] leading-relaxed">
+                    גוגל תבקש אישור הרשאות, ותציג מסך אזהרה <b>"האפליקציה לא מאומתת"</b>.<br />
+                    זה תקין — זה הסקריפט שלך בחשבון שלך. לוחצים <b>מתקדם</b> ואז <b>המשך אל…</b>
+                  </div>
+                </Step>
                 <Step n={5}>
-                  <b>Deploy ← New deployment ← Web app</b><br />
-                  <span className="text-white/50 text-xs">
-                    Execute as: <b className="text-white/70">Me</b> · Who has access: <b className="text-white/70">Anyone</b>
-                  </span>
+                  <b>פריסה ← פריסה חדשה</b> <Eng>Deploy → New deployment</Eng>
+                  <div className="mt-1.5 space-y-1 text-xs text-white/55">
+                    <div>בחירת סוג: <b className="text-white/80">אפליקציית אינטרנט</b> <Eng>Web app</Eng></div>
+                    <div>לבצע בתור: <b className="text-white/80">עצמי</b> <Eng>Me</Eng></div>
+                    <div>למי יש גישה: <b className="text-white/80">כולם</b> <Eng>Anyone</Eng> — בלי זה האפליקציה לא תוכל לקרוא</div>
+                    <div>ולסיום: <b className="text-white/80">לפריסה</b> <Eng>Deploy</Eng></div>
+                  </div>
                 </Step>
                 <Step n={6}>מעתיקים את הכתובת שמסתיימת ב-<code className="text-[#C9A84C]">/exec</code> ומדביקים כאן:</Step>
               </ol>
@@ -322,6 +352,21 @@ export function SetupWizard({ onDone, onCancel }: Props) {
 
               {testState === 'ok' && <Note tone="ok">{testMsg}</Note>}
               {testState === 'fail' && <Note tone="warn">{testMsg}</Note>}
+
+              {found && (
+                <div className="bg-[#C9A84C]/10 border border-[#C9A84C]/30 rounded-lg p-3.5">
+                  <p className="text-sm text-white/80 leading-relaxed mb-2.5">
+                    בגיליון הזה כבר מוגדר הארגון <b className="text-[#C9A84C]">{found.orgName.he}</b>.
+                    אפשר לטעון את ההגדרות ולסיים כאן.
+                  </p>
+                  <button
+                    onClick={() => { setCfg({ ...found, gsUrl: cfg.gsUrl }); setFound(null); setStep(3); }}
+                    className="w-full py-2 rounded-lg bg-[#C9A84C] text-[#0D1B2A] text-sm font-bold hover:brightness-110"
+                  >
+                    טען את ההגדרות הקיימות
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -446,6 +491,15 @@ function Note({ tone, children }: { tone: 'ok' | 'warn'; children: React.ReactNo
       <span className="leading-relaxed">{children}</span>
     </div>
   );
+}
+
+/**
+ * שם הכפתור באנגלית, לצד השם העברי.
+ * ממשק Apps Script מוצג בעברית לרוב המשתמשים בישראל, אבל לא לכולם —
+ * ולכן מציגים את שני השמות ואף אחד לא נתקע.
+ */
+function Eng({ children }: { children: React.ReactNode }) {
+  return <span className="text-white/30 text-[11px]" dir="ltr">({children})</span>;
 }
 
 function Step({ n, children }: { n: number; children: React.ReactNode }) {
