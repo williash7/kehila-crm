@@ -826,6 +826,50 @@ function seedNedarimRules_() {
   });
 }
 
+/**
+ * אבחון: מה בעצם מוצא כל כלל בתיבת הדואר, ובאיזה חשבון אנחנו רצים.
+ * מריצים כשמשהו "לא נקלט" — התשובה כמעט תמיד כאן.
+ */
+function debugMailRules() {
+  var lines = ['🔍 אבחון קליטת מיילים', '',
+               'הסקריפט רץ בחשבון:', '   ' + Session.getActiveUser().getEmail(), ''];
+
+  var t = table_(SH.RULES);
+  if (!t.rows.length) {
+    lines.push('⚠️ לשונית "כללי מייל" ריקה — הריצו refreshMailRules');
+  }
+
+  t.rows.forEach(function (r) {
+    var name = String(get_(r, t, 'שם הכלל') || '');
+    var query = String(get_(r, t, 'חיפוש בגימייל') || '').trim();
+    var active = String(get_(r, t, 'פעיל') || '').trim() === 'כן';
+    var found = 0;
+    try { found = GmailApp.search(query).length; } catch (e) { found = -1; }
+    lines.push((active ? '' : '(כבוי) ') + name + ':  ' +
+               (found < 0 ? 'שגיאה בחיפוש' : found + ' שיחות'));
+    lines.push('   ' + query);
+  });
+
+  // כמה מיילים בכלל יש מנדרים בתיבה הזו — מפריד בין "אין מיילים"
+  // לבין "החיפוש לא תפס"
+  var all = 0, sample = [];
+  try {
+    var th = GmailApp.search('from:noreply@nedarimplus.com');
+    all = th.length;
+    th.slice(0, 5).forEach(function (x) { sample.push('   • ' + x.getFirstMessageSubject()); });
+  } catch (e) { all = -1; }
+
+  lines.push('', 'סה"כ מיילים מנדרים פלוס בתיבה: ' + all);
+  if (sample.length) lines.push('דוגמאות לשורות נושא:', sample.join('\n'));
+  if (all === 0) {
+    lines.push('', '⚠️ אין בתיבה הזו אף מייל מנדרים.',
+               'ייתכן שהמיילים מגיעים לחשבון אחר — אז צריך להעביר את הגיליון',
+               'לאותו חשבון, או להגדיר העברה אוטומטית של המיילים לכאן.');
+  }
+
+  alert_(lines.join('\n'));
+}
+
 /** מוסיף כללי מייל חסרים לגיליון קיים. בטוח להרצה חוזרת. */
 function refreshMailRules() {
   seedNedarimRules_();
@@ -849,7 +893,7 @@ var DEFAULT_RULES = [
   {
     'פעיל': 'כן',
     'שם הכלל': 'נדרים פלוס — תרומה',
-    'חיפוש בגימייל': 'from:noreply@nedarimplus.com "מספר אישור"',
+    'חיפוש בגימייל': 'subject:"[נדרים פלוס] התקבלה עסקה חדשה"',
     'סוג': 'donation',
     'שדות (JSON)': JSON.stringify({
       name: 'שם:', date: 'תאריך עסקה:', amount: 'סכום:', purpose: 'קטגוריה:',
@@ -858,10 +902,13 @@ var DEFAULT_RULES = [
   },
   {
     // מייל הקמת הוראת קבע — המקור היחיד להוראות הקבע.
-    // "תדירות גביה" מופיע רק במייל הזה, ולכן הוא המזהה הבטוח ביותר.
+    //
+    // מסננים לפי ביטוי בגוף ההודעה ולא לפי שולח, כי הרבה שלוחים מקבלים
+    // את המיילים **בהעברה** ממרכז אחר — ואז השולח כבר אינו נדרים פלוס
+    // וסינון לפי from: לא מוצא כלום. "תדירות גביה" מופיע רק במייל הזה.
     'פעיל': 'כן',
     'שם הכלל': 'נדרים פלוס — הקמת הוראת קבע',
-    'חיפוש בגימייל': 'from:noreply@nedarimplus.com "תדירות גביה"',
+    'חיפוש בגימייל': '"תדירות גביה"',
     'סוג': 'standingOrder',
     'שדות (JSON)': JSON.stringify({
       id: 'מספר הוראה:', name: 'שם תורם:', amount: 'סכום כל חיוב:',
@@ -872,7 +919,7 @@ var DEFAULT_RULES = [
   {
     'פעיל': 'כן',
     'שם הכלל': 'נדרים פלוס — כשל הוראת קבע',
-    'חיפוש בגימייל': 'from:noreply@nedarimplus.com "סיבת שגיאה"',
+    'חיפוש בגימייל': '"סיבת שגיאה"',
     'סוג': 'failure',
     'שדות (JSON)': JSON.stringify({
       name: 'שם לקוח:', order: 'מספר הוראה:', amount: 'סכום:', reason: 'סיבת שגיאה:',
@@ -1378,6 +1425,7 @@ function onOpen() {
     .addItem('הגירה מגיליון ישן', 'migrateFromLegacy')
     .addItem('בדיקת נתונים', 'showSummary')
     .addItem('רענון כללי מייל', 'refreshMailRules')
+    .addItem('אבחון קליטת מיילים', 'debugMailRules')
     .addSeparator()
     .addItem('סנכרון עכשיו', 'dailySync')
     .addItem('סריקת כל היסטוריית המיילים', 'syncAllEmailHistory')
