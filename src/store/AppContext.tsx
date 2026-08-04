@@ -1,0 +1,729 @@
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import {
+  apiGet, apiPost, getCRMData,
+  getCRMDataCloud, saveCRMDataCloud,
+  getEventsDataCloud, saveEventsDataCloud,
+  getHolidayExtrasCloud, saveHolidayExtrasCloud,
+  getManualDonations, saveManualDonations,
+  getHistoryDataCloud, saveHistoryDataCloud,
+  getHomeVisitsDataCloud, saveHomeVisitsDataCloud,
+  getCustomHols,
+} from '../lib/api';
+import { Donor, Donation, ReportSummary } from '../types';
+import { extractMerges, applyMergesToCrm, coalesceDonorsByMerges, resolveCanonicalName, MERGES_KEY } from '../lib/nameMerges';
+import { AppSettings, loadSettings, saveSettings, filterDonorsBySettings } from '../lib/settings';
+import { logAction } from '../lib/score';
+import { computeSummarySince, computeDonorTotalSince } from '../lib/donationFilter';
+import { HistoryEntry, buildHistoryEntry, countAttendance, sumBudget, findLatestHistoryFor, tasksFromHistory } from '../lib/history';
+import { STANDALONE_TASKS_ID, createHomeVisitTask, createHolidayReminderTask, createEventReminderTask, createThankYouTask, computeMissingThankYouTasks, backfillEventTaskDates } from '../lib/tasks';
+import { HomeVisitEntry, HomeVisitRound, HomeVisitsData, moveEntry } from '../lib/homeVisits';
+import { buildHolidayList } from '../lib/holidayList';
+import { computeMissingHolidayReminders } from '../lib/holidayAutoTasks';
+import { computeMissingEventReminders } from '../lib/eventAutoTasks';
+import { hebcalUrl } from '../lib/orgConfig';
+
+interface AppState {
+  summary: ReportSummary | null;
+  effectiveSummary: ReportSummary | null; // summary מסונן לפי settings.donationsSinceDate (או summary הרגיל אם אין סינון)
+  donations: Donation[];
+  donors: Record<string, Donor>;
+  visibleDonors: Record<string, Donor>; // מסונן לפי הגדרות תצוגה + total מחושב לפי donationsSinceDate
+  hk: any[];
+  failures: any[];
+  rebbeDate: Date | null;
+  shabbat: any;
+  holidays: any[];
+  hebrewDate: string;
+  loading: boolean;
+  loadingText: string;
+  apiError: string | null;
+  crm: Record<string, any>;
+  holidayExtras: Record<string, any>;
+  eventsData: any[];
+  history: HistoryEntry[];
+  nameMerges: Record<string, string>;
+  settings: AppSettings;
+  homeVisits: HomeVisitsData;
+  updateSettings: (partial: Partial<AppSettings>) => void;
+  refresh: () => void;
+  addManualDonation: (donation: any) => void;
+  updateCrm: (name: string, data: any) => void;
+  updateHolidayExtras: (id: string, data: any) => void;
+  updateEventsData: (data: any[]) => void;
+  updateRebbeDate: (date: Date) => void;
+  mergeContacts: (aliasName: string, canonicalName: string) => void;
+  unmergeContact: (aliasName: string) => void;
+  archiveOccurrence: (params: { type: 'holiday' | 'event'; id: string; name: string; occurrenceDate?: string }) => void;
+  importTasksFromHistory: (params: { type: 'holiday' | 'event'; id: string; name: string }) => boolean;
+  updateHistoryEntry: (id: string, data: Partial<HistoryEntry>) => void;
+  deleteHistoryEntry: (id: string) => void;
+  startHomeVisitRound: (entries: HomeVisitEntry[]) => void;
+  markHomeVisitDone: (roundId: string, name: string) => void;
+  unmarkHomeVisitDone: (roundId: string, name: string) => void;
+  createHomeVisitTaskForEntry: (roundId: string, name: string) => void;
+  updateHomeVisitEntry: (roundId: string, name: string, patch: Partial<HomeVisitEntry>) => void;
+  reorderHomeVisitEntries: (roundId: string, from: number, to: number) => void;
+  archiveHomeVisitRound: (roundId: string) => void;
+  deleteHomeVisitRound: (roundId: string) => void;
+  removeHomeVisitEntry: (roundId: string, name: string) => void;
+  addHomeVisitEntries: (roundId: string, entries: HomeVisitEntry[]) => void;
+  updateHomeVisitRoundMeta: (roundId: string, patch: Partial<HomeVisitRound>) => void;
+}
+
+const AppContext = createContext<AppState | undefined>(undefined);
+
+export function AppProvider({ children }: { children: React.ReactNode }) {
+  const [summary, setSummary] = useState<ReportSummary | null>(null);
+  const [donations, setDonations] = useState<Donation[]>([]);
+  const [donors, setDonors] = useState<Record<string, Donor>>({});
+  const [hk, setHk] = useState<any[]>([]);
+  const [failures, setFailures] = useState<any[]>([]);
+  const [rebbeDate, setRebbeDate] = useState<Date | null>(null);
+
+  // Hebcal states
+  const [shabbat, setShabbat] = useState<any>(null);
+  const [holidays, setHolidays] = useState<any[]>([]);
+  const [hebrewDate, setHebrewDate] = useState<string>('טוען...');
+
+  const [loading, setLoading] = useState(true);
+  const [loadingText, setLoadingText] = useState('מתחבר לגיליון...');
+  const [apiError, setApiError] = useState<string | null>(null);
+
+  // Start with localStorage so the UI renders immediately, then cloud data overwrites
+  const initialCrm = extractMerges(getCRMData());
+  const [crm, setCrm] = useState<Record<string, any>>(initialCrm.crmRest);
+  const [nameMerges, setNameMerges] = useState<Record<string, string>>(initialCrm.merges);
+  const [holidayExtras, setHolidayExtras] = useState<Record<string, any>>({});
+  const [eventsData, setEventsData] = useState<any[]>([]);
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [homeVisits, setHomeVisits] = useState<HomeVisitsData>({ rounds: [] });
+  const [settings, setSettings] = useState<AppSettings>(loadSettings());
+
+  const updateSettings = (partial: Partial<AppSettings>) => {
+    setSettings(prev => {
+      const next = { ...prev, ...partial };
+      saveSettings(next);
+      return next;
+    });
+  };
+
+  // ברירת המחדל של "מאיזה תאריך סופרים תרומות" כשלא הוגדר תאריך מפורש
+  // ב-Settings — מתחילת השנה הנוכחית, לא כל הזמנים. משותף לכל הסכומים
+  // המוצגים באפליקציה (דשבורד, דוחות, סכום לכל איש קשר) כדי שיהיו עקביים
+  // זה עם זה — ראה effectiveSummary למטה למקור הבאג שזה מתקן.
+  const effectiveSinceIso = settings.donationsSinceDate || `${new Date().getFullYear()}-01-01`;
+
+  const visibleDonors = React.useMemo(() => {
+    const filtered = filterDonorsBySettings(donors, crm, settings);
+    const withFilteredTotals: Record<string, Donor> = {};
+    Object.keys(filtered).forEach(name => {
+      // filterDonorsBySettings גנרי ומחזיר Record<string, any> — מחזירים כאן
+      // את הטיפוס המדויק כדי שהמיזוג למטה יישאר Donor תקין.
+      const d = filtered[name] as Donor;
+      withFilteredTotals[name] = { ...d, total: computeDonorTotalSince(d.donations, effectiveSinceIso) };
+    });
+    return withFilteredTotals;
+  }, [donors, crm, settings, effectiveSinceIso]);
+
+  // תמיד מחושב בצד הלקוח מתוך רשימת התרומות הגולמית (לא מ-summary הגולמי
+  // מהשרת) — כדי שהמספר יהיה עקבי בין "ברירת מחדל" לבין תאריך מותאם אישית
+  // שהוגדר ב-Settings. בעבר, "ריק" נפל בחזרה ל-summary מהשרת שיכול לחשב
+  // אחרת מ-computeSummarySince (למשל לגבי הו"ק), מה שגרם למספר שונה ולא
+  // עקבי בין "מתחילת השנה" (ברירת מחדל) לבין תאריך מפורש שהוקלד.
+  const effectiveSummary = React.useMemo(() => {
+    const computed = computeSummarySince(donations, effectiveSinceIso);
+    return { ...(summary || {}), ...computed } as ReportSummary;
+  }, [summary, donations, effectiveSinceIso]);
+
+  const loadHebcal = () => {
+    // זמני שבת לפי המיקום ומנהג הדלקת הנרות שהוגדרו בהגדרות הארגון
+    fetch(hebcalUrl('shabbat'))
+      .then(r => r.json())
+      .then(setShabbat)
+      .catch(console.error);
+
+    const today = new Date();
+    const y = today.getFullYear();
+    fetch(hebcalUrl('hebcal', { v: 1, start: `${y}-01-01`, end: `${y + 1}-12-31`, maj: 'on', min: 'on', nx: 'on', mf: 'on', ss: 'on', mod: 'off', c: 'on' }))
+      .then(r => r.json())
+      .then(data => {
+        if (data.items) {
+          setHolidays(data.items.filter((item: any) =>
+            (item.category === 'holiday' || item.category === 'roshchodesh') &&
+            !item.subcat?.includes('modern')
+          ));
+        }
+      })
+      .catch(console.error);
+
+    fetch(`https://www.hebcal.com/converter?cfg=json&gy=${today.getFullYear()}&gm=${today.getMonth() + 1}&gd=${today.getDate()}&g2h=1`)
+      .then(r => r.json())
+      .then(data => { if (data.hebrew) setHebrewDate(data.hebrew); })
+      .catch(console.error);
+  };
+
+  const loadAll = async () => {
+    setLoading(true);
+    setLoadingText('מתחבר לגיליון...');
+
+    loadHebcal();
+
+    // Load cloud-synced data in parallel with the main API calls
+    let resolvedCrm: Record<string, any> = extractMerges(getCRMData()).crmRest;
+    let resolvedMerges: Record<string, string> = extractMerges(getCRMData()).merges;
+    const cloudLoads = Promise.all([
+      getCRMDataCloud(),
+      getEventsDataCloud(),
+      getHolidayExtrasCloud(),
+      getHistoryDataCloud(),
+      getHomeVisitsDataCloud(),
+    ]).then(([cloudCrm, cloudEvents, cloudExtras, cloudHistory, cloudHomeVisits]) => {
+      const { merges, crmRest } = extractMerges(cloudCrm);
+      const cleanedCrm = applyMergesToCrm(crmRest, merges);
+      resolvedCrm = cleanedCrm;
+      resolvedMerges = merges;
+      setCrm(cleanedCrm);
+      setNameMerges(merges);
+      setEventsData(cloudEvents);
+      setHolidayExtras(cloudExtras);
+      setHistory(cloudHistory || []);
+      setHomeVisits(cloudHomeVisits?.rounds ? cloudHomeVisits : { rounds: [] });
+    }).catch(console.error);
+
+    try {
+      const [sumRes, donRes, failRes, rebbeRes, hkRes, donorsRes] = await Promise.all([
+        apiGet('getSummary'),
+        apiGet('getDonations'),
+        apiGet('getFailures'),
+        apiGet('getRebbe'),
+        apiGet('getHK'),
+        apiGet('getDonors'),
+      ]);
+
+      if (sumRes._error) {
+        setApiError(`${sumRes._error}: ${sumRes._details || ''}`);
+      } else {
+        setApiError(null);
+      }
+
+      if (rebbeRes?.date) setRebbeDate(new Date(rebbeRes.date));
+      if (sumRes.total !== undefined) setSummary(sumRes);
+
+      const map: Record<string, Donor> = {};
+
+      if (donorsRes.donors && donorsRes.donors.length > 0) {
+        const firstRow = donorsRes.donors[0];
+        const headerMap: Record<string, string> = {};
+        const reverseHeaderMap: Record<string, string> = {};
+
+        Object.keys(firstRow).forEach(badKey => {
+          const realHeader = firstRow[badKey];
+          if (realHeader) {
+            headerMap[badKey] = realHeader;
+            reverseHeaderMap[realHeader] = badKey;
+          }
+        });
+
+        localStorage.setItem('reverseHeaderMap', JSON.stringify(reverseHeaderMap));
+
+        donorsRes.donors.slice(1).forEach((d: any) => {
+          const cleanDonor: any = { name: d.name, total: 0, donations: [], lastDate: '' };
+          Object.keys(d).forEach(badKey => {
+            const realHeader = headerMap[badKey] || badKey;
+            cleanDonor[realHeader] = d[badKey];
+          });
+          if (cleanDonor['שם מלא']) cleanDonor.name = cleanDonor['שם מלא'];
+          if (!cleanDonor.name) return;
+          map[cleanDonor.name] = cleanDonor;
+        });
+      }
+
+      // Wait for cloud CRM so we can merge correctly
+      await cloudLoads;
+
+      Object.keys(resolvedCrm).forEach((name) => {
+        if (!map[name]) map[name] = { name, total: 0, donations: [], lastDate: '' };
+      });
+
+      const serverDonations: any[] = donRes.donations || [];
+      const manualDonations = getManualDonations();
+      // Merge: manual donations not already present in server list (deduplicate by name+date+amount)
+      const serverKeys = new Set(serverDonations.map((d: any) => `${d.name}|${d.date}|${d.amount}`));
+      const uniqueManual = manualDonations.filter((d: any) => !serverKeys.has(`${d.name}|${d.date}|${d.amount}`));
+      // שם קנוני (אחרי מיזוגי אנשי קשר) לכל רשומה — כדי שתרומות/מפגשים של שני
+      // שמות ממוזגים יופיעו כמקשה אחת בכל מקום שמשתמש ברשימת donations הזו
+      const allDonations = [...serverDonations, ...uniqueManual].map((d: any) =>
+        d && d.name ? { ...d, name: resolveCanonicalName(d.name, resolvedMerges) } : d
+      );
+
+      if (allDonations.length > 0) {
+        setDonations(allDonations);
+        allDonations.forEach((d: Donation) => {
+          if (!d.name) return;
+          if (!map[d.name]) map[d.name] = { name: d.name, total: 0, donations: [], lastDate: '' };
+          map[d.name].donations.push(d);
+          map[d.name].total += (d.amount || 0);
+          if (!map[d.name].lastDate || !d.date) {
+            if (d.date) map[d.name].lastDate = d.date;
+          } else {
+            const curDateStr = d.date.split('/').reverse().join('-');
+            const lastDateStr = map[d.name].lastDate.split('/').reverse().join('-');
+            if (new Date(curDateStr) > new Date(lastDateStr)) map[d.name].lastDate = d.date;
+          }
+        });
+      }
+      // מעביר כינויים (למשל "אברהם אריאל") לתוך הרשומה הקנונית — מקפל כפילויות
+      // שנוצרו מרשומות תורם נפרדות בגיליון עבור אותו אדם.
+      setDonors(coalesceDonorsByMerges(map, resolvedMerges));
+
+      if (failRes.failures) setFailures(failRes.failures);
+      if (hkRes.hk) setHk(hkRes.hk);
+
+    } catch (e) {
+      console.error('Error fetching data:', e);
+      setLoadingText('שגיאת חיבור');
+    }
+
+    setLoading(false);
+  };
+
+  const addManualDonation = (donation: any) => {
+    setDonations(prev => {
+      const updated = [donation, ...prev];
+      const manual = getManualDonations();
+      saveManualDonations([donation, ...manual]);
+      return updated;
+    });
+    setDonors(prev => {
+      const name = donation.name;
+      if (!name) return prev;
+      const existing = prev[name] || { name, total: 0, donations: [], lastDate: '' };
+      return {
+        ...prev,
+        [name]: {
+          ...existing,
+          donations: [donation, ...(existing.donations || [])],
+          total: (existing.total || 0) + (donation.amount || 0),
+          lastDate: donation.date || existing.lastDate,
+        },
+      };
+    });
+    logAction('donation');
+
+    // כל תרומה אמיתית (לא רשומת "מפגש" עם amount<=0) מקבלת אוטומטית משימת
+    // "לשלוח תודה" — כדי שלא תישכח. גיבוי רטרואקטיבי לתרומות ישנות יותר קורה
+    // פעם אחת בלבד ב-useEffect למטה, לא כאן.
+    if (donation.name && (donation.amount || 0) > 0) {
+      setHolidayExtras(prev => {
+        const cur = prev[STANDALONE_TASKS_ID] || {};
+        const next = { ...prev, [STANDALONE_TASKS_ID]: { ...cur, tasks: [...(cur.tasks || []), createThankYouTask(donation.name, donation.amount, donation.date)] } };
+        saveHolidayExtrasCloud(next);
+        return next;
+      });
+      logAction('task_create');
+    }
+  };
+
+  const updateCrm = (name: string, data: any) => {
+    setCrm(prev => {
+      const next = { ...prev, [name]: { ...(prev[name] || {}), ...data } };
+      saveCRMDataCloud(next);
+      return next;
+    });
+    logAction('contact_update');
+  };
+
+  // ממזג שני שמות (למשל "אברהם אריאל" ו"אברהם אריאל ציגנוב") לאיש קשר אחד.
+  // aliasName נעלם מהרשימות; כל התרומות/המפגשים/פרטי ה-CRM שלו עוברים ל-canonicalName.
+  // מתעדכן מיידית בצד הלקוח (בלי סיבוב רשת), ונשמר ברקע לענן.
+  const mergeContacts = (aliasName: string, canonicalName: string) => {
+    if (!aliasName || !canonicalName || aliasName === canonicalName) return;
+    setNameMerges(prevMerges => {
+      const nextMerges = { ...prevMerges, [aliasName]: canonicalName };
+      saveCRMDataCloud({ ...crm, [MERGES_KEY]: nextMerges });
+      return nextMerges;
+    });
+    setDonations(prev => prev.map(d => (d.name === aliasName ? { ...d, name: canonicalName } : d)));
+    setDonors(prev => coalesceDonorsByMerges(prev, { [aliasName]: canonicalName }));
+    setCrm(prev => {
+      if (!prev[aliasName]) return prev;
+      const { [aliasName]: aliasData, ...rest } = prev;
+      const canonicalData = rest[canonicalName] || {};
+      rest[canonicalName] = {
+        circle: canonicalData.circle || aliasData.circle,
+        target: canonicalData.target ?? aliasData.target,
+        phone: canonicalData.phone || aliasData.phone,
+        customFields: { ...(aliasData.customFields || {}), ...(canonicalData.customFields || {}) },
+      };
+      return rest;
+    });
+  };
+
+  // מבטל מיזוג — טוען מחדש מהשרת כדי לפצל בחזרה לשתי רשומות נפרדות עם הנתונים המקוריים
+  const unmergeContact = (aliasName: string) => {
+    setNameMerges(prevMerges => {
+      const nextMerges = { ...prevMerges };
+      delete nextMerges[aliasName];
+      saveCRMDataCloud({ ...crm, [MERGES_KEY]: nextMerges });
+      return nextMerges;
+    });
+    setTimeout(() => loadAll(), 400);
+  };
+
+  const updateHolidayExtras = (id: string, data: any) => {
+    setHolidayExtras(prev => {
+      const next = { ...prev, [id]: { ...(prev[id] || {}), ...data } };
+      saveHolidayExtrasCloud(next);
+      return next;
+    });
+  };
+
+  const updateEventsData = (data: any[]) => {
+    setEventsData(data);
+    saveEventsDataCloud(data);
+  };
+
+  const updateHistoryEntry = (id: string, data: Partial<HistoryEntry>) => {
+    setHistory(prev => {
+      const next = prev.map(h => (h.id === id ? { ...h, ...data } : h));
+      saveHistoryDataCloud(next);
+      return next;
+    });
+  };
+
+  // מוחק רשומת היסטוריה לצמיתות — לשימוש כשמשהו הועבר להיסטוריה בטעות.
+  // לא משחזר משימות/נוכחות חזרה למופע החי (זה כבר קיים בנפרד — "ייבוא משימות
+  // מההיסטוריה" בכרטיס החג/אירוע החי).
+  const deleteHistoryEntry = (id: string) => {
+    setHistory(prev => {
+      const next = prev.filter(h => h.id !== id);
+      saveHistoryDataCloud(next);
+      return next;
+    });
+  };
+
+  // מסמן חג/אירוע כ"הסתיים": שומר תמונת מצב (משימות/נוכחות/תקציב) בהיסטוריה,
+  // ומרוקן את המשימות (ואת הנוכחות) החיות כדי שהמופע הבא יתחיל נקי.
+  // גם ממלא אוטומטית את שדה "אשתקד" עם המספרים האמיתיים שהתקבלו, לקראת השנה הבאה.
+  const archiveOccurrence = ({ type, id, name, occurrenceDate }: { type: 'holiday' | 'event'; id: string; name: string; occurrenceDate?: string }) => {
+    if (type === 'holiday') {
+      const extra = holidayExtras[id] || {};
+      const entry = buildHistoryEntry({
+        type, name, occurrenceDate,
+        tasks: extra.tasks, attendance: extra.attendance, budget: extra.budget, insights: extra.insights,
+      });
+      setHistory(prev => {
+        const next = [...prev, entry];
+        saveHistoryDataCloud(next);
+        return next;
+      });
+      const attCount = countAttendance(extra.attendance);
+      const budgetSums = sumBudget(extra.budget);
+      updateHolidayExtras(id, {
+        tasks: [],
+        attendance: {},
+        insights: { good: '', improve: '', plan: '' },
+        lastYear: { donors: attCount || extra.lastYear?.donors || '', amount: budgetSums.actualIncome || extra.lastYear?.amount || '' },
+      });
+    } else {
+      const ev = eventsData.find((e: any) => e.id === id);
+      if (!ev) return;
+      const entry = buildHistoryEntry({
+        type, name, occurrenceDate,
+        tasks: ev.tasks, attendance: ev.attendance, budget: ev.budget,
+      });
+      setHistory(prev => {
+        const next = [...prev, entry];
+        saveHistoryDataCloud(next);
+        return next;
+      });
+      updateEventsData(eventsData.map((e: any) => (e.id === id ? { ...e, tasks: [], attendance: {} } : e)));
+    }
+    logAction('history_archive');
+  };
+
+  // מייבא משימות מהמופע הקודם (מההיסטוריה) כמשימות חדשות (done:false)
+  const importTasksFromHistory = ({ type, id, name }: { type: 'holiday' | 'event'; id: string; name: string }): boolean => {
+    const latest = findLatestHistoryFor(history, type, name);
+    if (!latest || (latest.tasks || []).length === 0) return false;
+    const importedTasks = tasksFromHistory(latest);
+    if (type === 'holiday') {
+      const extra = holidayExtras[id] || {};
+      updateHolidayExtras(id, { tasks: [...(extra.tasks || []), ...importedTasks] });
+    } else {
+      const ev = eventsData.find((e: any) => e.id === id);
+      if (!ev) return false;
+      updateEventsData(eventsData.map((e: any) => (e.id === id ? { ...e, tasks: [...(e.tasks || []), ...importedTasks] } : e)));
+    }
+    logAction('task_create', importedTasks.length);
+    return true;
+  };
+
+  const updateRebbeDate = async (date: Date) => {
+    setRebbeDate(date);
+    localStorage.setItem('rebbe_date', date.toISOString());
+    import('../lib/api').then(({ apiPost }) => {
+      apiPost('updateRebbe', { date: date.toISOString().split('T')[0] }).catch(console.error);
+    });
+  };
+
+  // כשמתחילים מערך ביקורים חדש — נוצרות אוטומטית משימות "ביקור בית" (kind:'homeVisit')
+  // ל-5 האנשים הראשונים ברשימה, כדי שהמערך יופיע מייד בכרטיסיית "משימות".
+  const startHomeVisitRound = (entries: HomeVisitEntry[]) => {
+    const round = { id: `round_${Date.now()}`, createdAt: new Date().toISOString(), status: 'active' as const, entries };
+    setHomeVisits(prev => {
+      const next = { rounds: [...prev.rounds, round] };
+      saveHomeVisitsDataCloud(next);
+      return next;
+    });
+    const initialTasks = entries.slice(0, 5).map(e => createHomeVisitTask(e.name, round.id));
+    if (initialTasks.length > 0) {
+      setHolidayExtras(prev => {
+        const cur = prev[STANDALONE_TASKS_ID] || {};
+        const next = { ...prev, [STANDALONE_TASKS_ID]: { ...cur, tasks: [...(cur.tasks || []), ...initialTasks] } };
+        saveHolidayExtrasCloud(next);
+        return next;
+      });
+      logAction('task_create', initialTasks.length);
+    }
+  };
+
+  // מסמן איש קשר במערך ביקורים כ"בוצע" — גם ברשומת המערך עצמה וגם במשימה
+  // התואמת בכרטיסיית "משימות" (אם קיימת), כדי ששני המקומות יישארו מסונכרנים.
+  const markHomeVisitDone = (roundId: string, name: string) => {
+    const todayStr = new Date().toISOString().split('T')[0];
+    setHomeVisits(prev => {
+      const next = {
+        rounds: prev.rounds.map(r => r.id === roundId
+          ? { ...r, entries: r.entries.map(e => e.name === name ? { ...e, visited: true, visitedDate: todayStr } : e) }
+          : r),
+      };
+      saveHomeVisitsDataCloud(next);
+      return next;
+    });
+    setHolidayExtras(prev => {
+      const cur = prev[STANDALONE_TASKS_ID] || {};
+      const tasks = (cur.tasks || []).map((t: any) =>
+        t.kind === 'homeVisit' && t.roundId === roundId && t.personName === name ? { ...t, done: true, doneAt: new Date().toISOString() } : t
+      );
+      const next = { ...prev, [STANDALONE_TASKS_ID]: { ...cur, tasks } };
+      saveHolidayExtrasCloud(next);
+      return next;
+    });
+    logAction('home_visit');
+  };
+
+  // מבטל סימון "בוצע" לביקור בית — גם ברשומת המערך וגם במשימה התואמת. לשימוש
+  // מתצוגת "משימות שהושלמו" בהיסטוריה ("בטל ביצוע").
+  const unmarkHomeVisitDone = (roundId: string, name: string) => {
+    setHomeVisits(prev => {
+      const next = {
+        rounds: prev.rounds.map(r => r.id === roundId
+          ? { ...r, entries: r.entries.map(e => e.name === name ? { ...e, visited: false, visitedDate: undefined } : e) }
+          : r),
+      };
+      saveHomeVisitsDataCloud(next);
+      return next;
+    });
+    setHolidayExtras(prev => {
+      const cur = prev[STANDALONE_TASKS_ID] || {};
+      const tasks = (cur.tasks || []).map((t: any) =>
+        t.kind === 'homeVisit' && t.roundId === roundId && t.personName === name ? { ...t, done: false } : t
+      );
+      const next = { ...prev, [STANDALONE_TASKS_ID]: { ...cur, tasks } };
+      saveHolidayExtrasCloud(next);
+      return next;
+    });
+  };
+
+  // יוצר משימת "ביקור בית" ידנית לאיש קשר ספציפי במערך (למשל אחרי שהמשימות
+  // האוטומטיות הראשונות כבר טופלו) — מדלג אם כבר יש לו משימה פתוחה באותו מערך.
+  const createHomeVisitTaskForEntry = (roundId: string, name: string) => {
+    setHolidayExtras(prev => {
+      const cur = prev[STANDALONE_TASKS_ID] || {};
+      const tasks: any[] = cur.tasks || [];
+      const alreadyOpen = tasks.some(t => t.kind === 'homeVisit' && t.roundId === roundId && t.personName === name && !t.done);
+      if (alreadyOpen) return prev;
+      const next = { ...prev, [STANDALONE_TASKS_ID]: { ...cur, tasks: [...tasks, createHomeVisitTask(name, roundId)] } };
+      saveHolidayExtrasCloud(next);
+      return next;
+    });
+    logAction('task_create');
+  };
+
+  const updateHomeVisitEntry = (roundId: string, name: string, patch: Partial<HomeVisitEntry>) => {
+    setHomeVisits(prev => {
+      const next = {
+        rounds: prev.rounds.map(r => r.id === roundId
+          ? { ...r, entries: r.entries.map(e => e.name === name ? { ...e, ...patch } : e) }
+          : r),
+      };
+      saveHomeVisitsDataCloud(next);
+      return next;
+    });
+  };
+
+  const reorderHomeVisitEntries = (roundId: string, from: number, to: number) => {
+    setHomeVisits(prev => {
+      const next = {
+        rounds: prev.rounds.map(r => r.id === roundId ? { ...r, entries: moveEntry(r.entries, from, to) } : r),
+      };
+      saveHomeVisitsDataCloud(next);
+      return next;
+    });
+  };
+
+  const archiveHomeVisitRound = (roundId: string) => {
+    setHomeVisits(prev => {
+      const next = { rounds: prev.rounds.map(r => r.id === roundId ? { ...r, status: 'archived' as const } : r) };
+      saveHomeVisitsDataCloud(next);
+      return next;
+    });
+  };
+
+  // מוחק מערך שלם (בלתי הפיך) — גם מנקה כל משימת "ביקור בית" פתוחה ששייכת אליו.
+  const deleteHomeVisitRound = (roundId: string) => {
+    setHomeVisits(prev => {
+      const next = { rounds: prev.rounds.filter(r => r.id !== roundId) };
+      saveHomeVisitsDataCloud(next);
+      return next;
+    });
+    setHolidayExtras(prev => {
+      const cur = prev[STANDALONE_TASKS_ID] || {};
+      const tasks = (cur.tasks || []).filter((t: any) => !(t.kind === 'homeVisit' && t.roundId === roundId));
+      const next = { ...prev, [STANDALONE_TASKS_ID]: { ...cur, tasks } };
+      saveHolidayExtrasCloud(next);
+      return next;
+    });
+  };
+
+  // מסיר איש קשר מהמערך (למשל הוסף בטעות), וגם מוחק את משימת "ביקור בית" הפתוחה
+  // התואמת לו (אם קיימת) מכרטיסיית "משימות".
+  const removeHomeVisitEntry = (roundId: string, name: string) => {
+    setHomeVisits(prev => {
+      const next = { rounds: prev.rounds.map(r => r.id === roundId ? { ...r, entries: r.entries.filter(e => e.name !== name) } : r) };
+      saveHomeVisitsDataCloud(next);
+      return next;
+    });
+    setHolidayExtras(prev => {
+      const cur = prev[STANDALONE_TASKS_ID] || {};
+      const tasks = (cur.tasks || []).filter((t: any) => !(t.kind === 'homeVisit' && t.roundId === roundId && t.personName === name));
+      const next = { ...prev, [STANDALONE_TASKS_ID]: { ...cur, tasks } };
+      saveHolidayExtrasCloud(next);
+      return next;
+    });
+  };
+
+  const addHomeVisitEntries = (roundId: string, entries: HomeVisitEntry[]) => {
+    setHomeVisits(prev => {
+      const next = { rounds: prev.rounds.map(r => r.id === roundId ? { ...r, entries: [...r.entries, ...entries] } : r) };
+      saveHomeVisitsDataCloud(next);
+      return next;
+    });
+  };
+
+  // מעדכן מטא-דאטה של המערך עצמו (ייעוד/טווח תאריכים/משימות הכנה) — לא נוגע ברשימת האנשים.
+  const updateHomeVisitRoundMeta = (roundId: string, patch: Partial<HomeVisitRound>) => {
+    setHomeVisits(prev => {
+      const next = { rounds: prev.rounds.map(r => r.id === roundId ? { ...r, ...patch } : r) };
+      saveHomeVisitsDataCloud(next);
+      return next;
+    });
+  };
+
+  // בכל טעינה/רענון — בודק אילו חגים נכנסו לטווח 30 הימים ועדיין אין להם משימת
+  // "לעדכן את החג", ומוסיף אותה אוטומטית (לתוך המשימות של אותו חג עצמו, כדי
+  // שתופיע גם בכרטיסיית "משימות" וגם בכרטיס החג המלא). ממתין ל-loading===false
+  // כדי לא ליצור כפילויות לפני שה-holidayExtras מהענן נטען.
+  useEffect(() => {
+    if (loading || holidays.length === 0) return;
+    const list = buildHolidayList(holidays, getCustomHols(), new Date());
+    const missing = computeMissingHolidayReminders(list, holidayExtras);
+    if (missing.length === 0) return;
+    setHolidayExtras(prev => {
+      const next = { ...prev };
+      missing.forEach(h => {
+        const cur = next[h.id] || {};
+        next[h.id] = { ...cur, tasks: [...(cur.tasks || []), createHolidayReminderTask(h.name)] };
+      });
+      saveHolidayExtrasCloud(next);
+      return next;
+    });
+  }, [holidays, holidayExtras, loading]);
+
+  // כמו התזכורת לחגים, אבל לאירועים חוזרים — יום לפני כל מופע. המזהה הייחודי
+  // של המופע (dueDate על המשימה) מבטיח שכל מופע חדש מקבל תזכורת משלו.
+  useEffect(() => {
+    if (loading || eventsData.length === 0) return;
+    const missing = computeMissingEventReminders(eventsData, new Date());
+    if (missing.length === 0) return;
+    setEventsData(prev => {
+      const next = prev.map((ev: any) => {
+        const m = missing.find(x => x.id === ev.id);
+        if (!m) return ev;
+        return { ...ev, tasks: [...(ev.tasks || []), createEventReminderTask(m.name, m.occurrenceDateISO)] };
+      });
+      saveEventsDataCloud(next);
+      return next;
+    });
+  }, [eventsData, loading]);
+
+  // גיבוי חד-פעמי: יוצר משימות "לשלוח תודה" עבור תרומות מ-10 הימים האחרונים
+  // שנוספו לפני שהפיצ'ר הזה קיים (או הגיעו ישירות מהגיליון בלי לעבור דרך
+  // addManualDonation). רץ פעם אחת בלבד — דגל קבוע ב-localStorage, אותו
+  // דפוס בדיוק כמו backfillLastWeek ב-score.ts.
+  useEffect(() => {
+    if (loading) return;
+    if (localStorage.getItem('thankyou_backfill_v1_done')) return;
+    localStorage.setItem('thankyou_backfill_v1_done', 'true');
+    const missing = computeMissingThankYouTasks(donations, holidayExtras[STANDALONE_TASKS_ID]?.tasks || [], new Date());
+    if (missing.length === 0) return;
+    setHolidayExtras(prev => {
+      const cur = prev[STANDALONE_TASKS_ID] || {};
+      const next = { ...prev, [STANDALONE_TASKS_ID]: { ...cur, tasks: [...(cur.tasks || []), ...missing] } };
+      saveHolidayExtrasCloud(next);
+      return next;
+    });
+  }, [loading, donations, holidayExtras]);
+
+  // גיבוי חד-פעמי: ממלא תאריך אירוע גם למשימות אירוע קיימות שנוצרו לפני
+  // שמשימות אירוע חדשות התחילו לקבל את תאריך האירוע אוטומטית — ראה
+  // backfillEventTaskDates. רץ פעם אחת בלבד.
+  useEffect(() => {
+    if (loading || eventsData.length === 0) return;
+    if (localStorage.getItem('event_task_date_backfill_v1_done')) return;
+    localStorage.setItem('event_task_date_backfill_v1_done', 'true');
+    const { events: next, count } = backfillEventTaskDates(eventsData, new Date());
+    if (count === 0) return;
+    setEventsData(next);
+    saveEventsDataCloud(next);
+  }, [loading, eventsData]);
+
+  useEffect(() => {
+    loadAll();
+    const localRebbe = localStorage.getItem('rebbe_date');
+    if (localRebbe) setRebbeDate(new Date(localRebbe));
+  }, []);
+
+  return (
+    <AppContext.Provider value={{
+      summary, effectiveSummary, donations, donors, visibleDonors, hk, failures, rebbeDate,
+      shabbat, holidays, hebrewDate,
+      loading, loadingText, apiError, crm, holidayExtras, eventsData, history, nameMerges, refresh: loadAll,
+      addManualDonation, updateCrm, updateHolidayExtras, updateEventsData, updateRebbeDate,
+      mergeContacts, unmergeContact, settings, updateSettings,
+      archiveOccurrence, importTasksFromHistory, updateHistoryEntry, deleteHistoryEntry,
+      homeVisits, startHomeVisitRound, markHomeVisitDone, unmarkHomeVisitDone, createHomeVisitTaskForEntry,
+      updateHomeVisitEntry, reorderHomeVisitEntries, archiveHomeVisitRound, deleteHomeVisitRound,
+      removeHomeVisitEntry, addHomeVisitEntries, updateHomeVisitRoundMeta,
+    }}>
+      {children}
+    </AppContext.Provider>
+  );
+}
+
+export const useAppStore = () => {
+  const context = useContext(AppContext);
+  if (context === undefined) throw new Error('useAppStore must be used within AppProvider');
+  return context;
+};
