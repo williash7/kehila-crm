@@ -1,0 +1,12 @@
+node_modules/
+dist/
+coverage/
+.DS_Store
+*.log
+
+# Claude Code
+.claude/
+
+# נוצר אוטומטית מ-google-apps-script/Code.gs בכל build.
+# מקור האמת הוא הקובץ .gs — אל תערוך את הקובץ הזה.
+public/apps-script.txt

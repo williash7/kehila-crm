@@ -1,0 +1,36 @@
+{
+  "name": "kehila-crm",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "sync-script": "node scripts/sync-apps-script.mjs",
+    "dev": "npm run sync-script && vite",
+    "build": "npm run sync-script && vite build",
+    "preview": "vite preview",
+    "clean": "rm -rf dist",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hebcal/core": "^6.3.3",
+    "@hebcal/hdate": "^0.22.2",
+    "@tailwindcss/vite": "^4.1.14",
+    "@vitejs/plugin-react": "^5.0.4",
+    "date-fns": "^4.1.0",
+    "html-to-image": "^1.11.13",
+    "leaflet": "^1.9.4",
+    "lucide-react": "^0.546.0",
+    "react": "^19.0.1",
+    "react-dom": "^19.0.1"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "@types/leaflet": "^1.9.20",
+    "@types/node": "^22.14.0",
+    "tailwindcss": "^4.1.14",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.3"
+  }
+}
