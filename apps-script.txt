@@ -20,9 +20,13 @@
  *
  *  1. גיליון חדש: https://sheets.new
  *  2. תוספים ← Apps Script. מוחקים הכל, מדביקים את הקובץ הזה, שומרים.
- *  3. מריצים את הפונקציה  setupSheet  (מאשרים הרשאות).
- *  4. Deploy ← New deployment ← Web app
- *       Execute as: Me   |   Who has access: Anyone
+ *  3. מריצים את הפונקציה  setupSheet  ומאשרים את בקשת ההרשאות.
+ *     גוגל תציג "האפליקציה לא מאומתת" — לוחצים "מתקדם" ואז "המשך".
+ *  4. פריסה ← פריסה חדשה  (Deploy → New deployment)
+ *       בחירת סוג:    אפליקציית אינטרנט   (Web app)
+ *       לבצע בתור:    עצמי                (Execute as: Me)
+ *       למי יש גישה:  כולם                (Who has access: Anyone)
+ *     ולסיום: לפריסה  (Deploy)
  *  5. מעתיקים את הכתובת שמסתיימת ב-/exec לאפליקציה.
  *
  *  מי שעובר מגיליון ישן: אחרי setupSheet מריצים  migrateFromLegacy .
@@ -81,6 +85,7 @@ function setupSheet() {
   ensureSheet_(ss, SH.SYNC,     COLS.SYNC);
 
   seedNedarimRules_();
+  flushWrites_();
   installTriggers_();
 
   var def = ss.getSheetByName('Sheet1') || ss.getSheetByName('גיליון1');
@@ -88,8 +93,8 @@ function setupSheet() {
 
   alert_('הגיליון מוכן ✅\n\n' +
     'נוצרו כל הלשוניות, והוגדרו ריצות אוטומטיות יומיות.\n\n' +
-    'עכשיו: Deploy ← New deployment ← Web app\n' +
-    'Execute as: Me   |   Who has access: Anyone\n\n' +
+    'עכשיו: פריסה ← פריסה חדשה ← אפליקציית אינטרנט\n' +
+    'לבצע בתור: עצמי   |   למי יש גישה: כולם\n\n' +
     'עוברים מגיליון ישן? הריצו עכשיו את migrateFromLegacy.');
 }
 
@@ -153,17 +158,58 @@ function table_(name) {
   };
 }
 
-/** מוסיף שורה לפי מפת { שם עמודה: ערך } — לא תלוי בסדר העמודות. */
+/**
+ * מוסיף שורה לפי מפת { שם עמודה: ערך } — לא תלוי בסדר העמודות.
+ *
+ * חשוב לביצועים: השורות **נצברות בזיכרון** ונכתבות בבת אחת ב-flushWrites_.
+ * appendRow לכל שורה בנפרד הוא הדבר האיטי ביותר ב-Apps Script — בגיליון עם
+ * אלף שורות הוא חורג ממגבלת ששת הדקות ונעצר באמצע. כתיבה מרוכזת אחת
+ * מסיימת את אותה עבודה בשניות.
+ */
+var _writeQueue = {};
+
 function appendByName_(sheetName, obj) {
-  var t = table_(sheetName);
-  if (!t.sheet) return false;
-  var row = new Array(t.headers.length).fill('');
-  Object.keys(obj).forEach(function (k) {
-    var c = t.col(k);
-    if (c >= 0) row[c] = obj[k];
-  });
-  t.sheet.appendRow(row);
+  if (!_writeQueue[sheetName]) _writeQueue[sheetName] = [];
+  _writeQueue[sheetName].push(obj);
   return true;
+}
+
+/** כותב לגיליון את כל מה שנצבר. חייב להיקרא בסוף כל פעולה שכותבת. */
+function flushWrites_() {
+  Object.keys(_writeQueue).forEach(function (sheetName) {
+    var queued = _writeQueue[sheetName];
+    if (!queued || !queued.length) return;
+
+    var t = table_(sheetName);
+    if (!t.sheet) return;
+
+    // עמודות חדשות שהופיעו בנתונים ואינן בכותרות — נוספות פעם אחת
+    var headers = t.headers.slice();
+    var added = false;
+    queued.forEach(function (obj) {
+      Object.keys(obj).forEach(function (k) {
+        if (k && headers.indexOf(k) === -1) { headers.push(k); added = true; }
+      });
+    });
+    if (added) {
+      t.sheet.getRange(1, 1, 1, headers.length).setValues([headers])
+        .setFontWeight('bold').setBackground('#0D1B2A').setFontColor('#C9A84C');
+    }
+
+    var index = {};
+    headers.forEach(function (h, i) { index[h] = i; });
+
+    var matrix = queued.map(function (obj) {
+      var row = new Array(headers.length).fill('');
+      Object.keys(obj).forEach(function (k) {
+        if (index[k] !== undefined) row[index[k]] = obj[k];
+      });
+      return row;
+    });
+
+    t.sheet.getRange(t.sheet.getLastRow() + 1, 1, matrix.length, headers.length).setValues(matrix);
+    _writeQueue[sheetName] = [];
+  });
 }
 
 function get_(row, t, name) {
@@ -231,13 +277,19 @@ function hkChargeId_(orderId, year, month) {
 
 function doGet(e) {
   var action = (e && e.parameter && e.parameter.action) || '';
-  return json_(safe_(function () { return route_(action, {}); }));
+  return json_(safe_(function () {
+    var res = route_(action, {});
+    flushWrites_();
+    return res;
+  }));
 }
 
 function doPost(e) {
   return json_(safe_(function () {
     var body = JSON.parse((e && e.postData && e.postData.contents) || '{}');
-    return route_(body.action || '', body);
+    var res = route_(body.action || '', body);
+    flushWrites_();
+    return res;
   }));
 }
 
@@ -266,6 +318,9 @@ function route_(action, body) {
     case 'getHolidayExtras': return { data: readSync_('holidayExtras') || {} };
     case 'getHistory':       return { data: readSync_('history') || [] };
     case 'getHomeVisits':    return { data: readSync_('homeVisits') || { rounds: [] } };
+    // הגדרות הארגון נשמרות גם בגיליון, כדי שמכשיר נוסף יצטרך רק את
+    // כתובת הגיליון ולא יעבור שוב את כל האשף.
+    case 'getConfig':        return { data: readSync_('orgConfig') || null };
 
     // כתיבה
     case 'saveCRM':           writeSync_('crm', body.data);           return { success: true };
@@ -274,6 +329,7 @@ function route_(action, body) {
     case 'saveHistory':       writeSync_('history', body.data);       return { success: true };
     case 'saveHomeVisits':    writeSync_('homeVisits', body.data);    return { success: true };
     case 'updateRebbe':       writeSync_('rebbeDate', body.date);     return { success: true };
+    case 'saveConfig':        writeSync_('orgConfig', body.data);      return { success: true };
 
     case 'addDonation':        return addDonation_(body);
     case 'addMeeting':         return addMeeting_(body);
@@ -493,6 +549,8 @@ function addStandingOrder_(body) {
     'הערות':         body.notes || '',
   });
   ensureContact_(name, body.phone, body.address);
+  flushWrites_();      // ההוראה חייבת להיות בגיליון לפני ייצור החיובים
+  _contactIndex = null;
   generateStandingOrderCharges();
   return { success: true, id: id };
 }
@@ -523,24 +581,47 @@ function updateDonorField_(body) {
   return { success: true };
 }
 
+/**
+ * מפתח שמות אנשי הקשר, נטען פעם אחת לכל ריצה.
+ * בלי המטמון הזה כל בדיקת "האם איש הקשר קיים" קוראת מחדש את כל הגיליון,
+ * ובייבוא של אלף שורות זה הופך לאלף קריאות מלאות — הסיבה השנייה
+ * לחריגה ממגבלת הזמן.
+ */
+var _contactIndex = null;
+
+function contactIndex_() {
+  if (_contactIndex) return _contactIndex;
+  _contactIndex = {};
+  var t = table_(SH.CONTACTS);
+  t.rows.forEach(function (r, i) {
+    var n = standardName(r[0]);
+    if (n) _contactIndex[n] = { row: i + 2, data: r };
+  });
+  return _contactIndex;
+}
+
 /** מוסיף איש קשר אם אינו קיים, ומשלים טלפון/כתובת רק אם הם ריקים. */
 function ensureContact_(name, phone, address) {
   if (!name) return;
-  var t = table_(SH.CONTACTS);
-  if (!t.sheet) return;
+  var idx = contactIndex_();
+  var existing = idx[name];
 
-  var cPhone = t.col('טלפון'), cAddr = t.col('כתובת');
-
-  for (var i = 0; i < t.rows.length; i++) {
-    if (standardName(t.rows[i][0]) !== name) continue;
-    var row = i + 2;
-    if (phone && cPhone >= 0 && !String(t.rows[i][cPhone] || '').trim())
-      t.sheet.getRange(row, cPhone + 1).setValue(phone);
-    if (address && cAddr >= 0 && !String(t.rows[i][cAddr] || '').trim())
-      t.sheet.getRange(row, cAddr + 1).setValue(address);
+  if (existing) {
+    if (!existing.row) return; // עדיין בתור הכתיבה — יישמר בהמשך
+    var t = table_(SH.CONTACTS);
+    var cPhone = t.col('טלפון'), cAddr = t.col('כתובת');
+    if (phone && cPhone >= 0 && !String(existing.data[cPhone] || '').trim()) {
+      t.sheet.getRange(existing.row, cPhone + 1).setValue(phone);
+      existing.data[cPhone] = phone;
+    }
+    if (address && cAddr >= 0 && !String(existing.data[cAddr] || '').trim()) {
+      t.sheet.getRange(existing.row, cAddr + 1).setValue(address);
+      existing.data[cAddr] = address;
+    }
     return;
   }
 
+  idx[name] = { row: 0, data: [] };
   appendByName_(SH.CONTACTS, { 'שם מלא': name, 'טלפון': phone || '', 'כתובת': address || '' });
 }
 
@@ -584,6 +665,7 @@ function importRows_(body) {
     added.standingOrders++;
   });
 
+  flushWrites_();
   return { success: true, added: added, tag: tag };
 }
 
@@ -596,6 +678,7 @@ function undoImport(tag) {
   for (var i = t.rows.length - 1; i >= 0; i--) {
     if (String(t.rows[i][c] || '').indexOf(tag) >= 0) { t.sheet.deleteRow(i + 2); deleted++; }
   }
+  _logIds = null; // המזהים שנמחקו זמינים שוב
   alert_('בוטלו ' + deleted + ' שורות מהייבוא ' + tag);
   return deleted;
 }
@@ -623,6 +706,7 @@ function onEditHandler(e) {
   var t = table_(SH.LOG);
   if (e.range.getColumn() !== t.col('שם') + 1) return;
   ensureContact_(standardName(e.range.getValue()), '', '');
+  flushWrites_();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -680,6 +764,7 @@ function generateStandingOrderCharges() {
     }
   });
 
+  flushWrites_();
   if (created) Logger.log('נוצרו ' + created + ' חיובי הוראת קבע');
   return created;
 }
@@ -739,6 +824,20 @@ function seedNedarimRules_() {
     }),
   });
 
+  // מייל הקמת הוראת קבע — זה המקור היחיד להוראות הקבע.
+  // אין מייל על כל חיוב חודשי; החיובים מיוצרים על ידי המנוע.
+  appendByName_(SH.RULES, {
+    'פעיל': 'כן',
+    'שם הכלל': 'נדרים פלוס — הקמת הוראת קבע',
+    'חיפוש בגימייל': 'from:noreply@nedarimplus.com "להלן פרטי ההוראה שהוקמה"',
+    'סוג': 'standingOrder',
+    'שדות (JSON)': JSON.stringify({
+      id: 'מספר הוראה:', name: 'שם תורם:', amount: 'סכום כל חיוב:',
+      startDate: 'תאריך חיוב הבא:', payments: "מס' חיובים:",
+      phone: 'טלפון:', email: 'מייל:', address: 'כתובת:', campaign: 'קטגוריה:',
+    }),
+  });
+
   appendByName_(SH.RULES, {
     'פעיל': 'כן',
     'שם הכלל': 'נדרים פלוס — כשל הוראת קבע',
@@ -753,7 +852,7 @@ function seedNedarimRules_() {
 /** @param {boolean} all — true סורק את כל ההיסטוריה, false רק יומיים אחרונים. */
 function syncEmails(all) {
   var t = table_(SH.RULES);
-  var added = 0, failures = 0;
+  var added = 0, failures = 0, orders = 0;
 
   t.rows.forEach(function (r) {
     if (String(get_(r, t, 'פעיל') || '').trim() !== 'כן') return;
@@ -771,30 +870,98 @@ function syncEmails(all) {
         var body = msg.getPlainBody();
         if (!body) return;
         if (kind === 'failure') failures += handleFailureEmail_(body, msg.getDate(), fields) ? 1 : 0;
+        else if (kind === 'standingOrder') orders += handleStandingOrderEmail_(body, fields) ? 1 : 0;
         else added += handleDonationEmail_(body, msg.getDate(), fields) ? 1 : 0;
       });
     });
   });
 
-  Logger.log('נקלטו ' + added + ' תרומות ו-' + failures + ' כשלים');
-  return { added: added, failures: failures };
+  flushWrites_();
+  // הוראות קבע חדשות צריכות לקבל מיד את החיובים שכבר הגיע מועדם
+  if (orders) { _hkIndex = null; generateStandingOrderCharges(); }
+
+  Logger.log('נקלטו ' + added + ' תרומות, ' + orders + ' הוראות קבע ו-' + failures + ' כשלים');
+  return { added: added, orders: orders, failures: failures };
 }
 
 function syncAllEmailHistory() {
   var res = syncEmails(true);
-  generateStandingOrderCharges();
-  alert_('הסריקה ההיסטורית הושלמה.\nנקלטו ' + res.added + ' תרומות ו-' + res.failures + ' כשלי חיוב.');
+  var created = generateStandingOrderCharges();
+  alert_('הסריקה ההיסטורית הושלמה ✅\n\n' +
+         'תרומות שנקלטו:  ' + res.added + '\n' +
+         'הוראות קבע שנקלטו:  ' + res.orders + '\n' +
+         'חיובים חודשיים שנוצרו:  ' + created + '\n' +
+         'כשלי חיוב:  ' + res.failures);
+}
+
+/**
+ * מייל הקמת הוראת קבע מנדרים פלוס.
+ * זה המקור היחיד להוראות הקבע — אין מייל על כל חיוב חודשי, ולכן
+ * החיובים עצמם מיוצרים על ידי generateStandingOrderCharges.
+ * מספר ההוראה משמש כמזהה, ולכן קליטה חוזרת של אותו מייל לא תיצור כפילות.
+ */
+var _hkIndex = null;
+
+function hkIndex_() {
+  if (_hkIndex) return _hkIndex;
+  _hkIndex = {};
+  var t = table_(SH.HK);
+  t.rows.forEach(function (r) {
+    var id = String(get_(r, t, 'מזהה') || '').trim();
+    if (id) _hkIndex[id] = true;
+  });
+  return _hkIndex;
+}
+
+function handleStandingOrderEmail_(body, f) {
+  var id = field_(body, f.id);
+  var name = standardName(field_(body, f.name));
+  if (!id || !name) return false;
+
+  var idx = hkIndex_();
+  if (idx[id]) return false; // ההוראה כבר רשומה
+
+  var payments = parseInt(field_(body, f.payments), 10) || 0;
+  var amount = asNumber_(field_(body, f.amount));
+  if (!payments || !amount) return false;
+
+  appendByName_(SH.HK, {
+    'מזהה':          id,
+    'שם':            name,
+    'תאריך פתיחה':   (field_(body, f.startDate) || '').split(' ')[0],
+    'סכום':          amount,
+    'מספר תשלומים':  payments,
+    'טלפון':         field_(body, f.phone),
+    'אימייל':        (field_(body, f.email) || '').split(' ')[0],
+    'קמפיין':        field_(body, f.campaign),
+    'הערות':         'נקלט אוטומטית ממייל',
+  });
+  idx[id] = true;
+  ensureContact_(name, field_(body, f.phone), field_(body, f.address));
+  return true;
 }
 
 function handleDonationEmail_(body, msgDate, f) {
   var payments = parseInt(field_(body, f.payments), 10) || 1;
-
-  // תשלום שנפרס לכמה חיובים אינו תרומה חד-פעמית — הוא ייווצר על ידי מנוע
-  // הוראות הקבע חודש בחודשו. בלי הדילוג הזה הכסף נספר פעמיים.
-  if (payments > 1) return false;
-
   var name = standardName(field_(body, f.name));
   if (!name) return false;
+
+  // עסקה בתשלומים אינה תרומה חד-פעמית: "סכום" במייל הזה הוא הסכום הכולל
+  // של הוראת קבע שכבר מדווחת במייל "ההוראה שהוקמה", והחיובים החודשיים
+  // מיוצרים ממנה. רישום הסכום המלא כאן = ספירה כפולה של אותו כסף.
+  //
+  // אבל לא מדלגים בשקט: אם אין הוראת קבע תואמת, הכסף היה נעלם — ולכן
+  // רושמים אזהרה בלוג במקום להתעלם.
+  if (payments > 1) {
+    var monthly = asNumber_(field_(body, f.amount)) / payments;
+    if (!hasMatchingStandingOrder_(name, monthly)) {
+      Logger.log('⚠️ עסקה בתשלומים ללא הוראת קבע תואמת: ' + name +
+                 ' · ₪' + asNumber_(field_(body, f.amount)) +
+                 ' ב-' + payments + ' תשלומים (₪' + Math.round(monthly) + ' לחודש). ' +
+                 'לבדוק ידנית — הסכום לא נרשם.');
+    }
+    return false;
+  }
 
   var amount = asNumber_(field_(body, f.amount));
   var extId = field_(body, f.id);
@@ -814,6 +981,16 @@ function handleDonationEmail_(body, msgDate, f) {
   });
   if (ok) ensureContact_(name, field_(body, f.phone), field_(body, f.address));
   return ok;
+}
+
+/** האם קיימת הוראת קבע לאותו אדם בערך באותו סכום חודשי (סטייה של עד ₪1). */
+function hasMatchingStandingOrder_(name, monthly) {
+  var t = table_(SH.HK);
+  for (var i = 0; i < t.rows.length; i++) {
+    if (standardName(get_(t.rows[i], t, 'שם')) !== name) continue;
+    if (Math.abs(asNumber_(get_(t.rows[i], t, 'סכום')) - monthly) <= 1) return true;
+  }
+  return false;
 }
 
 function handleFailureEmail_(body, msgDate, f) {
@@ -884,7 +1061,8 @@ function migrateFromLegacy() {
       var bad = String(r[0] || '').trim(), good = String(r[1] || '').trim();
       if (bad && good && !existing[bad]) { appendByName_(SH.ALIASES, { 'שם שגוי / כפילות': bad, 'השם התקין': good }); n++; }
     });
-    _aliases = null; // לטעון מחדש
+    flushWrites_();  // חייב להיכתב עכשיו — כל שאר ההגירה מסתמכת עליו
+    _aliases = null;  // לטעון מחדש מהגיליון
     report.push('מיפוי שמות: ' + n);
   }
 
@@ -1011,6 +1189,11 @@ function migrateFromLegacy() {
     report.push('מפתחות סנכרון: ' + n7);
   }
 
+  // כל מה שנצבר עד כאן נכתב עכשיו — ההוראות חייבות להיות בגיליון
+  // לפני שהמנוע מחפש להן חיובים חסרים.
+  flushWrites_();
+  _contactIndex = null;
+
   var created = generateStandingOrderCharges();
   report.push('חיובים חסרים שהושלמו: ' + created);
 
@@ -1018,22 +1201,16 @@ function migrateFromLegacy() {
          '\n\nהלשוניות הישנות לא נמחקו. בדוק שהכל תקין באפליקציה, ורק אז מחק אותן.');
 }
 
+/**
+ * מוסיף איש קשר מהגיליון הישן, על כל עמודותיו.
+ * עמודות שאינן קיימות בכותרות נוספות אוטומטית ב-flushWrites_.
+ */
 function migrateContact_(obj) {
-  var t = table_(SH.CONTACTS);
-  if (!t.sheet) return;
   var name = obj['שם מלא'];
-
-  for (var i = 0; i < t.rows.length; i++) {
-    if (standardName(t.rows[i][0]) === name) return; // כבר קיים
-  }
-  // עמודות שאין בכותרות — נוספות אוטומטית
-  Object.keys(obj).forEach(function (k) {
-    if (t.col(k) === -1 && k) {
-      t.sheet.getRange(1, t.headers.length + 1).setValue(k).setFontWeight('bold')
-        .setBackground('#0D1B2A').setFontColor('#C9A84C');
-      t.headers.push(k);
-    }
-  });
+  if (!name) return;
+  var idx = contactIndex_();
+  if (idx[name]) return; // כבר קיים
+  idx[name] = { row: 0, data: [] };
   appendByName_(SH.CONTACTS, obj);
 }
 
