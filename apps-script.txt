@@ -810,44 +810,75 @@ function markChargeFailed_(orderId, failDate, reason, amount, name) {
  * "סוג": donation (תרומה) או failure (כשל חיוב).
  */
 function seedNedarimRules_() {
+  // מוסיפים רק כללים שחסרים, לפי שם הכלל. הגרסה הקודמת דילגה על הכל אם
+  // כבר היה ולו כלל אחד — ולכן מי שהתקין לפני שנוסף כלל חדש לא קיבל אותו
+  // לעולם. כאן כלל שנערך ידנית נשמר, וכלל חדש עדיין מגיע.
   var t = table_(SH.RULES);
-  if (t.rows.length) return; // כבר הוגדרו כללים — לא דורסים
+  var existing = {};
+  t.rows.forEach(function (r) {
+    var n = String(get_(r, t, 'שם הכלל') || '').trim();
+    if (n) existing[n] = true;
+  });
 
-  appendByName_(SH.RULES, {
+  DEFAULT_RULES.forEach(function (rule) {
+    if (existing[rule['שם הכלל']]) return;
+    appendByName_(SH.RULES, rule);
+  });
+}
+
+/** מוסיף כללי מייל חסרים לגיליון קיים. בטוח להרצה חוזרת. */
+function refreshMailRules() {
+  seedNedarimRules_();
+  var n = (_writeQueue[SH.RULES] || []).length;
+  flushWrites_();
+  alert_(n ? 'נוספו ' + n + ' כללי מייל חדשים.\n\nהריצו עכשיו "סריקת כל היסטוריית המיילים".'
+           : 'כל כללי המייל כבר קיימים — לא היה מה להוסיף.');
+}
+
+/**
+ * כללי ברירת המחדל של נדרים פלוס.
+ *
+ * "סוג" קובע מה עושים עם המייל:
+ *   donation      — תרומה, נכנסת ליומן
+ *   standingOrder — הקמת הוראת קבע, נכנסת ללשונית הוראות קבע
+ *   failure       — סירוב חיוב
+ *
+ * "שדות (JSON)" ממפה שם שדה פנימי ← התווית שמופיעה בגוף המייל.
+ */
+var DEFAULT_RULES = [
+  {
     'פעיל': 'כן',
     'שם הכלל': 'נדרים פלוס — תרומה',
-    'חיפוש בגימייל': 'subject:"[נדרים פלוס] התקבלה עסקה חדשה"',
+    'חיפוש בגימייל': 'from:noreply@nedarimplus.com "מספר אישור"',
     'סוג': 'donation',
     'שדות (JSON)': JSON.stringify({
       name: 'שם:', date: 'תאריך עסקה:', amount: 'סכום:', purpose: 'קטגוריה:',
       phone: 'טלפון:', address: 'כתובת:', id: 'מספר אישור:', payments: 'תשלומים:',
     }),
-  });
-
-  // מייל הקמת הוראת קבע — זה המקור היחיד להוראות הקבע.
-  // אין מייל על כל חיוב חודשי; החיובים מיוצרים על ידי המנוע.
-  appendByName_(SH.RULES, {
+  },
+  {
+    // מייל הקמת הוראת קבע — המקור היחיד להוראות הקבע.
+    // "תדירות גביה" מופיע רק במייל הזה, ולכן הוא המזהה הבטוח ביותר.
     'פעיל': 'כן',
     'שם הכלל': 'נדרים פלוס — הקמת הוראת קבע',
-    'חיפוש בגימייל': 'from:noreply@nedarimplus.com "להלן פרטי ההוראה שהוקמה"',
+    'חיפוש בגימייל': 'from:noreply@nedarimplus.com "תדירות גביה"',
     'סוג': 'standingOrder',
     'שדות (JSON)': JSON.stringify({
       id: 'מספר הוראה:', name: 'שם תורם:', amount: 'סכום כל חיוב:',
       startDate: 'תאריך חיוב הבא:', payments: "מס' חיובים:",
       phone: 'טלפון:', email: 'מייל:', address: 'כתובת:', campaign: 'קטגוריה:',
     }),
-  });
-
-  appendByName_(SH.RULES, {
+  },
+  {
     'פעיל': 'כן',
     'שם הכלל': 'נדרים פלוס — כשל הוראת קבע',
-    'חיפוש בגימייל': 'subject:"[נדרים פלוס] שגיאה / סירוב - הוראת קבע"',
+    'חיפוש בגימייל': 'from:noreply@nedarimplus.com "סיבת שגיאה"',
     'סוג': 'failure',
     'שדות (JSON)': JSON.stringify({
       name: 'שם לקוח:', order: 'מספר הוראה:', amount: 'סכום:', reason: 'סיבת שגיאה:',
     }),
-  });
-}
+  },
+];
 
 /** @param {boolean} all — true סורק את כל ההיסטוריה, false רק יומיים אחרונים. */
 function syncEmails(all) {
@@ -1346,6 +1377,7 @@ function onOpen() {
     .addItem('התקנה ראשונית', 'setupSheet')
     .addItem('הגירה מגיליון ישן', 'migrateFromLegacy')
     .addItem('בדיקת נתונים', 'showSummary')
+    .addItem('רענון כללי מייל', 'refreshMailRules')
     .addSeparator()
     .addItem('סנכרון עכשיו', 'dailySync')
     .addItem('סריקת כל היסטוריית המיילים', 'syncAllEmailHistory')
