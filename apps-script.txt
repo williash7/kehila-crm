@@ -1129,10 +1129,46 @@ function todayStr_() {
 //  תפריט בגיליון
 // ═══════════════════════════════════════════════════════════════════════════
 
+/**
+ * מציג את המספרים המרכזיים בחלון קופץ — לבדיקה אחרי הגירה, בלי צורך
+ * לפתוח את האפליקציה או לחשב ידנית.
+ */
+function showSummary() {
+  var s = getSummary_();
+  var hk = getHK_();
+  var log = table_(SH.LOG);
+  var contacts = table_(SH.CONTACTS);
+
+  var lines = [
+    '📊 מצב הנתונים',
+    '',
+    'סך כל התרומות:  ₪' + Math.round(s.total).toLocaleString(),
+    'הוראות קבע פעילות:  ' + s.hkActive + ' מתוך ' + hk.length,
+    '',
+    'אנשי קשר:  ' + contacts.rows.length,
+    'שורות ביומן:  ' + log.rows.length,
+    'כשלי חיוב:  ' + s.failureCount,
+    '',
+    'פילוח לפי אפיק גבייה:',
+  ];
+  Object.keys(s.byMethod).sort(function (a, b) { return s.byMethod[b] - s.byMethod[a]; })
+    .forEach(function (m) {
+      lines.push('   ' + m + ':  ₪' + Math.round(s.byMethod[m]).toLocaleString());
+    });
+
+  lines.push('', 'הוראות קבע פעילות:');
+  hk.filter(function (h) { return h.active; }).forEach(function (h) {
+    lines.push('   ' + h.name + ' — נותרו ' + h.remaining + ' מתוך ' + h.payments + ' · ₪' + h.amount);
+  });
+
+  alert_(lines.join('\n'));
+}
+
 function onOpen() {
   SpreadsheetApp.getUi().createMenu('לוח בקרה')
     .addItem('התקנה ראשונית', 'setupSheet')
     .addItem('הגירה מגיליון ישן', 'migrateFromLegacy')
+    .addItem('בדיקת נתונים', 'showSummary')
     .addSeparator()
     .addItem('סנכרון עכשיו', 'dailySync')
     .addItem('סריקת כל היסטוריית המיילים', 'syncAllEmailHistory')
