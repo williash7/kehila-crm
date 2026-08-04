@@ -851,10 +851,12 @@ function debugMailRules() {
   });
 
   // כמה מיילים בכלל יש מנדרים בתיבה הזו — מפריד בין "אין מיילים"
-  // לבין "החיפוש לא תפס"
+  // לבין "החיפוש לא תפס".
+  // מחפשים לפי חתימת המערכת בגוף ההודעה ולא לפי שולח, כי מיילים
+  // שהועברו ממרכז אחר נושאים שולח שונה.
   var all = 0, sample = [];
   try {
-    var th = GmailApp.search('from:noreply@nedarimplus.com');
+    var th = GmailApp.search('"מערכת נדרים פלוס"');
     all = th.length;
     th.slice(0, 5).forEach(function (x) { sample.push('   • ' + x.getFirstMessageSubject()); });
   } catch (e) { all = -1; }
