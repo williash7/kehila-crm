@@ -171,9 +171,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       .catch(console.error);
   };
 
-  const loadAll = async () => {
-    setLoading(true);
-    setLoadingText('מתחבר לגיליון...');
+  // silent = רענון ברקע. הנתונים מתעדכנים, אבל המסך נשאר על מקומו.
+  //
+  // בלי זה כל פעולה קטנה — ביטול הוראת קבע, הוספת תרומה — החליפה את כל
+  // האפליקציה במסך טעינה וזרקה את המשתמש חזרה לדשבורד. זה נראה כאילו
+  // הדפדפן נטען מחדש, והמשתמש איבד את המקום שבו היה.
+  const loadAll = async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) {
+      setLoading(true);
+      setLoadingText('מתחבר לגיליון...');
+    }
 
     loadHebcal();
 
@@ -292,10 +299,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     } catch (e) {
       console.error('Error fetching data:', e);
-      setLoadingText('שגיאת חיבור');
+      if (!opts?.silent) setLoadingText('שגיאת חיבור');
     }
 
-    setLoading(false);
+    if (!opts?.silent) setLoading(false);
   };
 
   const addManualDonation = (donation: any) => {
@@ -725,7 +732,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     <AppContext.Provider value={{
       summary, effectiveSummary, donations, donors, visibleDonors, hk, failures, rebbeDate,
       shabbat, holidays, hebrewDate,
-      loading, loadingText, apiError, crm, holidayExtras, eventsData, history, nameMerges, refresh: loadAll,
+      // refresh נקרא אחרי כל פעולת כתיבה, ולכן הוא שקט: מרענן נתונים
+      // בלי להחליף את המסך במסך טעינה. הטעינה הראשונה בלבד מציגה אותו.
+      loading, loadingText, apiError, crm, holidayExtras, eventsData, history, nameMerges,
+      refresh: () => loadAll({ silent: true }),
       projects, updateProjects,
       addManualDonation, updateCrm, updateHolidayExtras, updateEventsData, updateRebbeDate,
       mergeContacts, unmergeContact, settings, updateSettings,
