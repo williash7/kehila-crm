@@ -24,6 +24,11 @@ jobs:
       - run: npm run build
         env:
           VITE_BASE_PATH: /${{ github.event.repository.name }}/
+          # מזהה OAuth לכניסה עם גוגל. אינו סוד — מזהה כזה נועד להיות גלוי
+          # בקוד צד-לקוח. מוגדר ב-Settings ← Secrets and variables ← Actions
+          # ← Variables בשם GOOGLE_CLIENT_ID. אם לא הוגדר, כפתור הכניסה
+          # פשוט לא מוצג והאפליקציה עובדת בהגדרה ידנית.
+          VITE_GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
 
       - uses: peaceiris/actions-gh-pages@v4
         with:
