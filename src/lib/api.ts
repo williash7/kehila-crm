@@ -94,28 +94,46 @@ export async function apiPost(action: string, data: any) {
     const GS_URL = gsUrl();
     if (!GS_URL) throw new Error('לא הוגדרה כתובת גיליון');
 
-    // עוברת באותו תור כמו הקריאות, אבל **בלי ניסיון חוזר** — ראה getJson.
-    await acquire();
-    let text: string;
-    try {
-      const r = await fetch(GS_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ ...data, action }),
-      });
-      text = await r.text();
-    } finally {
-      release();
-    }
+    // מזהה ייחודי לבקשה, שנשאר קבוע בין הניסיונות.
+    //
+    // בזכותו מותר לשלוח שוב: השרת זוכר מזהים שכבר טיפל בהם ומחזיר את
+    // התשובה השמורה במקום לבצע שוב. בלי זה כל תקלה רגעית — עומס, רשת, או
+    // תוסף בדפדפן שמשכפל בקשות — הפילה את הפעולה, כי לא היה בטוח לנסות
+    // שנית ולסכן רישום כפול של אותה תרומה.
+    const reqId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+    const payload = JSON.stringify({ ...data, action, reqId });
 
-    let res: any;
-    try {
-      res = JSON.parse(text);
-    } catch {
-      throw new Error('התקבלה תשובה שאינה JSON — ייתכן שהפעולה בכל זאת נשמרה. רענן ובדוק לפני שתנסה שוב.');
+    let lastErr: any;
+    for (let i = 0; i < 3; i++) {
+      if (i > 0) await sleep(400 * i);
+      await acquire();
+      let text: string | null = null;
+      try {
+        const r = await fetch(GS_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: payload,
+        });
+        text = await r.text();
+      } catch (e) {
+        lastErr = e;
+      } finally {
+        release();
+      }
+
+      if (text !== null) {
+        try {
+          const res = JSON.parse(text);
+          if (res && res.error) throw new Error(res.details || res.error);
+          return res;
+        } catch (e: any) {
+          // שגיאה שהשרת החזיר היא תשובה סופית — אין טעם לנסות שוב
+          if (e instanceof SyntaxError) lastErr = new Error('התקבלה תשובה שאינה JSON');
+          else throw e;
+        }
+      }
     }
-    if (res && res.error) throw new Error(res.details || res.error);
-    return res;
+    throw lastErr || new Error('הפעולה נכשלה');
   } catch (e: any) {
     console.error('API POST Error:', e);
     return { error: e.toString(), success: false };

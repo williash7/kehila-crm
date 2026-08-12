@@ -439,10 +439,54 @@ function doGet(e) {
 function doPost(e) {
   return json_(safe_(function () {
     var body = JSON.parse((e && e.postData && e.postData.contents) || '{}');
+
+    // ── בקשת כתיבה שמותר לשלוח שוב ──────────────────────────────────────
+    //
+    // תשובה של גוגל יכולה ללכת לאיבוד בדרך — עומס רגעי, רשת, או תוסף
+    // בדפדפן שמשכפל בקשות. האפליקציה לא יכולה לדעת אם הפעולה נרשמה או
+    // לא, ולכן לא העזנו לשלוח שוב: תרומה שנרשמה פעמיים גרועה מתרומה
+    // שנכשלה. התוצאה הייתה שכל תקלה רגעית הפילה כל פעולת כתיבה.
+    //
+    // הפתרון: האפליקציה מצרפת מזהה ייחודי לכל בקשה. אם אותו מזהה חוזר,
+    // מחזירים את התשובה השמורה בלי לבצע שוב. כך שליחה חוזרת בטוחה
+    // לחלוטין, וגם אם הבקשה נשלחה שלוש פעמים היא בוצעה בדיוק פעם אחת.
+    var reqId = String(body.reqId || '').trim();
+    if (reqId) {
+      var cached = recallRequest_(reqId);
+      if (cached) return cached;
+    }
+
     var res = route_(body.action || '', body);
     flushWrites_();
+    if (reqId) rememberRequest_(reqId, res);
     return res;
   }));
+}
+
+var REQ_LIST_KEY = 'recentRequests';
+var REQ_KEEP = 40;   // מספיק לכיסוי ניסיונות חוזרים, בלי לנפח את האחסון
+
+function recallRequest_(id) {
+  try {
+    var raw = PropertiesService.getScriptProperties().getProperty('req:' + id);
+    return raw ? JSON.parse(raw) : null;
+  } catch (err) {
+    return null;   // ספק — עדיף לבצע מחדש מאשר להיתקע
+  }
+}
+
+function rememberRequest_(id, res) {
+  try {
+    var props = PropertiesService.getScriptProperties();
+    props.setProperty('req:' + id, JSON.stringify(res));
+
+    var list = (props.getProperty(REQ_LIST_KEY) || '').split(',').filter(String);
+    list.push(id);
+    while (list.length > REQ_KEEP) props.deleteProperty('req:' + list.shift());
+    props.setProperty(REQ_LIST_KEY, list.join(','));
+  } catch (err) {
+    Logger.log('שמירת מזהה הבקשה נכשלה: ' + err);
+  }
 }
 
 function safe_(fn) {
