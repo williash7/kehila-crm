@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAppStore } from '../store/AppContext';
-import { Settings as SettingsIcon, RotateCcw, History, Loader2, ChevronDown } from 'lucide-react';
+import { Settings as SettingsIcon, RotateCcw, History, Loader2, ChevronDown, Bot } from 'lucide-react';
+import { GlobalAIImportModal } from './GlobalAIImportModal';
 import { ALL_CIRCLES, CIRCLE_LABELS, DEFAULT_SETTINGS } from '../lib/settings';
 import { computeMissingAttendanceContacts } from '../lib/backfillContacts';
 import { apiPost } from '../lib/api';
@@ -17,6 +18,7 @@ export function SettingsTab() {
   const [openCat, setOpenCat] = useState<HolidayCategory | null>(null);
   const holidayNames = React.useMemo(() => groupHolidayNames(holidays), [holidays]);
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncProgress, setSyncProgress] = useState<{ done: number; total: number } | null>(null);
   const [syncResult, setSyncResult] = useState<string | null>(null);
@@ -260,6 +262,23 @@ export function SettingsTab() {
 
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6] space-y-3">
           <div>
+            <h3 className="font-['Frank_Ruhl_Libre'] text-lg font-bold text-[#0D1B2A]">ייבוא מידע קיים</h3>
+            <p className="text-[11px] text-gray-400 mt-0.5 leading-relaxed">
+              יש לך רשימת אנשים, קובץ אקסל של תרומות, או דף מודפס? האפליקציה תכין הנחיה
+              שתדביק בצ'אט AI יחד עם הקובץ, ותקלוט בחזרה את התוצאה. אנשי קשר, תרומות,
+              הוראות קבע ומשימות — לפני השמירה תראה בדיוק מה נכנס.
+            </p>
+          </div>
+          <button
+            onClick={() => setImportOpen(true)}
+            className="w-full flex items-center justify-center gap-2 bg-purple-600 text-white text-sm font-bold py-2.5 rounded-xl active:scale-95 transition-transform"
+          >
+            <Bot size={15} /> פתח ייבוא
+          </button>
+        </div>
+
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6] space-y-3">
+          <div>
             <h3 className="font-['Frank_Ruhl_Libre'] text-lg font-bold text-[#0D1B2A]">טווח תאריכים לסכומי תרומות</h3>
             <p className="text-[11px] text-gray-400 mt-0.5 leading-relaxed">
               קובע מאיזה תאריך סופרים תרומות בכל הסכומים המוצגים באפליקציה — בדשבורד ("תרומות מתחילת שנה"), אצל אנשי הקשר (כמה כל אחד תרם) ובדוחות. השארה ריקה = מתחילת השנה הנוכחית.
@@ -392,6 +411,8 @@ export function SettingsTab() {
           )}
         </div>
       </div>
+
+      {importOpen && <GlobalAIImportModal onClose={() => setImportOpen(false)} />}
     </div>
   );
 }

@@ -4,17 +4,22 @@
 // המון הוראות קבע חדשות נפתחות, לצד ישנות שעומדות להסתיים).
 
 export interface HkEntry {
+  id?: string;
   name: string;
   active: boolean;
   amount: number;
   remaining: number;
   lastBilled: string;
+  cancelDate?: string;
   [key: string]: any;
 }
 
-export type HkStatus = 'expired' | 'expiring' | 'active';
+export type HkStatus = 'cancelled' | 'expired' | 'expiring' | 'active';
 
+// "בוטלה" קודם ל"הסתיימה": הוראה שבוטלה באמצע הדרך היא לא הוראה שמיצתה
+// את עצמה. ההבחנה חשובה — "הסתיימה" זה סיפור מוצלח, "בוטלה" זה תורם שירד.
 export function getHkStatus(hk: HkEntry, threshold: number): HkStatus {
+  if (hk.cancelDate) return 'cancelled';
   const remaining = Number(hk.remaining);
   if (!hk.active || !Number.isFinite(remaining) || remaining <= 0) return 'expired';
   if (remaining <= threshold) return 'expiring';
@@ -22,12 +27,14 @@ export function getHkStatus(hk: HkEntry, threshold: number): HkStatus {
 }
 
 export const HK_STATUS_LABEL: Record<HkStatus, string> = {
+  cancelled: 'בוטלה',
   expired: 'הסתיימה',
   expiring: 'מסתיימת בקרוב',
   active: 'פעילה',
 };
 
 export const HK_STATUS_COLOR: Record<HkStatus, string> = {
+  cancelled: 'bg-orange-50 text-orange-700 border-orange-200',
   expired: 'bg-gray-100 text-gray-500 border-gray-200',
   expiring: 'bg-amber-50 text-amber-700 border-amber-200',
   active: 'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -36,7 +43,7 @@ export const HK_STATUS_COLOR: Record<HkStatus, string> = {
 // מסדר: קודם מי שיש לו כשל חיוב פתוח, אחר כך לפי דחיפות סטטוס
 // (מסתיימת בקרוב > הסתיימה > פעילה), ולבסוף לפי כמה חיובים נותרו.
 export function sortHkList(hk: HkEntry[], failNames: Set<string>, threshold: number): HkEntry[] {
-  const statusOrder: Record<HkStatus, number> = { expiring: 0, expired: 1, active: 2 };
+  const statusOrder: Record<HkStatus, number> = { expiring: 0, expired: 1, active: 2, cancelled: 3 };
   return [...hk].sort((a, b) => {
     const aFail = failNames.has(a.name) ? 0 : 1;
     const bFail = failNames.has(b.name) ? 0 : 1;
@@ -49,7 +56,7 @@ export function sortHkList(hk: HkEntry[], failNames: Set<string>, threshold: num
 }
 
 export function countHkByStatus(hk: HkEntry[], threshold: number): Record<HkStatus, number> {
-  const counts: Record<HkStatus, number> = { active: 0, expiring: 0, expired: 0 };
+  const counts: Record<HkStatus, number> = { active: 0, expiring: 0, expired: 0, cancelled: 0 };
   hk.forEach(h => { counts[getHkStatus(h, threshold)]++; });
   return counts;
 }

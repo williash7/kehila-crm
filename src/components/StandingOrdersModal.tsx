@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { X, Search, RefreshCw, AlertTriangle, ChevronDown, ChevronLeft } from 'lucide-react';
 import { useAppStore } from '../store/AppContext';
 import { getHkStatus, sortHkList, countHkByStatus, HK_STATUS_LABEL, HK_STATUS_COLOR, HkStatus } from '../lib/standingOrders';
+import { CancelHkDialog, CancelHkButton } from './CancelHkDialog';
 import { ProfileModal } from './ProfileModal';
 
 // "הסתיימה לאחרונה" — כדי לא להציג כברירת מחדל הוראות קבע שהסתיימו לפני
@@ -10,9 +11,11 @@ import { ProfileModal } from './ProfileModal';
 const RECENT_MONTHS = 3;
 function isRecentlyRelevant(h: any, threshold: number): boolean {
   const status = getHkStatus(h, threshold);
-  if (status !== 'expired') return true;
-  if (!h.lastBilled) return true; // בלי תאריך חיוב אחרון, לא מסננים כדי לא "לאבד" רשומות
-  const parsed = new Date(String(h.lastBilled).replace(/\./g, '/').split('/').reverse().join('-'));
+  if (status !== 'expired' && status !== 'cancelled') return true;
+  // הוראה שבוטלה נמדדת לפי תאריך הביטול, לא לפי החיוב האחרון
+  const ref = status === 'cancelled' ? h.cancelDate : h.lastBilled;
+  if (!ref) return true; // בלי תאריך, לא מסננים כדי לא "לאבד" רשומות
+  const parsed = new Date(String(ref).replace(/\./g, '/').split('/').reverse().join('-'));
   if (isNaN(parsed.getTime())) return true;
   const monthsAgo = (Date.now() - parsed.getTime()) / (1000 * 60 * 60 * 24 * 30);
   return monthsAgo <= RECENT_MONTHS;
@@ -25,6 +28,10 @@ export function StandingOrdersModal({ onClose }: { onClose: () => void }) {
   const [showSettings, setShowSettings] = useState(false);
   const [showOld, setShowOld] = useState(false);
   const [selectedDonor, setSelectedDonor] = useState<string | null>(null);
+
+  // ביטול הוראת קבע — נדרים פלוס לא שולחת מייל על ביטול, וזו הדרך היחידה
+  // לספר לגיליון שההוראה נפסקה.
+  const [cancelTarget, setCancelTarget] = useState<any | null>(null);
 
   const threshold = settings.hkExpiringThreshold ?? 2;
   const failNames = useMemo(() => new Set(failures.map((f: any) => f.name)), [failures]);
@@ -49,6 +56,7 @@ export function StandingOrdersModal({ onClose }: { onClose: () => void }) {
     { id: 'expiring', label: 'מסתיימות בקרוב', count: counts.expiring },
     { id: 'expired', label: 'הסתיימו', count: counts.expired },
     { id: 'active', label: 'פעילות', count: counts.active },
+    { id: 'cancelled', label: 'בוטלו', count: counts.cancelled },
     { id: 'errors', label: 'כשלי חיוב', count: failures.length },
   ];
 
@@ -175,7 +183,9 @@ export function StandingOrdersModal({ onClose }: { onClose: () => void }) {
                   </div>
                   <div className="flex items-center justify-between gap-2 mt-2">
                     <span className={`text-[10px] font-bold px-2 py-1 rounded-full border ${HK_STATUS_COLOR[status]}`}>
-                      {HK_STATUS_LABEL[status]}{status !== 'expired' ? ` · נותרו ${h.remaining ?? '—'}` : ''}
+                      {HK_STATUS_LABEL[status]}
+                      {status === 'cancelled' ? ` · ${h.cancelDate}` : ''}
+                      {status === 'active' || status === 'expiring' ? ` · נותרו ${h.remaining ?? '—'}` : ''}
                     </span>
                     {fail && (
                       <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-red-50 text-red-600 border border-red-200 flex items-center gap-1">
@@ -183,12 +193,16 @@ export function StandingOrdersModal({ onClose }: { onClose: () => void }) {
                       </span>
                     )}
                   </div>
+
+                  <CancelHkButton hk={h} onOpen={setCancelTarget} />
                 </div>
               );
             })}
           </div>
         )}
       </div>
+
+      {cancelTarget && <CancelHkDialog target={cancelTarget} onClose={() => setCancelTarget(null)} />}
 
       {selectedDonor && <ProfileModal name={selectedDonor} onClose={() => setSelectedDonor(null)} />}
     </div>

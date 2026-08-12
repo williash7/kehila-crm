@@ -4,6 +4,7 @@ import { RefreshCw, Search, HandCoins, AlertTriangle, ChevronDown, X, Mail, Mess
 import { getHkStatus, sortHkList, countHkByStatus, HK_STATUS_LABEL, HK_STATUS_COLOR, HkStatus } from '../lib/standingOrders';
 import { parseDdMmYyyy } from '../lib/dateUtils';
 import { ProfileModal } from './ProfileModal';
+import { CancelHkDialog, CancelHkButton } from './CancelHkDialog';
 import { ThankYouLetterModal } from './ThankYouLetterModal';
 
 type MainTab = 'donations' | 'hk' | 'errors';
@@ -16,6 +17,7 @@ export function DonationsTab() {
   const [showThankYou, setShowThankYou] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editFields, setEditFields] = useState<Record<string, any>>({});
+  const [cancelTarget, setCancelTarget] = useState<any | null>(null);
 
   // ── תרומות ──────────────────────────────────────────────────────────────
   const [search, setSearch] = useState('');
@@ -248,6 +250,7 @@ export function DonationsTab() {
                 { id: 'expiring', label: 'מסתיימות בקרוב', count: hkCounts.expiring },
                 { id: 'expired', label: 'הסתיימו', count: hkCounts.expired },
                 { id: 'active', label: 'פעילות', count: hkCounts.active },
+                { id: 'cancelled', label: 'בוטלו', count: hkCounts.cancelled },
                 { id: 'errors', label: 'כשלי חיוב', count: failures.length },
               ] as { id: 'all' | HkStatus | 'errors'; label: string; count: number }[]).map(t => (
                 <button key={t.id} onClick={() => setHkFilter(t.id)} className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-bold border transition-colors whitespace-nowrap ${hkFilter === t.id ? 'bg-[#0D1B2A] text-[#C9A84C] border-[#0D1B2A]' : 'bg-white text-gray-500 border-[#EDE6D6]'}`}>
@@ -275,7 +278,9 @@ export function DonationsTab() {
                     </div>
                     <div className="flex items-center justify-between gap-2 mt-2">
                       <span className={`text-[10px] font-bold px-2 py-1 rounded-full border ${HK_STATUS_COLOR[status]}`}>
-                        {HK_STATUS_LABEL[status]}{status !== 'expired' ? ` · נותרו ${h.remaining ?? '—'}` : ''}
+                        {HK_STATUS_LABEL[status]}
+                        {status === 'cancelled' ? ` · ${h.cancelDate}` : ''}
+                        {status === 'active' || status === 'expiring' ? ` · נותרו ${h.remaining ?? '—'}` : ''}
                       </span>
                       {fail && (
                         <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-red-50 text-red-600 border border-red-200 flex items-center gap-1">
@@ -283,6 +288,7 @@ export function DonationsTab() {
                         </span>
                       )}
                     </div>
+                    <CancelHkButton hk={h} onOpen={setCancelTarget} />
                   </div>
                 );
               })}
@@ -442,6 +448,8 @@ export function DonationsTab() {
           onClose={() => setShowThankYou(false)}
         />
       )}
+
+      {cancelTarget && <CancelHkDialog target={cancelTarget} onClose={() => setCancelTarget(null)} />}
     </div>
   );
 }
