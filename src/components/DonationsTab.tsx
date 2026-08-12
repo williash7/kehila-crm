@@ -1,23 +1,30 @@
 import React, { useState, useMemo } from 'react';
 import { useAppStore } from '../store/AppContext';
-import { RefreshCw, Search, HandCoins, AlertTriangle, ChevronDown, X, Mail, MessageSquare, Pencil, Check, User } from 'lucide-react';
+import { RefreshCw, Search, HandCoins, AlertTriangle, ChevronDown, X, Mail, MessageSquare, Pencil, Check, User, Trash2 } from 'lucide-react';
 import { getHkStatus, sortHkList, countHkByStatus, openFailureFor, indexFailures, HK_STATUS_LABEL, HK_STATUS_COLOR, HkStatus } from '../lib/standingOrders';
 import { parseDdMmYyyy } from '../lib/dateUtils';
 import { ProfileModal } from './ProfileModal';
 import { CancelHkDialog, ChangeHkAmountDialog, CancelHkButton } from './CancelHkDialog';
 import { AddHkDialog } from './AddHkDialog';
+import { apiPost } from '../lib/api';
+import { activeProjects } from '../lib/projects';
 import { ThankYouLetterModal } from './ThankYouLetterModal';
 
 type MainTab = 'donations' | 'hk' | 'errors';
 
+const EDIT_METHODS = ['🔗 קישור ישיר', '💵 מזומן', '🏦 העברה בנקאית', '📱 ביט/פייבוקס', '🔄 הוראת קבע', '🌐 אתר תרומות'];
+
 export function DonationsTab() {
-  const { donations, hk, failures, settings, refresh, crm } = useAppStore();
+  const { donations, hk, failures, settings, refresh, crm, projects } = useAppStore();
+  const openProjects = activeProjects(projects);
   const [mainTab, setMainTab] = useState<MainTab>('donations');
   const [selectedDonor, setSelectedDonor] = useState<string | null>(null);
   const [selectedDonation, setSelectedDonation] = useState<any | null>(null);
   const [showThankYou, setShowThankYou] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editFields, setEditFields] = useState<Record<string, any>>({});
+  const [editBusy, setEditBusy] = useState(false);
+  const [editError, setEditError] = useState('');
   const [cancelTarget, setCancelTarget] = useState<any | null>(null);
   const [amountTarget, setAmountTarget] = useState<any | null>(null);
   const [addHkOpen, setAddHkOpen] = useState(false);
@@ -426,8 +433,60 @@ export function DonationsTab() {
             ) : (
               /* Edit mode */
               <div className="p-4 space-y-3">
-                <div className="text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl p-3">
-                  תרומות מגוגל שיטס לא ניתנות לשינוי מכאן — ניתן לעדכן הערות בלבד
+                {editError && (
+                  <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-xl p-3">{editError}</div>
+                )}
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10px] text-gray-500 uppercase font-bold mb-1.5">סכום</label>
+                    <input type="number" value={editFields.amount ?? ''}
+                      onChange={e => setEditFields((f: any) => ({ ...f, amount: e.target.value }))}
+                      className="w-full bg-gray-50 border border-[#EDE6D6] rounded-xl p-3 text-sm outline-none focus:border-[#C9A84C]" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-gray-500 uppercase font-bold mb-1.5">תאריך</label>
+                    <input type="text" dir="ltr" placeholder="dd/mm/yyyy" value={editFields.date || ''}
+                      onChange={e => setEditFields((f: any) => ({ ...f, date: e.target.value }))}
+                      className="w-full bg-gray-50 border border-[#EDE6D6] rounded-xl p-3 text-sm outline-none focus:border-[#C9A84C]" />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] text-gray-500 uppercase font-bold mb-1.5">אפיק גבייה</label>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {EDIT_METHODS.map(m => (
+                      <button key={m} type="button"
+                        onClick={() => setEditFields((f: any) => ({ ...f, method: m }))}
+                        className={`text-xs font-bold py-2 rounded-lg border transition-colors ${
+                          editFields.method === m ? 'bg-[#0D1B2A] text-[#C9A84C] border-[#0D1B2A]' : 'bg-white text-gray-600 border-[#EDE6D6]'
+                        }`}>
+                        {m}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] text-gray-500 uppercase font-bold mb-1.5">ייעוד</label>
+                  {/* אותם כפתורי פרויקט כמו במסך ההוספה — כך תרומה שנשמרה בלי
+                      שיוך נקשרת לפרויקט בדיעבד, בלי לחשוש לשגיאת כתיב בתגית */}
+                  {openProjects.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mb-2">
+                      {openProjects.map(p => (
+                        <button key={p.id} type="button"
+                          onClick={() => setEditFields((f: any) => ({ ...f, purpose: f.purpose === p.purposeTag ? '' : p.purposeTag }))}
+                          className={`text-xs font-bold px-2.5 py-1.5 rounded-lg transition-colors ${
+                            editFields.purpose === p.purposeTag ? 'bg-[#0D1B2A] text-[#C9A84C]' : 'bg-[#C9A84C]/10 text-[#9B7A2F]'
+                          }`}>
+                          🎯 {p.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <input type="text" value={editFields.purpose || ''}
+                    onChange={e => setEditFields((f: any) => ({ ...f, purpose: e.target.value }))}
+                    className="w-full bg-gray-50 border border-[#EDE6D6] rounded-xl p-3 text-sm outline-none focus:border-[#C9A84C]" />
                 </div>
 
                 <div>
@@ -435,7 +494,7 @@ export function DonationsTab() {
                   <textarea
                     value={editFields.notes || ''}
                     onChange={e => setEditFields((f: any) => ({ ...f, notes: e.target.value }))}
-                    rows={4}
+                    rows={3}
                     className="w-full bg-gray-50 border border-[#EDE6D6] rounded-xl p-3 text-sm outline-none focus:border-[#C9A84C] resize-none"
                     placeholder="הוסף הערה..."
                   />
@@ -443,17 +502,47 @@ export function DonationsTab() {
 
                 <div className="flex gap-2 pb-2">
                   <button
-                    onClick={() => {
-                      setSelectedDonation((prev: any) => ({ ...prev, notes: editFields.notes }));
+                    disabled={editBusy}
+                    onClick={async () => {
+                      setEditBusy(true); setEditError('');
+                      const res = await apiPost('updateDonation', {
+                        id: selectedDonation.id,
+                        amount: editFields.amount,
+                        date: editFields.date,
+                        method: editFields.method,
+                        purpose: editFields.purpose,
+                        notes: editFields.notes,
+                      });
+                      setEditBusy(false);
+                      if (res?.error || res?.success === false) { setEditError(res.error || 'העדכון נכשל'); return; }
+                      setSelectedDonation((prev: any) => ({ ...prev, ...editFields, amount: Number(editFields.amount) || 0 }));
                       setIsEditing(false);
+                      refresh();
                     }}
-                    className="flex-1 flex items-center justify-center gap-2 bg-[#0D1B2A] text-[#C9A84C] font-bold py-3 rounded-xl text-sm"
+                    className="flex-1 flex items-center justify-center gap-2 bg-[#0D1B2A] text-[#C9A84C] font-bold py-3 rounded-xl text-sm disabled:opacity-50"
                   >
-                    <Check size={16} /> שמור
+                    <Check size={16} /> {editBusy ? 'שומר...' : 'שמור'}
                   </button>
                   <button
-                    onClick={() => setIsEditing(false)}
-                    className="flex items-center justify-center gap-2 bg-gray-100 text-gray-600 font-bold py-3 px-4 rounded-xl"
+                    disabled={editBusy}
+                    onClick={async () => {
+                      if (!window.confirm('למחוק את התרומה הזו מהיומן? הפעולה אינה הפיכה.')) return;
+                      setEditBusy(true); setEditError('');
+                      const res = await apiPost('deleteDonation', { id: selectedDonation.id });
+                      setEditBusy(false);
+                      if (res?.error || res?.success === false) { setEditError(res.error || 'המחיקה נכשלה'); return; }
+                      setIsEditing(false); setSelectedDonation(null);
+                      refresh();
+                    }}
+                    className="flex items-center justify-center gap-2 bg-red-50 text-red-600 font-bold py-3 px-4 rounded-xl disabled:opacity-50"
+                    title="מחיקה"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                  <button
+                    disabled={editBusy}
+                    onClick={() => { setIsEditing(false); setEditError(''); }}
+                    className="flex items-center justify-center gap-2 bg-gray-100 text-gray-600 font-bold py-3 px-4 rounded-xl disabled:opacity-50"
                   >
                     ביטול
                   </button>

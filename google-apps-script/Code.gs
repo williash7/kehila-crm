@@ -610,6 +610,8 @@ function route_(action, body) {
     case 'saveConfig':        writeSync_('orgConfig', body.data);      return { success: true };
 
     case 'addDonation':        return addDonation_(body);
+    case 'updateDonation':     return updateDonation_(body);
+    case 'deleteDonation':     return deleteDonation_(body);
     case 'addMeeting':         return addMeeting_(body);
     case 'addStandingOrder':   return addStandingOrder_(body);
     case 'cancelStandingOrder': return cancelStandingOrder_(body);
@@ -950,6 +952,85 @@ function cancelStandingOrder_(body) {
   }
 
   return { success: false, error: 'הוראת קבע ' + id + ' לא נמצאה' };
+}
+
+/**
+ * ── עריכת שורה ביומן ──────────────────────────────────────────────────────
+ *
+ * טעות בהקלדה — אפיק גבייה שגוי, סכום שהוקלד לא נכון, ייעוד שנשכח — היא
+ * הדבר השכיח ביותר, ועד עכשיו לא הייתה שום דרך לתקן אותה מהאפליקציה.
+ *
+ * מעדכנים רק שדות שנשלחו בפועל. שדה שלא נשלח נשאר כמו שהוא, כך שאפשר
+ * לשנות דבר אחד בלי לדרוס בטעות את השאר.
+ */
+function updateDonation_(body) {
+  var id = String(body.id || '').trim();
+  if (!id) return { success: false, error: 'חסר מזהה התרומה' };
+
+  var t = table_(SH.LOG);
+  if (!t.sheet) return { success: false, error: 'לשונית היומן לא נמצאה' };
+
+  var cId = t.col('מזהה');
+  if (cId < 0) return { success: false, error: 'עמודת המזהה לא נמצאה' };
+
+  var row = -1;
+  for (var i = 0; i < t.rows.length; i++) {
+    if (String(t.rows[i][cId] || '').trim() === id) { row = i + 2; break; }
+  }
+  if (row < 0) return { success: false, error: 'התרומה לא נמצאה ביומן' };
+
+  var map = {
+    'שם':            body.name === undefined ? undefined : standardName(body.name),
+    'תאריך תרומה':   body.date,
+    'סכום':          body.amount === undefined ? undefined : asNumber_(body.amount),
+    'ייעוד':         body.purpose,
+    'אפיק גבייה':    body.method,
+    'סיכום ותובנות': body.notes,
+  };
+
+  var changed = [];
+  Object.keys(map).forEach(function (col) {
+    if (map[col] === undefined) return;
+    var c = t.col(col);
+    if (c < 0) return;
+    t.sheet.getRange(row, c + 1).setValue(map[col]);
+    changed.push(col);
+  });
+
+  if (body.name) { ensureContact_(standardName(body.name), body.phone, body.address); flushWrites_(); }
+  Logger.log('תרומה ' + id + ' עודכנה: ' + changed.join(', '));
+  return { success: true, id: id, changed: changed };
+}
+
+/**
+ * מחיקת שורה מהיומן.
+ *
+ * חיוב של הוראת קבע (מזהה שמתחיל ב-hk:) חסום כאן במכוון: מנוע ההוראות
+ * ייצר אותו מחדש בריצה הבאה, והמשתמש היה נלחם בו שוב ושוב בלי להבין.
+ * את אלה עוצרים בתאריך ביטול או בשינוי סכום — ההודעה אומרת את זה.
+ */
+function deleteDonation_(body) {
+  var id = String(body.id || '').trim();
+  if (!id) return { success: false, error: 'חסר מזהה התרומה' };
+
+  if (id.indexOf('hk:') === 0) {
+    return { success: false, error:
+      'זהו חיוב של הוראת קבע, והוא ייווצר מחדש אם יימחק. ' +
+      'כדי לעצור את ההוראה השתמשו ב"בטל הוראה", ולשינוי סכום ב"שינוי סכום".' };
+  }
+
+  var t = table_(SH.LOG);
+  var cId = t.col('מזהה');
+  if (!t.sheet || cId < 0) return { success: false, error: 'לשונית היומן לא נמצאה' };
+
+  for (var i = 0; i < t.rows.length; i++) {
+    if (String(t.rows[i][cId] || '').trim() !== id) continue;
+    t.sheet.deleteRow(i + 2);
+    _logIds = null;   // המזהה פנוי שוב, אם אותו מייל ייסרק בעתיד
+    Logger.log('תרומה ' + id + ' נמחקה');
+    return { success: true, id: id };
+  }
+  return { success: false, error: 'התרומה לא נמצאה ביומן' };
 }
 
 /**
