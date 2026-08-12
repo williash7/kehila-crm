@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useAppStore } from '../store/AppContext';
 import { apiPost } from '../lib/api';
 import { ThankYouModal } from './ThankYouModal';
+import { activeProjects } from '../lib/projects';
 
 interface DonationModalProps {
   onClose: () => void;
@@ -9,7 +10,8 @@ interface DonationModalProps {
 }
 
 export function DonationModal({ onClose, defaultName = '' }: DonationModalProps) {
-  const { donors, refresh, crm, addManualDonation } = useAppStore();
+  const { donors, refresh, crm, addManualDonation, projects } = useAppStore();
+  const openProjects = activeProjects(projects);
   const [name, setName] = useState(defaultName);
   const [amount, setAmount] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
@@ -110,8 +112,30 @@ export function DonationModal({ onClose, defaultName = '' }: DonationModalProps)
 
           <div>
             <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">מטרה</label>
-            <input 
-              type="text" 
+
+            {/* בחירת פרויקט מייצרת את הקישור לבד: הייעוד נכתב בדיוק כמו
+                שהפרויקט מצפה לו, בלי סיכון לשגיאת כתיב. */}
+            {openProjects.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {openProjects.map(p => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => setPurpose(purpose === p.purposeTag ? '' : p.purposeTag)}
+                    className={`text-xs font-bold px-2.5 py-1.5 rounded-lg transition-colors ${
+                      purpose === p.purposeTag
+                        ? 'bg-[#0D1B2A] text-[#C9A84C]'
+                        : 'bg-[#C9A84C]/10 text-[#9B7A2F]'
+                    }`}
+                  >
+                    🎯 {p.name}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <input
+              type="text"
               className="w-full bg-white border-[1.5px] border-[#EDE6D6] rounded-xl px-3 py-2.5 text-sm text-[#0D1B2A] outline-none focus:border-[#C9A84C]"
               placeholder="ייעוד התרומה..."
               value={purpose}

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Home, Users, CalendarDays, PieChart, CalendarCheck, Plus, ImageIcon, RefreshCw, Settings, ClipboardList, TrendingUp, HandCoins, History, DoorOpen } from 'lucide-react';
+import { Home, Users, CalendarDays, PieChart, CalendarCheck, Plus, ImageIcon, RefreshCw, Settings, ClipboardList, TrendingUp, HandCoins, History, DoorOpen, Target, BookOpen } from 'lucide-react';
 import { useAppStore } from '../store/AppContext';
 import { getOrg } from '../lib/orgConfig';
 
@@ -25,10 +25,12 @@ export function SideNav({ currentTab, setTab, onDonationClick, addLabel }: SideN
     { id: 'homevisits',icon: DoorOpen,      label: 'ביקורי בית' },
     { id: 'donations', icon: HandCoins,     label: 'תרומות' },
     { id: 'events',    icon: CalendarCheck, label: 'אירועים' },
+    { id: 'projects',  icon: Target,        label: 'פרויקטים' },
     { id: 'calendar',  icon: CalendarDays,  label: 'חגים' },
     { id: 'history',   icon: History,       label: 'היסטוריה' },
     { id: 'reports',   icon: PieChart,      label: 'דוחות' },
     { id: 'poster',    icon: ImageIcon,     label: 'פוסטר שבת' },
+    { id: 'guide',     icon: BookOpen,      label: 'מדריך' },
     { id: 'settings',  icon: Settings,      label: 'הגדרות' },
   ];
 

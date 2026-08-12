@@ -1,3 +1,5 @@
+import { HolidayVisibility, DEFAULT_VISIBILITY } from './holidayFilter';
+
 // הגדרות תצוגה גלובליות: אילו אנשי קשר להציג ברחבי האפליקציה (רשימת אנשי
 // קשר, המלצות ליצירת קשר בדשבורד, הזמנות לחג, נוכחות באירועים, טבלת
 // התורמים המובילים בדוחות). לא משפיע על סכומי הכסף/דוחות כספיים (אלה
@@ -15,7 +17,10 @@ export interface AppSettings {
   hkExpiringThreshold: number; // כמה חיובים נותרו כדי לסמן הוראת קבע כ"מסתיימת בקרוב"
   donationsSinceDate: string; // ISO "yyyy-MM-dd" — מציגים סכומי תרומות רק מתאריך זה ואילך. '' = כל הזמנים.
   defaultTaskView: 'grouped' | 'flat' | 'calendar'; // תצוגת ברירת המחדל שנפתחת בטאב משימות
+  holidayVisibility: HolidayVisibility; // אילו חגים ותאריכים מוצגים בלוח
 }
+
+export { DEFAULT_VISIBILITY };
 
 export const ALL_CIRCLES = ['close', 'approach', 'third', 'far', 'none'];
 
@@ -38,6 +43,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   hkExpiringThreshold: 2,
   donationsSinceDate: '',
   defaultTaskView: 'grouped',
+  holidayVisibility: DEFAULT_VISIBILITY,
 };
 
 const STORAGE_KEY = 'app_settings_v1';
@@ -45,7 +51,17 @@ const STORAGE_KEY = 'app_settings_v1';
 export function loadSettings(): AppSettings {
   try {
     const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-    return { ...DEFAULT_SETTINGS, ...raw, visibleCircles: raw.visibleCircles || DEFAULT_SETTINGS.visibleCircles };
+    return {
+      ...DEFAULT_SETTINGS,
+      ...raw,
+      visibleCircles: raw.visibleCircles || DEFAULT_SETTINGS.visibleCircles,
+      // מיזוג עמוק: קטגוריה שנוספה בגרסה חדשה מקבלת את ברירת המחדל שלה
+      // במקום להיעלם כי ההגדרות השמורות לא הכירו אותה.
+      holidayVisibility: {
+        categories: { ...DEFAULT_VISIBILITY.categories, ...(raw.holidayVisibility?.categories || {}) },
+        hiddenNames: raw.holidayVisibility?.hiddenNames || DEFAULT_VISIBILITY.hiddenNames,
+      },
+    };
   } catch {
     return { ...DEFAULT_SETTINGS };
   }

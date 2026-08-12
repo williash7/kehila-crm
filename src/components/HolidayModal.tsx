@@ -9,15 +9,30 @@ import { TaskDetailsPanel } from './TaskDetailsPanel';
 import { findLatestHistoryFor } from '../lib/history';
 import { Archive } from 'lucide-react';
 import { CompletionFollowUpModal } from './CompletionFollowUpModal';
+import { eventsForHoliday, buildHolidayEvent, eventAttendeeNames, holidayAttendeeNames } from '../lib/holidayEvents';
 import { getOrg } from '../lib/orgConfig';
 
 export function HolidayModal({ holiday, onClose }: { holiday: any, onClose: () => void }) {
-  const { holidayExtras, updateHolidayExtras, visibleDonors, crm, hk, failures, refresh, history, archiveOccurrence, importTasksFromHistory } = useAppStore();
+  const { holidayExtras, updateHolidayExtras, visibleDonors, crm, hk, failures, refresh, history, archiveOccurrence, importTasksFromHistory, eventsData, updateEventsData } = useAppStore();
   const [inviteCategory, setInviteCategory] = useState('all');
+
+  // אירועים שמשוייכים לחג הזה
+  const [isAddingEvent, setIsAddingEvent] = useState(false);
+  const [evName, setEvName] = useState('');
+  const [evType, setEvType] = useState('other');
+  const [evDate, setEvDate] = useState('');
+  const [evTime, setEvTime] = useState('');
 
   // Use either the real id or fallback to stringified name for custom holidays
   const id = holiday.id || holiday.name;
   const extra = holidayExtras[id] || { insights: {}, lastYear: {}, reminders: [], tasks: [], attendance: {} };
+
+  const linkedEvents = useMemo(() => eventsForHoliday(eventsData, id), [eventsData, id]);
+  // כמה אנשים **שונים** — מי שבא לשני אירועים בחג נספר פעם אחת
+  const totalAttendees = useMemo(
+    () => holidayAttendeeNames(extra, linkedEvents).size,
+    [extra, linkedEvents]
+  );
 
   const [isEditingInsights, setIsEditingInsights] = useState(false);
   const [isEditingLastYear, setIsEditingLastYear] = useState(false);
@@ -729,6 +744,85 @@ ${docs.length > 0 ? section('📄 מסמכים מקושרים',
           )}
         </div>
 
+        {/* אירועים בחג — חג יכול להחזיק כמה התכנסויות נפרדות */}
+        <div className="mb-6">
+          <div className="flex justify-between items-center mb-3">
+            <h3 className="font-['Frank_Ruhl_Libre'] text-lg font-bold text-[#0D1B2A]">🎪 האירועים בחג</h3>
+            <button
+              onClick={() => { setIsAddingEvent(!isAddingEvent); setEvDate(holiday.dateStr || holiday.date?.split('T')[0] || ''); }}
+              className="bg-[#C9A84C]/10 text-[#9B7A2F] text-xs font-bold px-3 py-1.5 rounded-lg active:scale-95 transition-transform"
+            >
+              {isAddingEvent ? 'בטל' : '+ הוסף אירוע'}
+            </button>
+          </div>
+
+          {isAddingEvent && (
+            <div className="bg-white rounded-xl shadow-sm border border-[#EDE6D6] p-3 mb-3 space-y-2">
+              <input
+                value={evName} onChange={e => setEvName(e.target.value)}
+                placeholder="שם האירוע — למשל: סעודת ליל החג"
+                className="w-full border border-[#EDE6D6] rounded-lg px-3 py-2 text-sm outline-none focus:border-[#C9A84C]"
+              />
+              <div className="grid grid-cols-3 gap-2">
+                <select value={evType} onChange={e => setEvType(e.target.value)}
+                        className="border border-[#EDE6D6] rounded-lg px-2 py-2 text-sm outline-none focus:border-[#C9A84C]">
+                  <option value="shabbat">סעודה</option>
+                  <option value="minyan">מניין</option>
+                  <option value="class">שיעור</option>
+                  <option value="other">אחר</option>
+                </select>
+                <input type="date" value={evDate} onChange={e => setEvDate(e.target.value)}
+                       className="border border-[#EDE6D6] rounded-lg px-2 py-2 text-sm outline-none focus:border-[#C9A84C]" />
+                <input type="time" value={evTime} onChange={e => setEvTime(e.target.value)}
+                       className="border border-[#EDE6D6] rounded-lg px-2 py-2 text-sm outline-none focus:border-[#C9A84C]" />
+              </div>
+              <button
+                onClick={() => {
+                  if (!evName.trim() || !evDate) return;
+                  updateEventsData([...eventsData, buildHolidayEvent(id, { name: evName, type: evType, date: evDate, time: evTime })]);
+                  logAction('event_create');
+                  setEvName(''); setEvTime(''); setIsAddingEvent(false);
+                }}
+                disabled={!evName.trim() || !evDate}
+                className="w-full bg-[#0D1B2A] text-white py-2 rounded-lg text-sm font-bold disabled:opacity-40"
+              >
+                צור אירוע
+              </button>
+              <p className="text-[11px] text-gray-400 leading-relaxed">
+                האירוע ינוהל בטאב האירועים — שם תסמן נוכחות, תנהל משימות ותכין פרסום.
+                הנוכחות שלו תיספר גם בחג.
+              </p>
+            </div>
+          )}
+
+          <div className="bg-white rounded-xl shadow-sm border border-[#EDE6D6] overflow-hidden">
+            {linkedEvents.length === 0 ? (
+              <div className="text-sm text-gray-400 text-center py-4">
+                אין אירועים בחג הזה. אפשר להוסיף, או לנהל את החג כמו שהוא.
+              </div>
+            ) : (
+              <div className="divide-y divide-[#EDE6D6]">
+                {linkedEvents.map(ev => {
+                  const attCount = eventAttendeeNames(ev).size;
+                  const openTasks = (ev.tasks || []).filter((t: any) => !t.done).length;
+                  return (
+                    <div key={ev.id} className="px-4 py-2.5 text-sm">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-[#0D1B2A]">{ev.name}</span>
+                        <span className="text-[#9B7A2F] text-xs">{ev.date}{ev.time ? ` · ${ev.time}` : ''}</span>
+                      </div>
+                      <div className="text-[11px] text-gray-500 mt-0.5 flex gap-3">
+                        <span>{attCount} נוכחים</span>
+                        {openTasks > 0 && <span>{openTasks} משימות פתוחות</span>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+
         {/* Attendance Section */}
         <div className="mb-6">
           <div className="flex justify-between items-center mb-3">
@@ -737,8 +831,16 @@ ${docs.length > 0 ? section('📄 מסמכים מקושרים',
               <Check size={14}/> סמן נוכחות
             </button>
           </div>
+          {/* איחוד: כמה אנשים שונים היו איתך בחג, כולל דרך האירועים */}
+          {totalAttendees > 0 && (
+            <div className="bg-[#0D1B2A] text-white rounded-xl px-4 py-3 mb-2 flex items-baseline justify-between">
+              <span className="text-sm text-white/70">סה״כ אנשים שונים בחג</span>
+              <span className="font-['Frank_Ruhl_Libre'] text-2xl font-bold text-[#C9A84C]">{totalAttendees}</span>
+            </div>
+          )}
+
           <div className="bg-white rounded-xl shadow-sm border border-[#EDE6D6] overflow-hidden">
-            {lastAttDates.length === 0 ? (
+            {lastAttDates.length === 0 && linkedEvents.length === 0 ? (
               <div className="text-sm text-gray-400 text-center py-4">עדיין לא נרשמה נוכחות לחג זה</div>
             ) : (
               <div className="divide-y divide-[#EDE6D6]">

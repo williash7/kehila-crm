@@ -10,6 +10,8 @@ import { EventsTab } from './components/EventsTab';
 import { ReportsTab } from './components/ReportsTab';
 import { PosterTab } from './components/PosterTab';
 import { SettingsTab } from './components/SettingsTab';
+import { ProjectsTab } from './components/ProjectsTab';
+import { GuideTab } from './components/GuideTab';
 import { TasksTab } from './components/TasksTab';
 import { HomeVisitsTab } from './components/HomeVisitsTab';
 import { ScoreTab } from './components/ScoreTab';
@@ -27,6 +29,7 @@ const ADD_LABELS: Record<string, string> = {
   donors: 'איש קשר',
   tasks: 'משימה',
   events: 'אירוע',
+  projects: 'פרויקט',
   calendar: 'חג מותאם',
   homevisits: 'מערך ביקורים',
 };
@@ -85,6 +88,8 @@ function AppContent() {
           {activeTab === 'poster' && <PosterTab onClose={() => setActiveTab('home')} />}
           {activeTab === 'tasks' && <TasksTab setTab={setActiveTab} addTrigger={addTrigger} />}
           {activeTab === 'score' && <ScoreTab onContactClick={setScoreOpenContact} />}
+          {activeTab === 'projects' && <ProjectsTab addTrigger={addTrigger} />}
+          {activeTab === 'guide' && <GuideTab />}
           {activeTab === 'settings' && <SettingsTab />}
         </main>
       </div>

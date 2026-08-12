@@ -1,7 +1,7 @@
 import { STANDALONE_TASKS_ID, PERSONAL_DATE_EXTRAS_ID } from './tasks';
 
 export interface ExportableTask {
-  category: 'holiday' | 'event' | 'standalone' | 'homeVisit' | 'prep';
+  category: 'holiday' | 'event' | 'project' | 'standalone' | 'homeVisit' | 'prep';
   categoryLabel: string;
   source: string;
   text: string;
@@ -12,12 +12,18 @@ export interface ExportableTask {
 export const TASK_CATEGORY_LABELS: Record<ExportableTask['category'], string> = {
   holiday: 'חג',
   event: 'אירוע',
+  project: 'פרויקט',
   standalone: 'חד-פעמית',
   homeVisit: 'ביקור בית',
   prep: 'הכנה לביקורי בית',
 };
 
-export function collectAllTasks(holidayExtras: Record<string, any>, eventsData: any[], homeVisits: { rounds: any[] }): ExportableTask[] {
+export function collectAllTasks(
+  holidayExtras: Record<string, any>,
+  eventsData: any[],
+  homeVisits: { rounds: any[] },
+  projects: any[] = []
+): ExportableTask[] {
   const rows: ExportableTask[] = [];
 
   Object.keys(holidayExtras).forEach(id => {
@@ -30,6 +36,12 @@ export function collectAllTasks(holidayExtras: Record<string, any>, eventsData: 
   eventsData.forEach((e: any) => {
     (e.tasks || []).forEach((t: any) => {
       rows.push({ category: 'event', categoryLabel: TASK_CATEGORY_LABELS.event, source: e.name, text: t.text, dueDate: t.dueDate, done: !!t.done });
+    });
+  });
+
+  (projects || []).forEach((p: any) => {
+    (p.tasks || []).forEach((t: any) => {
+      rows.push({ category: 'project', categoryLabel: TASK_CATEGORY_LABELS.project, source: p.name, text: t.text, dueDate: t.dueDate, done: !!t.done });
     });
   });
 

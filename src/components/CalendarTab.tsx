@@ -4,9 +4,15 @@ import { getCustomHols, saveCustomHols } from '../lib/api';
 import { logAction } from '../lib/score';
 import { Plus, CalendarDays } from 'lucide-react';
 import { HolidayModal } from './HolidayModal';
+import { filterHolidays } from '../lib/holidayFilter';
 
 export function CalendarTab({ addTrigger }: { addTrigger?: { tab: string; count: number } } = {}) {
-  const { holidays, holidayExtras } = useAppStore();
+  const { holidays: allHolidays, holidayExtras, settings } = useAppStore();
+  // הסינון בתצוגה בלבד — הנתונים נשמרים במלואם
+  const holidays = React.useMemo(
+    () => filterHolidays(allHolidays, settings.holidayVisibility),
+    [allHolidays, settings.holidayVisibility]
+  );
   const [customHolidays, setCustomHolidays] = useState(() => getCustomHols());
   const [isAdding, setIsAdding] = useState(false);
   const [selectedHoliday, setSelectedHoliday] = useState<any>(null);

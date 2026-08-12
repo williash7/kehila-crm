@@ -39,6 +39,7 @@ export const POINT_RULES = {
   task_create:     { label: 'יצירת משימה',               points: 5,  category: 'planning'  },
   task_complete:   { label: 'השלמת משימה',               points: 15, category: 'execution' },
   event_create:    { label: 'יצירת אירוע קבוע',          points: 10, category: 'planning'  },
+  project_create:  { label: 'פתיחת פרויקט גיוס',         points: 15, category: 'planning'  },
   event_edit:      { label: 'עדכון אירוע קבוע',          points: 5,  category: 'planning'  },
   attendance:      { label: 'רישום נוכחות באירוע',       points: 10, category: 'execution' },
   invite_done:     { label: 'הזמנת איש קשר בוצעה',       points: 3,  category: 'execution' },

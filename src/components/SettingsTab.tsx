@@ -1,15 +1,19 @@
 import React, { useState } from 'react';
 import { useAppStore } from '../store/AppContext';
-import { Settings as SettingsIcon, RotateCcw, History, Loader2 } from 'lucide-react';
+import { Settings as SettingsIcon, RotateCcw, History, Loader2, ChevronDown } from 'lucide-react';
 import { ALL_CIRCLES, CIRCLE_LABELS, DEFAULT_SETTINGS } from '../lib/settings';
 import { computeMissingAttendanceContacts } from '../lib/backfillContacts';
 import { apiPost } from '../lib/api';
 import { getOrg, resetOrg } from '../lib/orgConfig';
 import { SetupWizard } from './SetupWizard';
+import { HolidayCategory, CATEGORY_LABEL, CATEGORY_HINT, groupHolidayNames } from '../lib/holidayFilter';
 
 export function SettingsTab() {
-  const { settings, updateSettings, donors, visibleDonors, eventsData, holidayExtras, donations, refresh } = useAppStore();
+  const { settings, updateSettings, donors, visibleDonors, eventsData, holidayExtras, donations, refresh, holidays } = useAppStore();
   const org = getOrg();
+  const vis = settings.holidayVisibility;
+  const [openCat, setOpenCat] = useState<HolidayCategory | null>(null);
+  const holidayNames = React.useMemo(() => groupHolidayNames(holidays), [holidays]);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncProgress, setSyncProgress] = useState<{ done: number; total: number } | null>(null);
@@ -147,6 +151,78 @@ export function SettingsTab() {
           <p className="text-[11px] text-gray-400 mt-1 leading-relaxed">
             ההגדרות האלה קובעות אילו אנשי קשר מופיעים ברשימות ובהמלצות בכל האפליקציה (אנשי קשר, דשבורד, דוחות, הזמנות לחג, נוכחות באירועים). הן <b>לא</b> משפיעות על הסכומים הכספיים והדוחות, ותמיד אפשר למצוא כל איש קשר בעת הוספת תרומה או מפגש.
           </p>
+        </div>
+
+        {/* אילו חגים מוצגים בלוח */}
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6]">
+          <h3 className="font-['Frank_Ruhl_Libre'] text-lg font-bold text-[#0D1B2A] mb-1">חגים ותאריכים בלוח</h3>
+          <p className="text-[11px] text-gray-400 mb-3 leading-relaxed">
+            מכבים קטגוריה שלמה, ובתוך קטגוריה דלוקה אפשר לכבות תאריך בודד.
+            כיבוי מסתיר מהתצוגה בלבד — שום נתון שרשמת לא נמחק.
+          </p>
+
+          <div className="space-y-2">
+            {(Object.keys(CATEGORY_LABEL) as HolidayCategory[]).map(cat => {
+              const on = vis.categories?.[cat] !== false;
+              const names = holidayNames[cat] || [];
+              const expanded = openCat === cat;
+              return (
+                <div key={cat} className="border border-[#EDE6D6] rounded-xl overflow-hidden">
+                  <div className="flex items-center gap-2 p-3">
+                    <button
+                      onClick={() => updateSettings({
+                        holidayVisibility: { ...vis, categories: { ...vis.categories, [cat]: !on } },
+                      })}
+                      className={`w-10 h-6 rounded-full shrink-0 transition-colors relative ${on ? 'bg-[#C9A84C]' : 'bg-gray-200'}`}
+                      aria-label={CATEGORY_LABEL[cat]}
+                    >
+                      <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${on ? 'right-0.5' : 'right-4.5'}`} />
+                    </button>
+                    <button
+                      onClick={() => setOpenCat(expanded ? null : cat)}
+                      className="flex-1 text-right min-w-0"
+                      disabled={!on || names.length === 0}
+                    >
+                      <div className={`text-sm font-bold ${on ? 'text-[#0D1B2A]' : 'text-gray-400'}`}>
+                        {CATEGORY_LABEL[cat]}
+                        {names.length > 0 && <span className="text-[10px] font-normal text-gray-400"> · {names.length}</span>}
+                      </div>
+                      <div className="text-[10px] text-gray-400 truncate">{CATEGORY_HINT[cat]}</div>
+                    </button>
+                    {on && names.length > 0 && (
+                      <ChevronDown size={15} className={`text-gray-400 shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+                    )}
+                  </div>
+
+                  {expanded && on && (
+                    <div className="border-t border-[#EDE6D6] bg-[#FAF6EE] p-2 flex flex-wrap gap-1.5">
+                      {names.map(name => {
+                        const hidden = (vis.hiddenNames || []).includes(name);
+                        return (
+                          <button
+                            key={name}
+                            onClick={() => updateSettings({
+                              holidayVisibility: {
+                                ...vis,
+                                hiddenNames: hidden
+                                  ? vis.hiddenNames.filter(n => n !== name)
+                                  : [...(vis.hiddenNames || []), name],
+                              },
+                            })}
+                            className={`text-xs px-2.5 py-1 rounded-lg font-medium transition-colors ${
+                              hidden ? 'bg-white text-gray-300 line-through border border-[#EDE6D6]' : 'bg-[#C9A84C]/15 text-[#9B7A2F]'
+                            }`}
+                          >
+                            {name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
 
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6]">

@@ -7,6 +7,7 @@ import {
   getManualDonations, saveManualDonations,
   getHistoryDataCloud, saveHistoryDataCloud,
   getHomeVisitsDataCloud, saveHomeVisitsDataCloud,
+  getProjectsCloud, saveProjectsCloud,
   getCustomHols,
 } from '../lib/api';
 import { Donor, Donation, ReportSummary } from '../types';
@@ -20,7 +21,9 @@ import { HomeVisitEntry, HomeVisitRound, HomeVisitsData, moveEntry } from '../li
 import { buildHolidayList } from '../lib/holidayList';
 import { computeMissingHolidayReminders } from '../lib/holidayAutoTasks';
 import { computeMissingEventReminders } from '../lib/eventAutoTasks';
+import { Project } from '../lib/projects';
 import { hebcalUrl } from '../lib/orgConfig';
+import { chabadHolidayItems } from '../lib/chabadDates';
 
 interface AppState {
   summary: ReportSummary | null;
@@ -40,6 +43,7 @@ interface AppState {
   crm: Record<string, any>;
   holidayExtras: Record<string, any>;
   eventsData: any[];
+  projects: Project[];
   history: HistoryEntry[];
   nameMerges: Record<string, string>;
   settings: AppSettings;
@@ -50,6 +54,7 @@ interface AppState {
   updateCrm: (name: string, data: any) => void;
   updateHolidayExtras: (id: string, data: any) => void;
   updateEventsData: (data: any[]) => void;
+  updateProjects: (data: Project[]) => void;
   updateRebbeDate: (date: Date) => void;
   mergeContacts: (aliasName: string, canonicalName: string) => void;
   unmergeContact: (aliasName: string) => void;
@@ -95,6 +100,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [nameMerges, setNameMerges] = useState<Record<string, string>>(initialCrm.merges);
   const [holidayExtras, setHolidayExtras] = useState<Record<string, any>>({});
   const [eventsData, setEventsData] = useState<any[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [homeVisits, setHomeVisits] = useState<HomeVisitsData>({ rounds: [] });
   const [settings, setSettings] = useState<AppSettings>(loadSettings());
@@ -148,10 +154,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       .then(r => r.json())
       .then(data => {
         if (data.items) {
-          setHolidays(data.items.filter((item: any) =>
-            (item.category === 'holiday' || item.category === 'roshchodesh') &&
-            !item.subcat?.includes('modern')
-          ));
+          // תאריכי חב"ד וחסידות אינם קיימים ב-Hebcal ולכן מתווספים כאן.
+          // הסינון עצמו (אילו חגים להציג) קורה בתצוגה לפי ההגדרות, כדי
+          // שלא נאבד נתונים ושינוי הגדרה ייכנס לתוקף מיד.
+          const fromHebcal = data.items.filter((item: any) =>
+            item.category === 'holiday' || item.category === 'roshchodesh'
+          );
+          setHolidays([...fromHebcal, ...chabadHolidayItems()]);
         }
       })
       .catch(console.error);
@@ -177,7 +186,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       getHolidayExtrasCloud(),
       getHistoryDataCloud(),
       getHomeVisitsDataCloud(),
-    ]).then(([cloudCrm, cloudEvents, cloudExtras, cloudHistory, cloudHomeVisits]) => {
+      getProjectsCloud(),
+    ]).then(([cloudCrm, cloudEvents, cloudExtras, cloudHistory, cloudHomeVisits, cloudProjects]) => {
       const { merges, crmRest } = extractMerges(cloudCrm);
       const cleanedCrm = applyMergesToCrm(crmRest, merges);
       resolvedCrm = cleanedCrm;
@@ -188,6 +198,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setHolidayExtras(cloudExtras);
       setHistory(cloudHistory || []);
       setHomeVisits(cloudHomeVisits?.rounds ? cloudHomeVisits : { rounds: [] });
+      setProjects(Array.isArray(cloudProjects) ? cloudProjects : []);
     }).catch(console.error);
 
     try {
@@ -381,6 +392,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const updateEventsData = (data: any[]) => {
     setEventsData(data);
     saveEventsDataCloud(data);
+  };
+
+  const updateProjects = (data: Project[]) => {
+    setProjects(data);
+    saveProjectsCloud(data);
   };
 
   const updateHistoryEntry = (id: string, data: Partial<HistoryEntry>) => {
@@ -710,6 +726,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       summary, effectiveSummary, donations, donors, visibleDonors, hk, failures, rebbeDate,
       shabbat, holidays, hebrewDate,
       loading, loadingText, apiError, crm, holidayExtras, eventsData, history, nameMerges, refresh: loadAll,
+      projects, updateProjects,
       addManualDonation, updateCrm, updateHolidayExtras, updateEventsData, updateRebbeDate,
       mergeContacts, unmergeContact, settings, updateSettings,
       archiveOccurrence, importTasksFromHistory, updateHistoryEntry, deleteHistoryEntry,

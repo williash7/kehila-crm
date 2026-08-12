@@ -238,3 +238,27 @@ export async function createHolidayDoc(holidayName: string, dateStr: string): Pr
   if (res.success && res.url) return { url: res.url, title: res.title };
   return { url: '', title: '', error: res.error || res.details || 'Unknown error' };
 }
+
+// ── פרויקטי גיוס ─────────────────────────────────────────────────────────────
+
+export function getProjects(): any[] {
+  try { return JSON.parse(localStorage.getItem('projects_data') || '[]'); }
+  catch { return []; }
+}
+
+export function saveProjects(data: any[]) {
+  localStorage.setItem('projects_data', JSON.stringify(data));
+}
+
+export async function getProjectsCloud(): Promise<any[]> {
+  try {
+    const res = await apiGet('getProjects');
+    if (res.data && !res._error) { saveProjects(res.data); return res.data; }
+  } catch {}
+  return getProjects();
+}
+
+export async function saveProjectsCloud(data: any[]): Promise<void> {
+  saveProjects(data);
+  apiPost('saveProjects', { data }).catch(console.error);
+}

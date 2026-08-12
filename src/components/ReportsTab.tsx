@@ -9,7 +9,7 @@ import { collectAllTasks, ExportableTask, TASK_CATEGORY_LABELS } from '../lib/ta
 const CIRCLE_LABELS: Record<string, string> = { close: '⭐ קרוב', approach: '🔄 מתקרב', third: '⭕ מעגל שלישי', far: '○ רחוק', none: 'לא מסווג' };
 
 export function ReportsTab() {
-  const { summary, effectiveSummary, donations, visibleDonors, donors, crm, refresh, settings, holidayExtras, eventsData, homeVisits } = useAppStore();
+  const { summary, effectiveSummary, donations, visibleDonors, donors, crm, refresh, settings, holidayExtras, eventsData, homeVisits, projects } = useAppStore();
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const [exportDataTypes, setExportDataTypes] = useState<Set<'donations' | 'tasks' | 'contacts'>>(new Set(['donations']));
   const [exportMethods, setExportMethods] = useState<Set<string>>(new Set());
@@ -17,17 +17,6 @@ export function ReportsTab() {
   const [exportTaskCats, setExportTaskCats] = useState<Set<string>>(new Set());
   const [exportCircles, setExportCircles] = useState<Set<string>>(new Set());
   const [manualMode, setManualMode] = useState(false);
-
-  // מסך הייצוא בנוי סביב סוג נתונים אחד פעיל בכל רגע, בעוד הייצוא עצמו
-  // (שורה 123 והלאה) תומך בקבוצה של סוגים. שתי השורות הבאות מגשרות:
-  // הטאב הפעיל הוא הסוג הראשון בקבוצה, ומעבר טאב מחליף את הקבוצה כולה.
-  const exportDataTab: 'donations' | 'tasks' | 'contacts' =
-    [...exportDataTypes][0] || 'donations';
-
-  const switchExportTab = (id: 'donations' | 'tasks' | 'contacts') => {
-    setExportDataTypes(new Set([id]));
-    setManualSelected(new Set()); // הבחירה הידנית שייכת לסוג הקודם
-  };
   const [manualSelected, setManualSelected] = useState<Set<string>>(new Set());
   const [isHkOpen, setIsHkOpen] = useState(false);
   const [showAllDonations, setShowAllDonations] = useState(true);
@@ -81,11 +70,6 @@ export function ReportsTab() {
 
   const pagedDonations = filteredDonations.slice(0, (donPage + 1) * PAGE_SIZE);
 
-  const exportDonationsCSV = (title: string, data: any[]) => {
-    downloadCSV(title, ['שם תורם', 'תאריך', 'סכום', 'יעד/נישה', 'אפיק גבייה'], data.map(d => [d.name || '', d.date || '', d.amount || 0, d.purpose || '', d.method || '']));
-    setIsExportMenuOpen(false);
-  };
-
   const donationKey = (d: any) => `${d.name}|${d.date}|${d.amount}|${d.method}`;
   const taskKey = (t: ExportableTask) => `${t.category}|${t.source}|${t.text}|${t.dueDate || ''}`;
 
@@ -118,7 +102,7 @@ export function ReportsTab() {
     return list;
   }, [donations, exportMethods, exportPurposes]);
 
-  const allExportTasks = useMemo(() => collectAllTasks(holidayExtras, eventsData, homeVisits), [holidayExtras, eventsData, homeVisits]);
+  const allExportTasks = useMemo(() => collectAllTasks(holidayExtras, eventsData, homeVisits, projects), [holidayExtras, eventsData, homeVisits, projects]);
   const exportFilteredTasks = useMemo(() => {
     if (exportTaskCats.size === 0) return allExportTasks;
     return allExportTasks.filter(t => exportTaskCats.has(t.category));
@@ -432,9 +416,12 @@ export function ReportsTab() {
 
       {/* Export modal — centered on desktop */}
       {isExportMenuOpen && (() => {
-        const exportCount = exportDataTab === 'donations' ? (manualMode ? manualSelected.size : exportFilteredDonations.length)
-          : exportDataTab === 'tasks' ? (manualMode ? manualSelected.size : exportFilteredTasks.length)
-          : (manualMode ? manualSelected.size : exportFilteredContacts.length);
+        const countFor = (type: 'donations' | 'tasks' | 'contacts') => {
+          if (type === 'donations') return manualMode ? exportFilteredDonations.filter(d => manualSelected.has(donationKey(d))).length : exportFilteredDonations.length;
+          if (type === 'tasks') return manualMode ? exportFilteredTasks.filter(t => manualSelected.has(taskKey(t))).length : exportFilteredTasks.length;
+          return manualMode ? exportFilteredContacts.filter(n => manualSelected.has(n)).length : exportFilteredContacts.length;
+        };
+        const exportCount = (['donations', 'tasks', 'contacts'] as const).reduce((sum, t) => sum + (exportDataTypes.has(t) ? countFor(t) : 0), 0);
         const chip = (active: boolean, label: string, onClick: () => void, key?: React.Key) => (
           <button
             key={key}
@@ -460,25 +447,28 @@ export function ReportsTab() {
               </button>
             </div>
 
-            {/* Which data */}
-            <div className="flex gap-2 mb-4 shrink-0">
-              {([['donations', '💰 תרומות'], ['tasks', '📋 משימות'], ['contacts', '👥 אנשי קשר']] as const).map(([id, label]) => (
-                <button
-                  key={id}
-                  onClick={() => switchExportTab(id)}
-                  className={`flex-1 py-2 rounded-xl text-sm font-bold transition-colors ${exportDataTab === id ? 'bg-[#0D1B2A] text-[#C9A84C]' : 'bg-white text-gray-500 border border-[#EDE6D6]'}`}
-                >
-                  {label}
-                </button>
-              ))}
+            {/* Which data — multi-select, one CSV file per selected type */}
+            <div className="mb-1 shrink-0">
+              <div className="text-[11px] font-bold text-gray-500 uppercase mb-1.5">אילו נתונים (אפשר כמה יחד — כל סוג יוצא כקובץ נפרד)</div>
+              <div className="flex gap-2">
+                {([['donations', '💰 תרומות'], ['tasks', '📋 משימות'], ['contacts', '👥 אנשי קשר']] as const).map(([id, label]) => (
+                  <button
+                    key={id}
+                    onClick={() => toggleExportDataType(id)}
+                    className={`flex-1 flex items-center justify-center gap-1 py-2 rounded-xl text-sm font-bold transition-colors border-[1.5px] ${exportDataTypes.has(id) ? 'bg-[#0D1B2A] border-[#0D1B2A] text-[#C9A84C]' : 'bg-white border-[#EDE6D6] text-gray-500'}`}
+                  >
+                    {exportDataTypes.has(id) && <Check size={12} />} {label}
+                  </button>
+                ))}
+              </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto pr-1 custom-scrollbar space-y-4">
-              {exportDataTab === 'donations' && (
+            <div className="flex-1 overflow-y-auto pr-1 custom-scrollbar space-y-4 mt-4">
+              {exportDataTypes.has('donations') && (
                 <>
                   {uniqueMethods.length > 0 && (
                     <div>
-                      <div className="text-[11px] font-bold text-gray-500 uppercase mb-1.5">אפיק גבייה (ריק = הכל)</div>
+                      <div className="text-[11px] font-bold text-gray-500 uppercase mb-1.5">💰 אפיק גבייה (ריק = הכל)</div>
                       <div className="flex flex-wrap gap-1.5">
                         {uniqueMethods.map(m => chip(exportMethods.has(m as string), m as string, () => toggleInSet(exportMethods, setExportMethods, m as string), m as string))}
                       </div>
@@ -486,7 +476,7 @@ export function ReportsTab() {
                   )}
                   {uniquePurposes.length > 0 && (
                     <div>
-                      <div className="text-[11px] font-bold text-gray-500 uppercase mb-1.5">יעד / נישה (ריק = הכל)</div>
+                      <div className="text-[11px] font-bold text-gray-500 uppercase mb-1.5">💰 יעד / נישה (ריק = הכל)</div>
                       <div className="flex flex-wrap gap-1.5">
                         {uniquePurposes.map(p => chip(exportPurposes.has(p as string), p as string, () => toggleInSet(exportPurposes, setExportPurposes, p as string), p as string))}
                       </div>
@@ -495,9 +485,9 @@ export function ReportsTab() {
                 </>
               )}
 
-              {exportDataTab === 'tasks' && (
+              {exportDataTypes.has('tasks') && (
                 <div>
-                  <div className="text-[11px] font-bold text-gray-500 uppercase mb-1.5">קטגוריה (ריק = הכל)</div>
+                  <div className="text-[11px] font-bold text-gray-500 uppercase mb-1.5">📋 קטגוריית משימה (ריק = הכל)</div>
                   <div className="flex flex-wrap gap-1.5">
                     {(Object.keys(TASK_CATEGORY_LABELS) as (keyof typeof TASK_CATEGORY_LABELS)[]).map(cat =>
                       chip(exportTaskCats.has(cat), TASK_CATEGORY_LABELS[cat], () => toggleInSet(exportTaskCats, setExportTaskCats, cat), cat)
@@ -506,60 +496,83 @@ export function ReportsTab() {
                 </div>
               )}
 
-              {exportDataTab === 'contacts' && (
+              {exportDataTypes.has('contacts') && (
                 <div>
-                  <div className="text-[11px] font-bold text-gray-500 uppercase mb-1.5">מעגל קרבה (ריק = הכל)</div>
+                  <div className="text-[11px] font-bold text-gray-500 uppercase mb-1.5">👥 מעגל קרבה (ריק = הכל)</div>
                   <div className="flex flex-wrap gap-1.5">
                     {Object.keys(CIRCLE_LABELS).map(c => chip(exportCircles.has(c), CIRCLE_LABELS[c], () => toggleInSet(exportCircles, setExportCircles, c), c))}
                   </div>
                 </div>
               )}
 
-              <label className="flex items-center gap-2 text-sm text-[#0D1B2A] font-medium cursor-pointer">
-                <input type="checkbox" checked={manualMode} onChange={e => { setManualMode(e.target.checked); setManualSelected(new Set()); }} className="w-4 h-4 accent-[#C9A84C]" />
-                בחירה ידנית — לבחור רשומות ספציפיות מהרשימה המסוננת
-              </label>
+              {exportDataTypes.size > 0 && (
+                <label className="flex items-center gap-2 text-sm text-[#0D1B2A] font-medium cursor-pointer">
+                  <input type="checkbox" checked={manualMode} onChange={e => { setManualMode(e.target.checked); setManualSelected(new Set()); }} className="w-4 h-4 accent-[#C9A84C]" />
+                  בחירה ידנית — לבחור רשומות ספציפיות מהרשימה המסוננת
+                </label>
+              )}
 
-              {manualMode && (
-                <div className="space-y-1.5 bg-white rounded-xl border border-[#EDE6D6] p-2 max-h-64 overflow-y-auto custom-scrollbar">
-                  {exportDataTab === 'donations' && exportFilteredDonations.map((d, i) => {
-                    const key = donationKey(d);
-                    const checked = manualSelected.has(key);
-                    return (
-                      <div key={i} onClick={() => toggleInSet(manualSelected, setManualSelected, key)} className={`flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer text-sm ${checked ? 'bg-[#D1FAE5]' : 'hover:bg-[#FAF6EE]'}`}>
-                        <div className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 ${checked ? 'bg-[#10B981] border-[#10B981]' : 'border-gray-300'}`}>{checked && <Check size={10} className="text-white" />}</div>
-                        <span className="flex-1 truncate">{d.name}</span>
-                        <span className="text-gray-400 text-xs shrink-0">₪{(d.amount || 0).toLocaleString()} · {d.date}</span>
-                      </div>
-                    );
-                  })}
-                  {exportDataTab === 'tasks' && exportFilteredTasks.map((t, i) => {
-                    const key = taskKey(t);
-                    const checked = manualSelected.has(key);
-                    return (
-                      <div key={i} onClick={() => toggleInSet(manualSelected, setManualSelected, key)} className={`flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer text-sm ${checked ? 'bg-[#D1FAE5]' : 'hover:bg-[#FAF6EE]'}`}>
-                        <div className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 ${checked ? 'bg-[#10B981] border-[#10B981]' : 'border-gray-300'}`}>{checked && <Check size={10} className="text-white" />}</div>
-                        <span className="flex-1 truncate">{t.text}</span>
-                        <span className="text-gray-400 text-xs shrink-0">{t.categoryLabel}</span>
-                      </div>
-                    );
-                  })}
-                  {exportDataTab === 'contacts' && exportFilteredContacts.map(n => {
-                    const checked = manualSelected.has(n);
-                    return (
-                      <div key={n} onClick={() => toggleInSet(manualSelected, setManualSelected, n)} className={`flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer text-sm ${checked ? 'bg-[#D1FAE5]' : 'hover:bg-[#FAF6EE]'}`}>
-                        <div className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 ${checked ? 'bg-[#10B981] border-[#10B981]' : 'border-gray-300'}`}>{checked && <Check size={10} className="text-white" />}</div>
-                        <span className="flex-1 truncate">{n}</span>
-                        <span className="text-gray-400 text-xs shrink-0">{CIRCLE_LABELS[crm[n]?.circle || 'none']}</span>
-                      </div>
-                    );
-                  })}
-                  {((exportDataTab === 'donations' && exportFilteredDonations.length === 0) ||
-                    (exportDataTab === 'tasks' && exportFilteredTasks.length === 0) ||
-                    (exportDataTab === 'contacts' && exportFilteredContacts.length === 0)) && (
-                    <div className="text-center text-gray-400 text-sm py-3">אין רשומות התואמות את הסינון</div>
-                  )}
+              {manualMode && exportDataTypes.has('donations') && (
+                <div>
+                  <div className="text-[11px] font-bold text-gray-500 uppercase mb-1">💰 תרומות ({countFor('donations')})</div>
+                  <div className="space-y-1.5 bg-white rounded-xl border border-[#EDE6D6] p-2 max-h-56 overflow-y-auto custom-scrollbar">
+                    {exportFilteredDonations.map((d, i) => {
+                      const key = donationKey(d);
+                      const checked = manualSelected.has(key);
+                      return (
+                        <div key={i} onClick={() => toggleInSet(manualSelected, setManualSelected, key)} className={`flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer text-sm ${checked ? 'bg-[#D1FAE5]' : 'hover:bg-[#FAF6EE]'}`}>
+                          <div className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 ${checked ? 'bg-[#10B981] border-[#10B981]' : 'border-gray-300'}`}>{checked && <Check size={10} className="text-white" />}</div>
+                          <span className="flex-1 truncate">{d.name}</span>
+                          <span className="text-gray-400 text-xs shrink-0">₪{(d.amount || 0).toLocaleString()} · {d.date}</span>
+                        </div>
+                      );
+                    })}
+                    {exportFilteredDonations.length === 0 && <div className="text-center text-gray-400 text-sm py-3">אין רשומות התואמות את הסינון</div>}
+                  </div>
                 </div>
+              )}
+
+              {manualMode && exportDataTypes.has('tasks') && (
+                <div>
+                  <div className="text-[11px] font-bold text-gray-500 uppercase mb-1">📋 משימות ({countFor('tasks')})</div>
+                  <div className="space-y-1.5 bg-white rounded-xl border border-[#EDE6D6] p-2 max-h-56 overflow-y-auto custom-scrollbar">
+                    {exportFilteredTasks.map((t, i) => {
+                      const key = taskKey(t);
+                      const checked = manualSelected.has(key);
+                      return (
+                        <div key={i} onClick={() => toggleInSet(manualSelected, setManualSelected, key)} className={`flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer text-sm ${checked ? 'bg-[#D1FAE5]' : 'hover:bg-[#FAF6EE]'}`}>
+                          <div className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 ${checked ? 'bg-[#10B981] border-[#10B981]' : 'border-gray-300'}`}>{checked && <Check size={10} className="text-white" />}</div>
+                          <span className="flex-1 truncate">{t.text}</span>
+                          <span className="text-gray-400 text-xs shrink-0">{t.categoryLabel}</span>
+                        </div>
+                      );
+                    })}
+                    {exportFilteredTasks.length === 0 && <div className="text-center text-gray-400 text-sm py-3">אין רשומות התואמות את הסינון</div>}
+                  </div>
+                </div>
+              )}
+
+              {manualMode && exportDataTypes.has('contacts') && (
+                <div>
+                  <div className="text-[11px] font-bold text-gray-500 uppercase mb-1">👥 אנשי קשר ({countFor('contacts')})</div>
+                  <div className="space-y-1.5 bg-white rounded-xl border border-[#EDE6D6] p-2 max-h-56 overflow-y-auto custom-scrollbar">
+                    {exportFilteredContacts.map(n => {
+                      const checked = manualSelected.has(n);
+                      return (
+                        <div key={n} onClick={() => toggleInSet(manualSelected, setManualSelected, n)} className={`flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer text-sm ${checked ? 'bg-[#D1FAE5]' : 'hover:bg-[#FAF6EE]'}`}>
+                          <div className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 ${checked ? 'bg-[#10B981] border-[#10B981]' : 'border-gray-300'}`}>{checked && <Check size={10} className="text-white" />}</div>
+                          <span className="flex-1 truncate">{n}</span>
+                          <span className="text-gray-400 text-xs shrink-0">{CIRCLE_LABELS[crm[n]?.circle || 'none']}</span>
+                        </div>
+                      );
+                    })}
+                    {exportFilteredContacts.length === 0 && <div className="text-center text-gray-400 text-sm py-3">אין רשומות התואמות את הסינון</div>}
+                  </div>
+                </div>
+              )}
+
+              {exportDataTypes.size === 0 && (
+                <div className="text-center text-gray-400 text-sm py-6">בחרו לפחות סוג נתונים אחד לייצוא למעלה</div>
               )}
             </div>
 
@@ -568,7 +581,7 @@ export function ReportsTab() {
               disabled={exportCount === 0}
               className="w-full flex items-center justify-center gap-2 bg-gradient-to-br from-[#0D1B2A] to-[#1A2E45] text-white rounded-xl py-3.5 font-bold shadow-md mt-4 shrink-0 disabled:opacity-40"
             >
-              <Download size={16} className="text-[#C9A84C]" /> ייצוא {exportCount} רשומות
+              <Download size={16} className="text-[#C9A84C]" /> ייצוא {exportCount} רשומות{exportDataTypes.size > 1 ? ` (${exportDataTypes.size} קבצים)` : ''}
             </button>
           </div>
         </div>

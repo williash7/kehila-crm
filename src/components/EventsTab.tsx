@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAppStore } from '../store/AppContext';
-import { Plus, Check, X, ClipboardList, Trash2, Pencil, Clock, Archive, ChevronDown, Mic2, Star } from 'lucide-react';
+import { Plus, Check, X, ClipboardList, Trash2, Pencil, Clock, Archive, ChevronDown, Mic2, Star, Wallet } from 'lucide-react';
 import { format } from 'date-fns';
 import { createInviteTask, toggleInvitePerson, inviteRemainingMinutes, MINUTES_PER_CALL, nextEventOccurrence, formatRemaining, createEventMediaTasks, stampCreated } from '../lib/tasks';
 import { logAction } from '../lib/score';
@@ -11,6 +11,7 @@ import { FacebookPostAssistant } from './FacebookPostAssistant';
 import { TaskDetailsPanel } from './TaskDetailsPanel';
 import { CompletionFollowUpModal } from './CompletionFollowUpModal';
 import { emptyPerformer, Performer } from '../lib/events';
+import { BudgetEditor, emptyBudget } from './BudgetEditor';
 
 export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: number } } = {}) {
   const { eventsData, updateEventsData, visibleDonors, crm, hk, failures, settings, refresh, history, archiveOccurrence, importTasksFromHistory } = useAppStore();
@@ -19,6 +20,9 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
   const [attEventId, setAttEventId] = useState<string | null>(null);
   const [tasksEventId, setTasksEventId] = useState<string | null>(null);
+  // תקציב האירוע: הוצאות והכנסות של ההתכנסות הזו בלבד. גיוס מאורגן מול יעד
+  // ורשימת התרמה הוא פרויקט — ראה lib/holidayEvents.ts.
+  const [budgetEventId, setBudgetEventId] = useState<string | null>(null);
   const [taskText, setTaskText] = useState('');
   const [taskDate, setTaskDate] = useState('');
   const [taskTime, setTaskTime] = useState('');
@@ -196,6 +200,7 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
 
   const currentAttEvent = eventsData.find((e: any) => e.id === attEventId);
   const currentTasksEvent = eventsData.find((e: any) => e.id === tasksEventId);
+  const currentBudgetEvent = eventsData.find((e: any) => e.id === budgetEventId);
 
   const toggleEventTask = (idx: number) => {
     if (!currentTasksEvent) return;
@@ -368,6 +373,12 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
                       </div>
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        onClick={() => setBudgetEventId(ev.id)}
+                        className="bg-emerald-50 text-emerald-700 text-xs font-bold px-3 py-1.5 rounded-lg active:scale-95 transition-transform flex items-center gap-1.5 whitespace-nowrap"
+                      >
+                        <Wallet size={14} /> תקציב
+                      </button>
                       <button
                         onClick={() => {
                           setTasksEventId(ev.id);
@@ -758,6 +769,35 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
              </div>
              </div>
            </div>
+        </div>
+      )}
+
+      {/* Budget Modal */}
+      {budgetEventId && currentBudgetEvent && (
+        <div
+          className="fixed inset-0 bg-black/60 z-[200] flex items-end justify-center p-0 md:p-4 backdrop-blur-sm"
+          onClick={e => e.target === e.currentTarget && setBudgetEventId(null)}
+        >
+          <div className="bg-[#FAF6EE] rounded-t-3xl md:rounded-3xl p-5 pb-6 w-full max-w-[430px] md:max-w-lg max-h-[88vh] flex flex-col animate-in slide-in-from-bottom duration-300">
+            <div className="w-10 h-1 bg-gray-300 rounded-full mx-auto mb-5 md:hidden shrink-0" />
+            <div className="flex justify-between items-center mb-4 shrink-0">
+              <div className="min-w-0">
+                <h2 className="font-['Frank_Ruhl_Libre'] text-xl font-bold text-[#0D1B2A] truncate">תקציב האירוע</h2>
+                <p className="text-xs text-gray-500 truncate">{currentBudgetEvent.name}</p>
+              </div>
+              <button onClick={() => setBudgetEventId(null)} className="bg-gray-200/50 p-2 rounded-full text-gray-500 hover:bg-gray-200 shrink-0">
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto pr-1">
+              <BudgetEditor
+                budget={currentBudgetEvent.budget || emptyBudget()}
+                onChange={next => updateEventsData(eventsData.map((e: any) =>
+                  e.id === budgetEventId ? { ...e, budget: next } : e))}
+              />
+            </div>
+          </div>
         </div>
       )}
 
