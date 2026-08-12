@@ -8,13 +8,71 @@ export const HEBCAL_API = () => hebcalUrl('shabbat');
 // הגיליון שלו באשף ההגדרה, והיא נשמרת ב-localStorage (ראה orgConfig.ts).
 const gsUrl = () => getOrg().gsUrl;
 
+// ─────────────────────────────────────────────────────────────────────────────
+// תור בקשות — לכל היותר MAX_CONCURRENT בו-זמנית.
+//
+// טעינת האפליקציה יורה תריסר בקשות במקביל. Google Apps Script מגבילה כמה
+// ריצות של אותו סקריפט רצות בו-זמנית, ומי שחורג מקבל דף שגיאה ב-HTML במקום
+// JSON — מה שנראה למשתמש כ"שגיאת חיבור" אקראית שנעלמת אחרי רענון.
+//
+// שלוש במקביל מנצלות את הרשת היטב ולא מתקרבות לתקרה. שאר הבקשות ממתינות
+// בתור ונכנסות ברגע שמתפנה מקום — אף אחת לא אובדת.
+// ─────────────────────────────────────────────────────────────────────────────
+const MAX_CONCURRENT = 3;
+let running = 0;
+const waiting: (() => void)[] = [];
+
+function acquire(): Promise<void> {
+  if (running < MAX_CONCURRENT) { running++; return Promise.resolve(); }
+  return new Promise(resolve => waiting.push(() => { running++; resolve(); }));
+}
+
+function release() {
+  running--;
+  const next = waiting.shift();
+  if (next) next();
+}
+
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+
+/**
+ * קריאה עם ניסיונות חוזרים.
+ *
+ * כשגוגל מסרבת בגלל עומס רגעי היא מחזירה דף HTML, ו-JSON.parse נכשל. זו
+ * שגיאה חולפת ולא תקלה אמיתית — ניסיון נוסף אחרי המתנה קצרה כמעט תמיד
+ * מצליח. עדיף להמתין חצי שנייה מאשר להציג למשתמש מסך שגיאה.
+ *
+ * **רק לקריאה.** בקשת כתיבה לא חוזרת על עצמה: אם היא הספיקה להירשם בגיליון
+ * ורק התשובה אבדה, ניסיון חוזר היה רושם את אותה תרומה פעמיים.
+ */
+async function getJson(url: string, attempts = 3): Promise<any> {
+  let lastErr: any;
+  for (let i = 0; i < attempts; i++) {
+    if (i > 0) await sleep(400 * i);
+    await acquire();
+    try {
+      const r = await fetch(url);
+      const text = await r.text();
+      try {
+        return JSON.parse(text);
+      } catch {
+        lastErr = new Error('התקבלה תשובה שאינה JSON (כנראה עומס רגעי בגוגל)');
+      }
+    } catch (e) {
+      lastErr = e;
+    } finally {
+      release();
+    }
+  }
+  throw lastErr;
+}
+
 export async function apiGet(action: string) {
   try {
     const GS_URL = gsUrl();
     if (!GS_URL) return { ...getMockData(action), _error: 'לא הוגדרה כתובת גיליון' };
-    const r = await fetch(`${GS_URL}?action=${action}`);
-    const data = await r.json();
-    if (!r.ok) {
+    const data = await getJson(`${GS_URL}?action=${action}`);
+    if (data && data.error) {
       console.error(`API Error for ${action}:`, data.details || data.error);
       return { ...getMockData(action), _error: data.error, _details: data.details };
     }
@@ -35,13 +93,28 @@ export async function apiPost(action: string, data: any) {
     // הגולמי (e.postData.contents) ומפרש אותו כ-JSON בדיוק כמו קודם.
     const GS_URL = gsUrl();
     if (!GS_URL) throw new Error('לא הוגדרה כתובת גיליון');
-    const r = await fetch(GS_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ ...data, action }),
-    });
-    const res = await r.json();
-    if (!r.ok) throw new Error(res.details || res.error);
+
+    // עוברת באותו תור כמו הקריאות, אבל **בלי ניסיון חוזר** — ראה getJson.
+    await acquire();
+    let text: string;
+    try {
+      const r = await fetch(GS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ ...data, action }),
+      });
+      text = await r.text();
+    } finally {
+      release();
+    }
+
+    let res: any;
+    try {
+      res = JSON.parse(text);
+    } catch {
+      throw new Error('התקבלה תשובה שאינה JSON — ייתכן שהפעולה בכל זאת נשמרה. רענן ובדוק לפני שתנסה שוב.');
+    }
+    if (res && res.error) throw new Error(res.details || res.error);
     return res;
   } catch (e: any) {
     console.error('API POST Error:', e);
