@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { X, Search, RefreshCw, AlertTriangle, ChevronDown, ChevronLeft } from 'lucide-react';
 import { useAppStore } from '../store/AppContext';
-import { getHkStatus, sortHkList, countHkByStatus, openFailureFor, HK_STATUS_LABEL, HK_STATUS_COLOR, HkStatus } from '../lib/standingOrders';
+import { getHkStatus, sortHkList, countHkByStatus, openFailureFor, indexFailures, HK_STATUS_LABEL, HK_STATUS_COLOR, HkStatus } from '../lib/standingOrders';
 import { CancelHkDialog, CancelHkButton } from './CancelHkDialog';
 import { ProfileModal } from './ProfileModal';
 
@@ -34,15 +34,11 @@ export function StandingOrdersModal({ onClose }: { onClose: () => void }) {
   const [cancelTarget, setCancelTarget] = useState<any | null>(null);
 
   const threshold = settings.hkExpiringThreshold ?? 2;
-  const failByName = useMemo(() => {
-    const m: Record<string, any> = {};
-    failures.forEach((f: any) => { m[f.name] = f; });
-    return m;
-  }, [failures]);
+  const failIdx = useMemo(() => indexFailures(failures), [failures]);
   // רק כשלים פתוחים — כשל שנגבה אחריו כסף כבר לא רלוונטי
   const failNames = useMemo(
-    () => new Set(hk.filter(h => openFailureFor(h, failByName)).map(h => h.name)),
-    [hk, failByName]
+    () => new Set(hk.filter(h => openFailureFor(h, failIdx)).map(h => h.name)),
+    [hk, failIdx]
   );
 
   const sorted = useMemo(() => sortHkList(hk, failNames, threshold), [hk, failNames, threshold]);
@@ -166,7 +162,7 @@ export function StandingOrdersModal({ onClose }: { onClose: () => void }) {
           <div className="space-y-2">
             {list.map((h, i) => {
               const status = getHkStatus(h, threshold);
-              const fail = openFailureFor(h, failByName);
+              const fail = openFailureFor(h, failIdx);
               return (
                 <div
                   key={i}

@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useAppStore } from '../store/AppContext';
 import { RefreshCw, Search, HandCoins, AlertTriangle, ChevronDown, X, Mail, MessageSquare, Pencil, Check, User } from 'lucide-react';
-import { getHkStatus, sortHkList, countHkByStatus, openFailureFor, HK_STATUS_LABEL, HK_STATUS_COLOR, HkStatus } from '../lib/standingOrders';
+import { getHkStatus, sortHkList, countHkByStatus, openFailureFor, indexFailures, HK_STATUS_LABEL, HK_STATUS_COLOR, HkStatus } from '../lib/standingOrders';
 import { parseDdMmYyyy } from '../lib/dateUtils';
 import { ProfileModal } from './ProfileModal';
 import { CancelHkDialog, CancelHkButton } from './CancelHkDialog';
@@ -67,16 +67,12 @@ export function DonationsTab() {
   const [hkFilter, setHkFilter] = useState<'all' | HkStatus | 'errors'>('all');
   const [hkSearch, setHkSearch] = useState('');
   const threshold = settings.hkExpiringThreshold ?? 2;
-  const failByName = useMemo(() => {
-    const m: Record<string, any> = {};
-    failures.forEach((f: any) => { m[f.name] = f; });
-    return m;
-  }, [failures]);
+  const failIdx = useMemo(() => indexFailures(failures), [failures]);
   // רק כשלים שעדיין פתוחים — ראה openFailureFor. כשל שנפתר מזמן לא צריך
   // לצבוע את השורה באדום ולא להקפיץ אותה לראש הרשימה.
   const failNames = useMemo(
-    () => new Set(hk.filter(h => openFailureFor(h, failByName)).map(h => h.name)),
-    [hk, failByName]
+    () => new Set(hk.filter(h => openFailureFor(h, failIdx)).map(h => h.name)),
+    [hk, failIdx]
   );
   const hkCounts = useMemo(() => countHkByStatus(hk, threshold), [hk, threshold]);
   let hkList = useMemo(() => sortHkList(hk, failNames, threshold), [hk, failNames, threshold]);
@@ -268,7 +264,7 @@ export function DonationsTab() {
                 <div className="text-center py-8 text-gray-400 text-sm">אין הוראות קבע להצגה</div>
               ) : hkList.map((h, i) => {
                 const status = getHkStatus(h, threshold);
-                const fail = openFailureFor(h, failByName);
+                const fail = openFailureFor(h, failIdx);
                 return (
                   <div key={i} onClick={() => setSelectedDonor(h.name)} className={`bg-white rounded-xl p-3 border shadow-sm cursor-pointer hover:border-[#C9A84C] transition-colors ${fail ? 'border-red-200' : 'border-[#EDE6D6]'}`}>
                     <div className="flex justify-between items-start gap-2">

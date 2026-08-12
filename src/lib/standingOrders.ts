@@ -51,10 +51,35 @@ export const HK_STATUS_COLOR: Record<HkStatus, string> = {
 // הוא ההוכחה הטובה ביותר שהבעיה נפתרה — אין מייל "הכרטיס תוקן" שיגיד לנו.
 // והוראה שבוטלה לא מוצגת כתקלה בכלל: היא לא אמורה להיגבות.
 
-export function openFailureFor(hk: HkEntry, failByName: Record<string, any>): any | null {
-  const fail = failByName[hk.name];
-  if (!fail) return null;
+// ולמי בדיוק שייך הכשל? מייל הסירוב נושא **מספר הוראה**, ולכן זו ההצמדה
+// הנכונה. הצמדה לפי שם גוררת את הסימון האדום לכל ההוראות של אותו אדם —
+// תורם שנכשל לו כרטיס בהוראה אחת נראה כאילו כל ההוראות שלו תקועות.
+// נפילה לשם נשמרת רק לרשומות ישנות שאין בהן מספר הוראה.
+
+export interface FailureIndex {
+  byOrder: Record<string, any>;
+  byName: Record<string, any>;
+}
+
+export function indexFailures(failures: any[]): FailureIndex {
+  const byOrder: Record<string, any> = {};
+  const byName: Record<string, any> = {};
+  (failures || []).forEach(f => {
+    const order = String(f?.order || '').trim();
+    if (order) byOrder[order] = f;
+    if (f?.name) byName[f.name] = f;
+  });
+  return { byOrder, byName };
+}
+
+export function openFailureFor(hk: HkEntry, idx: FailureIndex): any | null {
   if (hk.cancelDate) return null;
+
+  const id = String(hk.id || '').trim();
+  // אם להוראה יש מזהה, מסתמכים **רק** על התאמה לפיו. היעדר כשל למזהה הזה
+  // הוא מידע, לא חוסר מידע — ואסור להשלים אותו מכשל של הוראה אחרת.
+  const fail = id ? idx.byOrder[id] : idx.byName[hk.name];
+  if (!fail) return null;
 
   const failDate = parseDate(fail.date);
   const billed = parseDate(hk.lastBilled);
