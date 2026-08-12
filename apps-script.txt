@@ -179,7 +179,7 @@ function styleLogSheet_() {
 function installTriggers_() {
   ScriptApp.getProjectTriggers().forEach(function (t) {
     var fn = t.getHandlerFunction();
-    if (fn === 'dailySync' || fn === 'onEditHandler') ScriptApp.deleteTrigger(t);
+    if (fn === 'dailySync' || fn === 'onEditHandler' || fn === 'backgroundSync') ScriptApp.deleteTrigger(t);
   });
   ScriptApp.newTrigger('dailySync').timeBased().everyDays(1).atHour(6).create();
   ScriptApp.newTrigger('onEditHandler')
@@ -433,26 +433,27 @@ function safe_(fn) {
 /**
  * ── סנכרון בכל טעינה של האפליקציה ────────────────────────────────────────
  *
- * הריצה היומית ב-06:00 לבדה משאירה את המשתמש מול נתונים בני עד יממה.
- * מי שפתח את האפליקציה מיד אחרי ההתקנה, או שרענן אחרי שהגיע מייל תרומה,
- * ראה מסך שלא זז — בלי שום דרך לדעת שהוא פשוט צריך לחכות. לכן כל קריאת
- * **קריאה** מהאפליקציה מושכת קודם את מה שהצטבר.
+ * הריצה היומית ב-06:00 לבדה משאירה את המשתמש מול נתונים בני עד יממה, בלי
+ * שום דרך לדעת שהוא רק צריך לחכות. לכן טעינה של האפליקציה מפעילה סריקה.
  *
- * שלושה סייגים שהופכים את זה לזול ובטוח:
+ * **אבל לא בתוך הבקשה עצמה.** טעינת האפליקציה שולחת תריסר בקשות במקביל,
+ * וסריקת ג'ימייל בתוך אחת מהן מחזיקה אותה פתוחה שניות ארוכות. השאר
+ * נתקעות מאחוריה, חלקן חוזרות כדף שגיאה של גוגל במקום JSON, והמשתמש
+ * מקבל "שגיאת חיבור" ומרענן שלוש פעמים עד שזה עולה.
  *
- *  1. **ויסות.** רענון אחד באפליקציה שולח כמה קריאות (סיכום, תרומות,
- *     תורמים, הוראות קבע...). בלי ויסות כל רענון היה מפעיל סריקת ג'ימייל
- *     נפרדת לכל אחת. חלון של AUTO_SYNC_MINUTES דקות מבטיח סריקה אחת.
- *  2. **נעילה.** שתי קריאות במקביל לא יסרקו את אותם מיילים פעמיים.
- *     tryLock(0) — מי שלא קיבל את הנעילה פשוט מדלג, לא ממתין.
- *  3. **בליעת שגיאות.** כשל בסנכרון לא יפיל את התשובה לאפליקציה.
- *     עדיף להציג נתונים ישנים מאשר מסך שגיאה.
+ * לכן הבקשה רק **מתזמנת** ריצה חד-פעמית וחוזרת מיד. הסריקה רצה שנייה
+ * אחר כך ברקע, והנתונים שהיא מביאה מופיעים ברענון הבא. תגובה מיידית עם
+ * נתונים בני דקה עדיפה על המתנה של עשר שניות לנתונים בני שנייה.
  *
- * הסריקה עצמה זולה: syncEmails(false) מחפש רק `newer_than:3d` ומדלג על
- * שרשורים שכבר נושאים את התווית, ולכן ברוב הקריאות הוא חוזר ריק תוך שנייה.
+ * שלושה סייגים:
+ *
+ *  1. **ויסות.** חלון של AUTO_SYNC_MINUTES דקות — רענון אחד באפליקציה
+ *     שולח כמה בקשות, וכולן חולקות תזמון אחד.
+ *  2. **נעילה.** tryLock(0) בריצת הרקע — מי שלא קיבל אותה מדלג ולא ממתין.
+ *  3. **בליעת שגיאות.** כשל בתזמון לא יפיל את התשובה לאפליקציה.
  *
  * שים לב: זה לא מחליף את `syncAllEmailHistory`. הסריקה ההיסטורית עדיין
- * מורצת ידנית פעם אחת מהתפריט — היא ארוכה מכדי לרוץ בתוך בקשת רשת.
+ * מורצת ידנית פעם אחת מהתפריט — היא ארוכה מכדי לרוץ אפילו ברקע כאן.
  */
 var AUTO_SYNC_MINUTES = 2;
 var _autoSyncChecked = false;
@@ -466,20 +467,42 @@ function maybeSync_() {
     var last = Number(props.getProperty('lastAutoSync') || 0);
     if (Date.now() - last < AUTO_SYNC_MINUTES * 60 * 1000) return;
 
-    var lock = LockService.getScriptLock();
-    if (!lock.tryLock(0)) return;
-
-    try {
-      // מסמנים לפני הריצה ולא אחריה: אם הסריקה נכשלת, אנחנו לא רוצים
-      // שכל קריאה הבאה תנסה שוב מיד ותתקע את האפליקציה בכל טעינה.
-      props.setProperty('lastAutoSync', String(Date.now()));
-      syncEmails(false);
-      generateStandingOrderCharges();
-    } finally {
-      lock.releaseLock();
-    }
+    // מסמנים לפני ולא אחרי: אם הסריקה נכשלת, לא רוצים שכל קריאה הבאה
+    // תנסה שוב מיד ותתקע את האפליקציה בכל טעינה.
+    props.setProperty('lastAutoSync', String(Date.now()));
+    scheduleBackgroundSync_();
   } catch (err) {
-    Logger.log('סנכרון בטעינה נכשל: ' + err);
+    Logger.log('תזמון הסנכרון נכשל: ' + err);
+  }
+}
+
+/**
+ * קובע ריצה חד-פעמית בעוד שנייה. מוחק תחילה טריגר קודם שממתין, כדי
+ * שרצף טעינות לא יצבור טריגרים (יש תקרה של 20 לסקריפט).
+ */
+function scheduleBackgroundSync_() {
+  clearBackgroundSyncTriggers_();
+  ScriptApp.newTrigger('backgroundSync').timeBased().after(1000).create();
+}
+
+function clearBackgroundSyncTriggers_() {
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'backgroundSync') ScriptApp.deleteTrigger(t);
+  });
+}
+
+/** הסריקה עצמה. רצה כטריגר, לא בתוך בקשה מהאפליקציה. */
+function backgroundSync() {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(0)) return;   // כבר רצה סריקה — לא מפעילים שנייה
+  try {
+    syncEmails(false);
+    generateStandingOrderCharges();
+  } catch (err) {
+    Logger.log('סנכרון הרקע נכשל: ' + err);
+  } finally {
+    lock.releaseLock();
+    clearBackgroundSyncTriggers_();   // מנקים אחרינו
   }
 }
 
