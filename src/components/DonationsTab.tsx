@@ -275,6 +275,10 @@ export function DonationsTab() {
                       <div className="min-w-0">
                         <div className="text-sm font-bold text-[#0D1B2A] truncate">{h.name}</div>
                         <div className="text-[11px] text-gray-500 mt-0.5">חיוב אחרון: {h.lastBilled || '—'}</div>
+                        {/* כמה כסף באמת נכנס — שאלה נפרדת מ"כמה חיובים עוד לפנינו" */}
+                        {!!h.payments && (
+                          <div className="text-[11px] text-gray-500">שולמו {h.paid ?? 0} מתוך {h.payments}</div>
+                        )}
                         {/* מספר ההוראה ותאריך הפתיחה — בלעדיהם אי אפשר להבחין
                             בין שתי הוראות של אותו תורם על אותו סכום */}
                         {h.id && (

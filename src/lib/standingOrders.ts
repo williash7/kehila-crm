@@ -8,7 +8,12 @@ export interface HkEntry {
   name: string;
   active: boolean;
   amount: number;
+  /** כמה מועדי חיוב עוד לפנינו בלוח השנה — לא כמה כסף חסר. ראה getHK_ בשרת. */
   remaining: number;
+  /** סך התשלומים שההוראה נפתחה עליהם */
+  payments?: number;
+  /** כמה חיובים נגבו בפועל */
+  paid?: number;
   lastBilled: string;
   cancelDate?: string;
   [key: string]: any;

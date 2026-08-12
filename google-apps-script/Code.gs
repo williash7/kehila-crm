@@ -613,21 +613,33 @@ function getDonations_() {
 
 /**
  * הוראות קבע.
- * "נותרו" ו"חיוב אחרון" מחושבים מהיומן בכל קריאה — לא נשמרים בשום מקום,
- * ולכן לא יכולים לצאת מסנכרון.
+ *
+ * ── מה זה "נותרו" ─────────────────────────────────────────────────────────
+ *
+ * **מספר מועדי החיוב שעוד לפנינו בלוח השנה.** לא "כמה כסף חסר".
+ *
+ * ההבחנה הזו קריטית, וקודם היא הייתה שגויה. הוראה על 12 תשלומים שנפתחה
+ * ביולי 2025 סיימה את לוח הזמנים שלה ביוני 2026 — הספק לא יגבה ממנה עוד
+ * שקל, לא משנה כמה חיובים הצליחו בדרך. חישוב של "תשלומים פחות מה שנגבה"
+ * הציג הוראה שאחד-עשר מחיוביה נכשלו כ"נותרו 1", כאילו עוד צפוי כסף, ואף
+ * הציג הוראה שהסתיימה לגמרי כ"פעילה · נותרו 10".
+ *
+ * כמה כסף באמת נכנס מוצג בנפרד — `paid` מתוך `payments` — כי זו שאלה
+ * אחרת לגמרי, וגם היא חשובה.
  */
 function getHK_() {
   var t = table_(SH.HK);
   var charges = chargesByOrder_();
+  var today = new Date();
 
   return t.rows.map(function (r) {
     var id = String(get_(r, t, 'מזהה') || '').trim();
     var payments = asNumber_(get_(r, t, 'מספר תשלומים')) || 0;
+    var start = toDate_(get_(r, t, 'תאריך פתיחה'));
+    var cancelDate = toDate_(get_(r, t, 'תאריך ביטול'));
     var done = charges[id] || { count: 0, last: null };
-    var cancelled = !!toDate_(get_(r, t, 'תאריך ביטול'));
 
-    // הוראה שבוטלה — לא "נותרו" לה תשלומים, גם אם המכסה לא מוצתה.
-    var remaining = cancelled ? 0 : Math.max(0, payments - done.count);
+    var remaining = cancelDate ? 0 : futureCharges_(start, payments, today, null);
 
     return {
       id:         id,
@@ -635,12 +647,34 @@ function getHK_() {
       startDate:  asDate_(get_(r, t, 'תאריך פתיחה')),
       amount:     asNumber_(get_(r, t, 'סכום')),
       payments:   payments,
+      paid:       done.count,
       remaining:  remaining,
       lastBilled: done.last ? asDate_(done.last) : '',
       cancelDate: asDate_(get_(r, t, 'תאריך ביטול')),
-      active:     !cancelled && remaining > 0,
+      active:     !cancelDate && remaining > 0,
     };
   }).filter(function (h) { return h.name; });
+}
+
+/**
+ * כמה ממועדי החיוב של ההוראה עוד לא הגיעו.
+ * אותו לוח זמנים בדיוק שמייצר generateStandingOrderCharges — יום החיוב
+ * הוא יום הפתיחה, ובחודש קצר מדי נופל ליום האחרון בו.
+ */
+function futureCharges_(start, payments, today, cancelDate) {
+  if (!start || !payments) return 0;
+  var billingDay = start.getDate();
+  var cursor = new Date(start.getFullYear(), start.getMonth(), 1);
+  var count = 0;
+
+  for (var i = 0; i < payments; i++) {
+    var y = cursor.getFullYear(), m = cursor.getMonth();
+    var d = new Date(y, m, Math.min(billingDay, daysInMonth_(y, m)));
+    if (cancelDate && d >= cancelDate) break;
+    if (d > today) count++;
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+  return count;
 }
 
 /** סופר כמה חיובים מוצלחים כבר קיימים ביומן לכל הוראת קבע, ומתי האחרון. */
