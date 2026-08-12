@@ -20,6 +20,7 @@ import { HistoryTab } from './components/HistoryTab';
 import { DonationModal } from './components/DonationModal';
 import { ProfileModal } from './components/ProfileModal';
 import { SetupWizard } from './components/SetupWizard';
+import { SignInScreen } from './components/SignInScreen';
 import { isConfigured } from './lib/orgConfig';
 
 // תווית לכפתור "+" הגלובלי (FAB במובייל, "הוסף X" בסיידבר) לפי המסך הפעיל.
@@ -104,10 +105,27 @@ function AppContent() {
 }
 
 export default function App() {
-  // בכניסה ראשונה (או אחרי איפוס הגדרות) מציגים את אשף ההגדרה במקום
-  // האפליקציה. רק כשיש הגדרות ארגון תקינות ה-AppProvider מתחיל לטעון
-  // נתונים — כדי שלא ננסה לפנות לגיליון שעדיין לא הוגדר.
-  if (!isConfigured()) {
+  // שלושה מצבים לפני שהאפליקציה נטענת:
+  //   1. יש הגדרות תקינות → ישר לאפליקציה
+  //   2. אין הגדרות ומחובר לגוגל → הן ייטענו מהחשבון, בלי אשף
+  //   3. אין כלום → מסך כניסה, ואז האשף
+  //
+  // ה-AppProvider מתחיל לטעון נתונים רק כשיש הגדרות, כדי שלא ננסה לפנות
+  // לגיליון שעדיין לא הוגדר.
+  const [stage, setStage] = useState<'signin' | 'wizard' | 'ready'>(
+    () => (isConfigured() ? 'ready' : 'signin')
+  );
+
+  if (stage === 'signin') {
+    return (
+      <SignInScreen
+        onReady={() => window.location.reload()}
+        onManual={() => setStage('wizard')}
+      />
+    );
+  }
+
+  if (stage === 'wizard') {
     return <SetupWizard onDone={() => window.location.reload()} />;
   }
 

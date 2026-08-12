@@ -4,6 +4,8 @@ import {
   Building2, MapPin, Database, Sparkles, AlertCircle,
 } from 'lucide-react';
 import { OrgConfig, getOrg, saveOrg } from '../lib/orgConfig';
+import { saveConfigToDrive } from '../lib/driveConfig';
+import { isSignedIn } from '../lib/googleAuth';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // אשף ההגדרה הראשוני.
@@ -116,9 +118,12 @@ export function SetupWizard({ onDone, onCancel }: Props) {
       },
     });
 
-    // מעלים את ההגדרות גם לגיליון, כדי שמכשיר נוסף של אותו ארגון יצטרך
-    // רק להדביק את כתובת הגיליון והשאר ייטען לבד. נכשל בשקט — ההגדרות
-    // כבר נשמרו מקומית והאפליקציה עובדת בכל מקרה.
+    // ההגדרות נשמרות בשני מקומות נוספים, ושניהם נכשלים בשקט: הן כבר
+    // שמורות מקומית והאפליקציה עובדת בכל מקרה.
+    //   • חשבון הגוגל — כדי שבמכשיר הבא לא תצטרך להגדיר שוב כלום
+    //   • הגיליון — גיבוי, ולמי שעובד בלי חשבון גוגל
+    if (isSignedIn()) saveConfigToDrive(saved).catch(() => undefined);
+
     if (saved.gsUrl) {
       fetch(saved.gsUrl, {
         method: 'POST',

@@ -7,6 +7,8 @@ import { apiPost } from '../lib/api';
 import { getOrg, resetOrg } from '../lib/orgConfig';
 import { SetupWizard } from './SetupWizard';
 import { HolidayCategory, CATEGORY_LABEL, CATEGORY_HINT, groupHolidayNames } from '../lib/holidayFilter';
+import { isSignedIn, signOut, currentAccount, isGoogleLoginAvailable } from '../lib/googleAuth';
+import { deleteConfigFromDrive } from '../lib/driveConfig';
 
 export function SettingsTab() {
   const { settings, updateSettings, donors, visibleDonors, eventsData, holidayExtras, donations, refresh, holidays } = useAppStore();
@@ -115,6 +117,13 @@ export function SettingsTab() {
             <div className="text-xs text-gray-400 mt-1">
               {org.gsUrl ? '✓ מחובר לגיליון Google' : '⚠ לא מחובר לגיליון — הנתונים לא נשמרים'}
             </div>
+            {isGoogleLoginAvailable() && (
+              <div className="text-xs text-gray-400 mt-0.5">
+                {isSignedIn()
+                  ? `✓ מחובר כ-${currentAccount() || 'חשבון גוגל'} · ההגדרות נשמרות לחשבון`
+                  : '○ לא מחובר לחשבון גוגל — במכשיר חדש תצטרך להגדיר שוב'}
+              </div>
+            )}
           </div>
           <div className="flex gap-2">
             <button
@@ -125,9 +134,12 @@ export function SettingsTab() {
             </button>
             <button
               onClick={() => {
-                if (window.confirm('לנתק את האפליקציה מהארגון הנוכחי?\n\nההגדרות המקומיות יימחקו והאפליקציה תחזור למסך ההתקנה. הנתונים בגיליון Google לא יימחקו.')) {
-                  resetOrg();
-                  window.location.reload();
+                if (window.confirm('לנתק את האפליקציה מהארגון הנוכחי?\n\nההגדרות יימחקו מהמכשיר הזה ומחשבון הגוגל, והאפליקציה תחזור למסך הכניסה. הנתונים בגיליון Google לא יימחקו.')) {
+                  // מנקים גם את ההגדרות ששמורות בחשבון, אחרת כניסה חוזרת
+                  // הייתה מחזירה אותן מיד ו"ניתוק" לא היה מנתק כלום.
+                  const done = () => { resetOrg(); signOut(); window.location.reload(); };
+                  if (isSignedIn()) deleteConfigFromDrive().then(done, done);
+                  else done();
                 }
               }}
               className="px-4 py-2 rounded-xl bg-red-50 text-red-600 text-sm font-bold hover:bg-red-100 transition-colors"
