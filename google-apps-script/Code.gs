@@ -190,6 +190,48 @@ function installTriggers_() {
 function dailySync() {
   syncEmails(false);
   generateStandingOrderCharges();
+  syncRebbeDate_();
+}
+
+/**
+ * ── מתי נכתב לרבי בפעם האחרונה ────────────────────────────────────────────
+ *
+ * הדשבורד מציג כרטיס "כתיבה לרבי" עם התאריך האחרון. אפשר להקליד אותו ידנית,
+ * אבל הכתיבה עוברת ממילא במייל לאוהל — אז אין סיבה שמישהו יזכור לעדכן.
+ * מחפשים את המייל האחרון שנשלח לכתובת, ולוקחים ממנו את התאריך.
+ *
+ * **מעדכנים רק אם המייל מאוחר מהתאריך הרשום.** זה מכוון: כתיבה שלא עברה
+ * במייל — נמסרה ביד, נשלחה בפקס, הוקראה בטלפון — מוקלדת ידנית, ואסור
+ * שסריקה של מייל ישן יותר תמחק אותה.
+ *
+ * מריצים פעם ביום. אין טעם בתדירות גבוהה יותר, ולא נכון לשרוף חיפוש
+ * ג'ימייל על כל טעינה של האפליקציה.
+ */
+var REBBE_EMAIL = 'ohel@ohelchabad.org';   // כתובת האוהל — שנו כאן אם צריך
+
+function syncRebbeDate_() {
+  if (!REBBE_EMAIL) return null;
+
+  try {
+    var threads = GmailApp.search('in:sent to:' + REBBE_EMAIL, 0, 1);
+    if (!threads.length) return null;
+
+    var msgs = threads[0].getMessages();
+    if (!msgs.length) return null;
+    var sent = msgs[msgs.length - 1].getDate();   // ההודעה האחרונה בשרשור
+
+    var existing = toDate_(readSync_('rebbeDate'));
+    if (existing && existing >= sent) return null;
+
+    // נשמר כ-yyyy-MM-dd, הפורמט שהאפליקציה שולחת ב-updateRebbe
+    writeSync_('rebbeDate', Utilities.formatDate(sent, Session.getScriptTimeZone(), 'yyyy-MM-dd'));
+    Logger.log('תאריך הכתיבה לרבי עודכן ל-' + asDate_(sent));
+    return sent;
+  } catch (err) {
+    // אין הרשאת ג'ימייל, או שהחיפוש נכשל — לא מפילים את הריצה היומית בגלל זה
+    Logger.log('זיהוי הכתיבה לרבי נכשל: ' + err);
+    return null;
+  }
 }
 
 function ensureSheet_(ss, name, headers) {
@@ -1793,6 +1835,20 @@ function showSummary() {
   alert_(lines.join('\n'));
 }
 
+/** גרסת התפריט של syncRebbeDate_ — מדווחת מה קרה במקום לרוץ בשקט. */
+function refreshRebbeDate() {
+  var found = syncRebbeDate_();
+  var current = readSync_('rebbeDate');
+  if (found) {
+    alert_('תאריך הכתיבה לרבי עודכן ל-' + asDate_(found) + ' ✅');
+  } else if (current) {
+    alert_('לא נמצאה כתיבה מאוחרת יותר.\nהתאריך הרשום נשאר ' + current + '.');
+  } else {
+    alert_('לא נמצא אף מייל שנשלח אל ' + REBBE_EMAIL + '.\n\n' +
+           'אם אתה שולח לכתובת אחרת — שנה את REBBE_EMAIL בראש הקובץ.');
+  }
+}
+
 function onOpen() {
   SpreadsheetApp.getUi().createMenu('לוח בקרה')
     .addItem('התקנה ראשונית', 'setupSheet')
@@ -1804,5 +1860,6 @@ function onOpen() {
     .addItem('סנכרון עכשיו', 'dailySync')
     .addItem('סריקת כל היסטוריית המיילים', 'syncAllEmailHistory')
     .addItem('השלמת חיובי הוראות קבע', 'generateStandingOrderCharges')
+    .addItem('רענון תאריך הכתיבה לרבי', 'refreshRebbeDate')
     .addToUi();
 }
