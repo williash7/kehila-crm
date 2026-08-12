@@ -1803,8 +1803,19 @@ function toDate_(v) {
   if (!v) return null;
   if (Object.prototype.toString.call(v) === '[object Date]') return v;
   var s = String(v).trim();
+
+  // yyyy-MM-dd — הפורמט ששדה תאריך בדפדפן שולח.
+  //
+  // חייבים לפרק אותו ידנית. new Date('2026-03-05') מפרש את המחרוזת כחצות
+  // ב**שעון גריניץ'**, בעוד שכל התאריכים בגיליון הם חצות בשעון ישראל.
+  // הפער של שעתיים-שלוש הופך תאריך ביטול ל"רגע אחרי" החיוב של אותו יום,
+  // והחיוב שאמור להתבטל ממשיך להיספר ככסף שנכנס.
+  var iso = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (iso) return new Date(+iso[1], +iso[2] - 1, +iso[3]);
+
   var m = s.match(/^(\d{1,2})[\/.](\d{1,2})[\/.](\d{4})/);
   if (m) return new Date(+m[3], +m[2] - 1, +m[1]);
+
   var d = new Date(s);
   return isNaN(d.getTime()) ? null : d;
 }
