@@ -1612,26 +1612,26 @@ function handleDonationEmail_(body, msgDate, f) {
   var name = standardName(field_(body, f.name));
   if (!name) return false;
 
-  // עסקה בתשלומים אינה תרומה חד-פעמית: "סכום" במייל הזה הוא הסכום הכולל
-  // של הוראת קבע שכבר מדווחת במייל "ההוראה שהוקמה", והחיובים החודשיים
-  // מיוצרים ממנה. רישום הסכום המלא כאן = ספירה כפולה של אותו כסף.
-  //
-  // אבל לא מדלגים בשקט: אם אין הוראת קבע תואמת, הכסף היה נעלם — ולכן
-  // רושמים אזהרה בלוג במקום להתעלם.
-  if (payments > 1) {
-    var monthly = asNumber_(field_(body, f.amount)) / payments;
-    if (!hasMatchingStandingOrder_(name, monthly)) {
-      Logger.log('⚠️ עסקה בתשלומים ללא הוראת קבע תואמת: ' + name +
-                 ' · ₪' + asNumber_(field_(body, f.amount)) +
-                 ' ב-' + payments + ' תשלומים (₪' + Math.round(monthly) + ' לחודש). ' +
-                 'לבדוק ידנית — הסכום לא נרשם.');
-    }
-    return false;
-  }
-
   var amount = asNumber_(field_(body, f.amount));
   var extId = field_(body, f.id);
   var dateStr = (field_(body, f.date) || '').split(' ')[0];
+  var txDate = toDate_(dateStr) || msgDate;
+
+  // ── עסקה שנפרסה לתשלומים ────────────────────────────────────────────────
+  //
+  // שני דברים שונים לגמרי מגיעים באותו מבנה מייל:
+  //
+  //  1. **הוראת קבע** — הספק שולח גם מייל "הוראה שהוקמה", והחיובים
+  //     החודשיים מיוצרים ממנו. רישום הסכום המלא גם כאן = ספירה כפולה.
+  //  2. **תרומה חד-פעמית בתשלומי אשראי** — ₪1,200 ב-12 תשלומים. אין שום
+  //     הוראת קבע, ואם לא נרשום אותה, הכסף פשוט לא קיים.
+  //
+  // ההבחנה: האם יש הוראת קבע של אותו אדם, באותו סכום חודשי, שנפתחה בסמוך.
+  // בעבר כל עסקה בתשלומים נזרקה, ומקרה 2 רק נרשם כאזהרה ליומן הריצה —
+  // כלומר הכסף נעלם ואף אחד לא ידע.
+  if (payments > 1) {
+    if (hasMatchingStandingOrder_(name, amount / payments, txDate)) return false;
+  }
 
   // מזהה יציב מהספק. אם אין — נופלים לחתימה של שם+תאריך+סכום.
   var id = extId ? 'ned:' + extId : 'ned:' + name + '|' + dateStr + '|' + amount;
@@ -1644,17 +1644,31 @@ function handleDonationEmail_(body, msgDate, f) {
     'ייעוד':       field_(body, f.purpose),
     'אפיק גבייה':  'קישור ישיר',
     'מקור':        'מייל',
+    'סיכום ותובנות': payments > 1 ? 'שולם ב-' + payments + ' תשלומים' : '',
   });
   if (ok) ensureContact_(name, field_(body, f.phone), field_(body, f.address));
   return ok;
 }
 
-/** האם קיימת הוראת קבע לאותו אדם בערך באותו סכום חודשי (סטייה של עד ₪1). */
-function hasMatchingStandingOrder_(name, monthly) {
+/**
+ * האם העסקה הזו היא בעצם הוראת קבע שכבר רשומה אצלנו?
+ *
+ * שלושה תנאים ביחד, וכולם נחוצים: אותו אדם, אותו סכום חודשי (סטייה של עד
+ * ₪1 בגלל עיגול), **ותאריך פתיחה סמוך**. בלי תנאי התאריך, תורם שיש לו
+ * הוראת קבע ותיקה על ₪100 ותרם בנפרד ₪1,200 בשנים-עשר תשלומים היה מאבד
+ * את התרומה — היא הייתה נראית כמו אותה הוראה.
+ */
+function hasMatchingStandingOrder_(name, monthly, when) {
   var t = table_(SH.HK);
   for (var i = 0; i < t.rows.length; i++) {
     if (standardName(get_(t.rows[i], t, 'שם')) !== name) continue;
-    if (Math.abs(asNumber_(get_(t.rows[i], t, 'סכום')) - monthly) <= 1) return true;
+    if (Math.abs(asNumber_(get_(t.rows[i], t, 'סכום')) - monthly) > 1) continue;
+
+    if (when) {
+      var start = toDate_(get_(t.rows[i], t, 'תאריך פתיחה'));
+      if (start && Math.abs(start.getTime() - when.getTime()) > 35 * 86400000) continue;
+    }
+    return true;
   }
   return false;
 }
