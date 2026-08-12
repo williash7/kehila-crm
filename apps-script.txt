@@ -67,8 +67,13 @@ var COLS = {
         'מקור', 'סטטוס'],
 
   // שים לב: אין כאן "חיוב אחרון" ואין "נותרו" — שניהם מחושבים מהיומן.
+  //
+  // "תאריך ביטול" הוא **השדה היחיד שאתה ממלא ידנית**. נדרים פלוס לא שולחת
+  // מייל כשהוראה מבוטלת — לא כשאתה מבטל אותה בממשק, ולא כשהתורם מבקש.
+  // בלי השדה הזה הגיליון ממשיך לייצר חיובים לנצח על הוראה מתה.
+  // חיובים שתאריכם לפני התאריך הזה נשארים ונספרים; ממנו והלאה — לא.
   HK: ['מזהה', 'שם', 'תאריך פתיחה', 'סכום', 'מספר תשלומים',
-       'טלפון', 'אימייל', 'קמפיין', 'הערות'],
+       'טלפון', 'אימייל', 'קמפיין', 'תאריך ביטול', 'הערות'],
 
   FAILURES: ['תאריך', 'שם', 'מזהה הוראה', 'סכום', 'סיבה'],
   ALIASES:  ['שם שגוי / כפילות', 'השם התקין'],
@@ -79,16 +84,28 @@ var COLS = {
 /**
  * ערכי עמודת "סטטוס" ביומן.
  * ריק = חיוב שבוצע בפועל, נספר ככסף.
- * שני הערכים כאן **אינם נספרים** — לא בסכומים ולא במניין החיובים שבוצעו.
+ * שלושת הערכים כאן **אינם נספרים** — לא בסכומים ולא במניין החיובים שבוצעו.
  */
-var STATUS_FAILED = 'נכשל';   // הגיע מייל סירוב — הכסף לא נכנס
-var STATUS_FUTURE = 'עתידי';  // חיוב הוראת קבע שמועדו עוד לא הגיע
+var STATUS_FAILED    = 'נכשל';   // הגיע מייל סירוב — הכסף לא נכנס
+var STATUS_FUTURE    = 'עתידי';  // חיוב הוראת קבע שמועדו עוד לא הגיע
+var STATUS_CANCELLED = 'מבוטל';  // ההוראה הופסקה לפני שהחיוב הזה הגיע
 
 /** האם שורה כזו נספרת ככסף שנכנס בפועל. */
 function countsAsMoney_(status) {
   var v = String(status || '').trim();
-  return v !== STATUS_FAILED && v !== STATUS_FUTURE;
+  return v !== STATUS_FAILED && v !== STATUS_FUTURE && v !== STATUS_CANCELLED;
 }
+
+/**
+ * חלון הזמן שבו מייל סירוב נחשב ככישלון של **ההקמה עצמה** ולא של חיוב בודד.
+ * נדרים פלוס שולחת "הוראת קבע חדשה" ואחריה, אם הכרטיס נדחה, "שגיאה / סירוב".
+ * מייל הסירוב מדבר על חיוב אחד — אבל אם הוא מגיע באותו יום שבו ההוראה הוקמה,
+ * הכרטיס מעולם לא חויב ולו פעם אחת, וכל שאר החיובים הם דמיוניים.
+ */
+var SETUP_FAILURE_DAYS = 0;   // 0 = אותו יום קלנדרי בלבד
+
+/** נשאר בעמודת ההערות גם אחרי ביטול-הביטול, כסימן ש"כבר טיפלנו בזה". */
+var AUTO_CANCEL_NOTE = 'בוטל אוטומטית: סורבה ביום ההקמה';
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  התקנה
@@ -150,7 +167,12 @@ function styleLogSheet_() {
     .setBackground('#FCE8E6').setFontColor('#C5221F')
     .setRanges([range]).build();
 
-  t.sheet.setConditionalFormatRules([future, failed]);
+  var cancelled = SpreadsheetApp.newConditionalFormatRule()
+    .whenFormulaSatisfied('=$' + letter + '2="' + STATUS_CANCELLED + '"')
+    .setBackground('#FFF8E1').setFontColor('#8D6E63').setStrikethrough(true)
+    .setRanges([range]).build();
+
+  t.sheet.setConditionalFormatRules([future, failed, cancelled]);
 }
 
 /** ריצות אוטומטיות. מוחק קודם כדי שהרצה חוזרת לא תיצור כפילויות. */
@@ -174,11 +196,24 @@ function ensureSheet_(ss, name, headers) {
   var sh = ss.getSheetByName(name);
   if (!sh) sh = ss.insertSheet(name);
   var existing = sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0];
+
   if (existing.join('') === '') {
     sh.getRange(1, 1, 1, headers.length).setValues([headers])
       .setFontWeight('bold').setBackground('#0D1B2A').setFontColor('#C9A84C');
     sh.setFrozenRows(1);
     sh.autoResizeColumns(1, headers.length);
+    return sh;
+  }
+
+  // הלשונית כבר קיימת. עמודה שנוספה לקוד אחרי שהגיליון הוקם חייבת להתווסף
+  // גם כאן, אחרת הרצה חוזרת של setupSheet לא תעדכן גיליון ותיק — והקוד
+  // יחפש עמודה שאינה קיימת. מוסיפים **בסוף בלבד**, ולא נוגעים בקיים.
+  var current = existing.map(function (h) { return String(h).trim(); });
+  var missing = headers.filter(function (h) { return current.indexOf(h) === -1; });
+  if (missing.length) {
+    sh.getRange(1, current.length + 1, 1, missing.length).setValues([missing])
+      .setFontWeight('bold').setBackground('#0D1B2A').setFontColor('#C9A84C');
+    sh.autoResizeColumns(1, current.length + missing.length);
   }
   return sh;
 }
@@ -448,10 +483,12 @@ function route_(action, body) {
     case 'addDonation':        return addDonation_(body);
     case 'addMeeting':         return addMeeting_(body);
     case 'addStandingOrder':   return addStandingOrder_(body);
+    case 'cancelStandingOrder': return cancelStandingOrder_(body);
     case 'updateDonorField':   return updateDonorField_(body);
     case 'updatePersonalDate': return updateDonorField_(body);
     case 'createHolidayDoc':   return createHolidayDoc_(body);
     case 'importRows':         return importRows_(body);
+    case 'undoImport':         return { success: true, deleted: undoImport(String(body.tag || '')) };
 
     default: return { error: 'פעולה לא מוכרת: ' + action };
   }
@@ -522,7 +559,10 @@ function getHK_() {
     var id = String(get_(r, t, 'מזהה') || '').trim();
     var payments = asNumber_(get_(r, t, 'מספר תשלומים')) || 0;
     var done = charges[id] || { count: 0, last: null };
-    var remaining = Math.max(0, payments - done.count);
+    var cancelled = !!toDate_(get_(r, t, 'תאריך ביטול'));
+
+    // הוראה שבוטלה — לא "נותרו" לה תשלומים, גם אם המכסה לא מוצתה.
+    var remaining = cancelled ? 0 : Math.max(0, payments - done.count);
 
     return {
       id:         id,
@@ -532,7 +572,8 @@ function getHK_() {
       payments:   payments,
       remaining:  remaining,
       lastBilled: done.last ? asDate_(done.last) : '',
-      active:     remaining > 0,
+      cancelDate: asDate_(get_(r, t, 'תאריך ביטול')),
+      active:     !cancelled && remaining > 0,
     };
   }).filter(function (h) { return h.name; });
 }
@@ -669,6 +710,61 @@ function addStandingOrder_(body) {
   return { success: true, id: id };
 }
 
+/**
+ * ביטול הוראת קבע מהאפליקציה — כותב "תאריך ביטול" ותו לא.
+ *
+ * כל שאר העבודה נעשית ב-generateStandingOrderCharges: היא זו שמפסיקה
+ * לייצר חיובים ומסמנת "מבוטל" את מה שכבר נוצר. ההפרדה הזו מכוונת —
+ * הביטול הוא **עובדה אחת** בגיליון, והתוצאות שלה מחושבות מחדש בכל ריצה.
+ * לכן ביטול דרך האפליקציה וכתיבה ידנית של התאריך בגיליון הם אותו דבר
+ * בדיוק, ואי אפשר שהשניים ייצאו מסנכרון.
+ *
+ * body.date ריק = ביטול הביטול: מנקה את התאריך והחיובים חוזרים.
+ */
+function cancelStandingOrder_(body) {
+  var id = String(body.id || '').trim();
+  if (!id) return { success: false, error: 'חסר מזהה הוראה' };
+
+  var t = table_(SH.HK);
+  if (!t.sheet) return { success: false, error: 'לשונית הוראות הקבע לא נמצאה' };
+
+  var cCancel = t.col('תאריך ביטול');
+  if (cCancel < 0) {
+    return { success: false, error: 'העמודה "תאריך ביטול" חסרה — הריצו setupSheet פעם אחת' };
+  }
+  var cNotes = t.col('הערות');
+
+  for (var i = 0; i < t.rows.length; i++) {
+    if (String(get_(t.rows[i], t, 'מזהה') || '').trim() !== id) continue;
+
+    var date = body.date ? toDate_(body.date) : null;
+    t.sheet.getRange(i + 2, cCancel + 1).setValue(date || '');
+
+    if (cNotes >= 0) {
+      var prev = String(t.rows[i][cNotes] || '').trim();
+      var note = date
+        ? 'בוטל ' + asDate_(date) + (body.reason ? ': ' + String(body.reason).trim() : '')
+        : '';
+      // מנקים סימוני ביטול קודמים כדי שלא יצטברו זה על גבי זה — אבל
+      // **משאירים** את סימון הביטול האוטומטי. הוא לא הערה אלא זיכרון:
+      // בלעדיו applySetupFailures_ הייתה מבטלת שוב את ההוראה בריצה הבאה,
+      // ומבטלת בכך את הביטול שלך.
+      var kept = prev.split(' · ').filter(function (p) {
+        if (!p.trim()) return false;
+        return p.indexOf('בוטל') !== 0 || p.indexOf('אוטומטית') >= 0;
+      });
+      if (note) kept.push(note);
+      t.sheet.getRange(i + 2, cNotes + 1).setValue(kept.join(' · '));
+    }
+
+    _logIds = null;
+    generateStandingOrderCharges();
+    return { success: true, id: id, cancelDate: date ? asDate_(date) : '' };
+  }
+
+  return { success: false, error: 'הוראת קבע ' + id + ' לא נמצאה' };
+}
+
 /** מעדכן תא בודד באנשי הקשר. יוצר את העמודה אם היא לא קיימת, ואת השורה אם צריך. */
 function updateDonorField_(body) {
   var name = standardName(body.name);
@@ -748,14 +844,27 @@ function importRows_(body) {
   var tag = 'imp' + new Date().getTime();
   var added = { contacts: 0, donations: 0, standingOrders: 0 };
 
-  (body.contacts || []).forEach(function (c) {
-    if (!c || !c['שם מלא']) return;
+  // אנשי הקשר נכתבים בשני מעברים, וזה הכרחי ולא סגנוני:
+  //   · ensureContact_ מוסיף שורה ל**תור הכתיבה** (appendByName_), והיא
+  //     מגיעה לגיליון רק ב-flushWrites_.
+  //   · updateDonorField_ כותב **מיד** לגיליון, ולכן הוא לא רואה שורה
+  //     שעדיין יושבת בתור — ומוסיף שורה שנייה לאותו אדם.
+  // מעבר ראשון יוצר, פליטה, ואיפוס האינדקס — ואז מעבר שני ממלא שדות
+  // על שורות שכבר קיימות באמת.
+  var contacts = (body.contacts || []).filter(function (c) { return c && c['שם מלא']; });
+
+  contacts.forEach(function (c) {
     ensureContact_(standardName(c['שם מלא']), c['טלפון'], c['כתובת']);
+    added.contacts++;
+  });
+  flushWrites_();
+  _contactIndex = null;
+
+  contacts.forEach(function (c) {
     Object.keys(c).forEach(function (k) {
       if (k === 'שם מלא' || k === 'טלפון' || k === 'כתובת' || !c[k]) return;
       updateDonorField_({ name: c['שם מלא'], field: k, value: c[k] });
     });
-    added.contacts++;
   });
 
   (body.donations || []).forEach(function (d, i) {
@@ -783,8 +892,16 @@ function importRows_(body) {
   return { success: true, added: added, tag: tag };
 }
 
-/** מבטל ייבוא שלם לפי התווית שלו — מוחק רק את מה שאותו ייבוא הוסיף. */
+/**
+ * מבטל ייבוא שלם לפי התווית שלו — מוחק רק את שורות היומן שאותו ייבוא הוסיף.
+ *
+ * מה שהוא **לא** מבטל, במכוון: אנשי קשר והוראות קבע. איש קשר שנוצר בייבוא
+ * כבר עשוי לצבור תרומות ומפגשים משלו, והוראת קבע כבר ייצרה חיובים חודשיים
+ * ביומן. מחיקה שלהם הייתה משאירה שורות יתומות שמצביעות לשומקום. את שני
+ * אלה מסירים ידנית מהגיליון, ולכן האפליקציה אומרת את זה במפורש למשתמש.
+ */
 function undoImport(tag) {
+  if (!tag) return 0;
   var t = table_(SH.LOG);
   var c = t.col('מקור');
   if (c < 0 || !t.sheet) return 0;
@@ -793,7 +910,7 @@ function undoImport(tag) {
     if (String(t.rows[i][c] || '').indexOf(tag) >= 0) { t.sheet.deleteRow(i + 2); deleted++; }
   }
   _logIds = null; // המזהים שנמחקו זמינים שוב
-  alert_('בוטלו ' + deleted + ' שורות מהייבוא ' + tag);
+  Logger.log('בוטלו ' + deleted + ' שורות מהייבוא ' + tag);
   return deleted;
 }
 
@@ -832,20 +949,28 @@ function onEditHandler(e) {
  * אידמפוטנטי לחלוטין: כל חיוב נושא מזהה קבוע (hk:<הוראה>:<שנה-חודש>),
  * ולכן הרצה חוזרת לא יוצרת כלום. אותה פונקציה משמשת גם לריצה היומית
  * וגם להשלמת פערים היסטוריים — אין צורך בשתי פונקציות נפרדות.
+ *
+ * הוראה עם "תאריך ביטול" נעצרת שם: חיובים מהתאריך ההוא והלאה לא נוצרים,
+ * ומה שכבר נוצר בעבר מסומן "מבוטל". הסימון רץ בכל הרצה ולא רק פעם אחת,
+ * ולכן מספיק למלא את התאריך בגיליון — הגיליון יתקן את עצמו מעצמו.
  */
 function generateStandingOrderCharges() {
+  applySetupFailures_();
+
   var t = table_(SH.HK);
   var today = new Date();
-  var created = 0, matured = 0;
+  var created = 0, matured = 0, cancelled = 0;
 
-  // שורות שכבר מסומנות "עתידי" — כדי לזהות מי מהן הבשילה החודש
+  // מפת כל חיובי ההוראות שכבר ביומן: מזהה → { שורה, סטטוס }.
+  // צריך את **כולם** ולא רק את ה"עתידי", כי ביטול צריך לתפוס גם חיובים
+  // שנרשמו בעבר כאילו בוצעו — הם בדיוק הכסף המדומיין שאנחנו מנקים.
   var logT = table_(SH.LOG);
-  var cId = logT.col('מזהה'), cStatus = logT.col('סטטוס'), cDate = logT.col('תאריך תרומה');
-  var futureRows = {};
+  var cId = logT.col('מזהה'), cStatus = logT.col('סטטוס');
+  var logRows = {};
   logT.rows.forEach(function (r, i) {
-    if (String(r[cStatus] || '').trim() === STATUS_FUTURE) {
-      futureRows[String(r[cId] || '').trim()] = i + 2; // מספר השורה בגיליון
-    }
+    var rid = String(r[cId] || '').trim();
+    if (rid.indexOf('hk:') !== 0) return;
+    logRows[rid] = { row: i + 2, status: String(r[cStatus] || '').trim() };
   });
 
   t.rows.forEach(function (r) {
@@ -856,6 +981,7 @@ function generateStandingOrderCharges() {
     var payments = asNumber_(get_(r, t, 'מספר תשלומים'));
     if (!id || !name || !start || !payments || !amount) return;
 
+    var cancelDate = toDate_(get_(r, t, 'תאריך ביטול'));
     var billingDay = start.getDate();
     var cursor = new Date(start.getFullYear(), start.getMonth(), 1);
 
@@ -868,6 +994,20 @@ function generateStandingOrderCharges() {
       var chargeDate = new Date(y, m, day);
       var isFuture = chargeDate > today;
       var chargeId = hkChargeId_(id, y, m);
+      var existing = logRows[chargeId];
+
+      // ── ההוראה כבר לא בתוקף בתאריך הזה ──────────────────────────────
+      if (cancelDate && chargeDate >= cancelDate) {
+        // "נכשל" נשאר "נכשל": זה אירוע אמיתי עם סיבה רשומה, ולא צריך
+        // לטשטש אותו. כל השאר הופך למבוטל ויוצא מהכסף ומהספירה.
+        if (existing && existing.status !== STATUS_CANCELLED &&
+            existing.status !== STATUS_FAILED && cStatus >= 0) {
+          logT.sheet.getRange(existing.row, cStatus + 1).setValue(STATUS_CANCELLED);
+          cancelled++;
+        }
+        cursor.setMonth(cursor.getMonth() + 1);
+        continue;
+      }
 
       if (!logIds_()[chargeId]) {
         addLogRow_({
@@ -881,9 +1021,9 @@ function generateStandingOrderCharges() {
           'סטטוס':       isFuture ? STATUS_FUTURE : '',
         });
         created++;
-      } else if (!isFuture && futureRows[chargeId] && cStatus >= 0) {
+      } else if (!isFuture && existing && existing.status === STATUS_FUTURE && cStatus >= 0) {
         // הגיע מועדו של חיוב שהיה מסומן עתידי — הופך לחיוב שבוצע
-        logT.sheet.getRange(futureRows[chargeId], cStatus + 1).setValue('');
+        logT.sheet.getRange(existing.row, cStatus + 1).setValue('');
         matured++;
       }
 
@@ -892,10 +1032,73 @@ function generateStandingOrderCharges() {
   });
 
   flushWrites_();
-  if (created || matured) {
-    Logger.log('נוצרו ' + created + ' חיובי הוראת קבע, ' + matured + ' חיובים עתידיים הבשילו');
+  if (created || matured || cancelled) {
+    Logger.log('נוצרו ' + created + ' חיובי הוראת קבע, ' + matured +
+               ' הבשילו, ' + cancelled + ' סומנו כמבוטלים');
   }
   return created;
+}
+
+/**
+ * ── סירוב ביום ההקמה = ההוראה מעולם לא יצאה לדרך ─────────────────────────
+ *
+ * נדרים פלוס שולחת שני מיילים נפרדים שאינם יודעים זה על זה: "הוראת קבע
+ * חדשה" ואחריו "שגיאה / סירוב". מייל הסירוב מנוסח כאילו הוא מדבר על חיוב
+ * בודד, ולכן הקוד סימן חיוב אחד כנכשל והמשיך לייצר את כל השאר. אבל כשהסירוב
+ * מגיע באותו יום שבו ההוראה הוקמה, הכרטיס נדחה כבר בחיוב הראשון — ההוראה
+ * לא קיימת, ואחד-עשר החיובים הבאים הם כסף שלא היה ולא נברא.
+ *
+ * המימוש נגזר מלשונית "כשלי חיוב" ולא ממייל בודד, ולכן הוא:
+ *   · אינו תלוי בסדר שבו נסרקו המיילים (סירוב יכול להיקלט לפני ההקמה),
+ *   · עובד רטרואקטיבית על מה שכבר יושב בגיליון,
+ *   · אידמפוטנטי — הרצה חוזרת לא משנה דבר.
+ *
+ * ביטול שנעשה כאן ניתן לביטול: מוחקים את "תאריך ביטול" והחיובים חוזרים.
+ */
+function applySetupFailures_() {
+  var hkT = table_(SH.HK);
+  var cCancel = hkT.col('תאריך ביטול');
+  if (cCancel < 0 || !hkT.sheet) return 0;   // גיליון ותיק שטרם קיבל את העמודה
+
+  var cNotes = hkT.col('הערות');
+  var failT = table_(SH.FAILURES);
+  var applied = 0;
+
+  // תאריך הכשל המוקדם ביותר לכל הוראה
+  var firstFailure = {};
+  failT.rows.forEach(function (r) {
+    var order = String(get_(r, failT, 'מזהה הוראה') || '').trim();
+    var d = toDate_(get_(r, failT, 'תאריך'));
+    if (!order || !d) return;
+    if (!firstFailure[order] || d < firstFailure[order]) firstFailure[order] = d;
+  });
+
+  hkT.rows.forEach(function (r, i) {
+    var id = String(get_(r, hkT, 'מזהה') || '').trim();
+    if (!id || String(r[cCancel] || '').trim()) return;   // כבר מבוטל — לא נוגעים
+
+    // כבר ביטלנו את ההוראה הזו פעם אחת, ומישהו מחק את התאריך במכוון —
+    // כנראה התורם תיקן את הכרטיס. לא כופים עליו את הביטול שוב.
+    if (cNotes >= 0 && String(r[cNotes] || '').indexOf(AUTO_CANCEL_NOTE) >= 0) return;
+
+    var start = toDate_(get_(r, hkT, 'תאריך פתיחה'));
+    var fail = firstFailure[id];
+    if (!start || !fail) return;
+
+    var days = Math.floor((fail - start) / 86400000);
+    if (days < 0 || days > SETUP_FAILURE_DAYS) return;
+
+    hkT.sheet.getRange(i + 2, cCancel + 1).setValue(start);
+    if (cNotes >= 0) {
+      var prev = String(r[cNotes] || '').trim();
+      hkT.sheet.getRange(i + 2, cNotes + 1)
+        .setValue((prev ? prev + ' · ' : '') + AUTO_CANCEL_NOTE);
+    }
+    applied++;
+  });
+
+  if (applied) Logger.log(applied + ' הוראות קבע בוטלו — סורבו ביום ההקמה');
+  return applied;
 }
 
 function daysInMonth_(y, m) { return new Date(y, m + 1, 0).getDate(); }
