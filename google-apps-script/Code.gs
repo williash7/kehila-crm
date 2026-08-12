@@ -569,6 +569,7 @@ function route_(action, body) {
     case 'addMeeting':         return addMeeting_(body);
     case 'addStandingOrder':   return addStandingOrder_(body);
     case 'cancelStandingOrder': return cancelStandingOrder_(body);
+    case 'updateStandingOrderAmount': return updateStandingOrderAmount_(body);
     case 'updateDonorField':   return updateDonorField_(body);
     case 'updatePersonalDate': return updateDonorField_(body);
     case 'createHolidayDoc':   return createHolidayDoc_(body);
@@ -886,6 +887,71 @@ function cancelStandingOrder_(body) {
   }
 
   return { success: false, error: 'הוראת קבע ' + id + ' לא נמצאה' };
+}
+
+/**
+ * ── שינוי סכום של הוראת קבע ───────────────────────────────────────────────
+ *
+ * תורם שהעלה את ההוראה מ-₪100 ל-₪300 לא מייצר שום מייל אצל הספק, בדיוק
+ * כמו ביטול. הגיליון מכיר רק את הסכום מיום ההקמה, וימשיך לספור 100 לנצח.
+ *
+ * ולא די בלתקן את הסכום בשורת ההוראה: החיובים החודשיים כבר נכתבו מראש
+ * לכל תקופת ההתחייבות, וכל אחד מהם נושא את הסכום הישן. לכן מעדכנים כאן
+ * גם אותם — **מהתאריך שנבחר והלאה בלבד**.
+ *
+ * חיוב שנכשל או שבוטל לא נגעים בו: הוא לא ייגבה, והסכום שרשום עליו הוא
+ * חלק מהתיעוד של מה שקרה.
+ */
+function updateStandingOrderAmount_(body) {
+  var id = String(body.id || '').trim();
+  var amount = asNumber_(body.amount);
+  var from = toDate_(body.date);
+  if (!id) return { success: false, error: 'חסר מזהה הוראה' };
+  if (!amount || amount <= 0) return { success: false, error: 'סכום חייב להיות גדול מאפס' };
+  if (!from) return { success: false, error: 'חסר תאריך תחילת הסכום החדש' };
+
+  var t = table_(SH.HK);
+  if (!t.sheet) return { success: false, error: 'לשונית הוראות הקבע לא נמצאה' };
+  var cAmount = t.col('סכום'), cNotes = t.col('הערות');
+  if (cAmount < 0) return { success: false, error: 'עמודת הסכום לא נמצאה' };
+
+  var row = -1, oldAmount = 0;
+  for (var i = 0; i < t.rows.length; i++) {
+    if (String(get_(t.rows[i], t, 'מזהה') || '').trim() !== id) continue;
+    row = i + 2;
+    oldAmount = asNumber_(t.rows[i][cAmount]);
+    break;
+  }
+  if (row < 0) return { success: false, error: 'הוראת קבע ' + id + ' לא נמצאה' };
+
+  t.sheet.getRange(row, cAmount + 1).setValue(amount);
+  if (cNotes >= 0) {
+    var prev = String(t.rows[row - 2][cNotes] || '').trim();
+    var note = 'סכום שונה מ-₪' + oldAmount + ' ל-₪' + amount + ' החל מ-' + asDate_(from);
+    t.sheet.getRange(row, cNotes + 1).setValue(prev ? prev + ' · ' + note : note);
+  }
+
+  // ── והחיובים עצמם ────────────────────────────────────────────────────────
+  var logT = table_(SH.LOG);
+  var cId = logT.col('מזהה'), cDate = logT.col('תאריך תרומה');
+  var cLogAmount = logT.col('סכום'), cStatus = logT.col('סטטוס');
+  var updated = 0;
+
+  if (logT.sheet && cId >= 0 && cLogAmount >= 0) {
+    var prefix = 'hk:' + id + ':';
+    logT.rows.forEach(function (r, i) {
+      if (String(r[cId] || '').indexOf(prefix) !== 0) return;
+      var status = cStatus >= 0 ? String(r[cStatus] || '').trim() : '';
+      if (status === STATUS_FAILED || status === STATUS_CANCELLED) return;
+      var d = toDate_(r[cDate]);
+      if (!d || d < from) return;
+      logT.sheet.getRange(i + 2, cLogAmount + 1).setValue(amount);
+      updated++;
+    });
+  }
+
+  Logger.log('הוראה ' + id + ': הסכום שונה ל-₪' + amount + ', עודכנו ' + updated + ' חיובים');
+  return { success: true, id: id, amount: amount, updated: updated, from: asDate_(from) };
 }
 
 /** מעדכן תא בודד באנשי הקשר. יוצר את העמודה אם היא לא קיימת, ואת השורה אם צריך. */

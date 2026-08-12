@@ -4,7 +4,7 @@ import { RefreshCw, Search, HandCoins, AlertTriangle, ChevronDown, X, Mail, Mess
 import { getHkStatus, sortHkList, countHkByStatus, openFailureFor, indexFailures, HK_STATUS_LABEL, HK_STATUS_COLOR, HkStatus } from '../lib/standingOrders';
 import { parseDdMmYyyy } from '../lib/dateUtils';
 import { ProfileModal } from './ProfileModal';
-import { CancelHkDialog, CancelHkButton } from './CancelHkDialog';
+import { CancelHkDialog, ChangeHkAmountDialog, CancelHkButton } from './CancelHkDialog';
 import { ThankYouLetterModal } from './ThankYouLetterModal';
 
 type MainTab = 'donations' | 'hk' | 'errors';
@@ -18,6 +18,7 @@ export function DonationsTab() {
   const [isEditing, setIsEditing] = useState(false);
   const [editFields, setEditFields] = useState<Record<string, any>>({});
   const [cancelTarget, setCancelTarget] = useState<any | null>(null);
+  const [amountTarget, setAmountTarget] = useState<any | null>(null);
 
   // ── תרומות ──────────────────────────────────────────────────────────────
   const [search, setSearch] = useState('');
@@ -305,7 +306,7 @@ export function DonationsTab() {
                         </span>
                       )}
                     </div>
-                    <CancelHkButton hk={h} onOpen={setCancelTarget} />
+                    <CancelHkButton hk={h} onOpen={setCancelTarget} onChangeAmount={setAmountTarget} />
                   </div>
                 );
               })}
@@ -467,6 +468,7 @@ export function DonationsTab() {
       )}
 
       {cancelTarget && <CancelHkDialog target={cancelTarget} onClose={() => setCancelTarget(null)} />}
+      {amountTarget && <ChangeHkAmountDialog target={amountTarget} onClose={() => setAmountTarget(null)} />}
     </div>
   );
 }

@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { X, Search, RefreshCw, AlertTriangle, ChevronDown, ChevronLeft } from 'lucide-react';
 import { useAppStore } from '../store/AppContext';
 import { getHkStatus, sortHkList, countHkByStatus, openFailureFor, indexFailures, HK_STATUS_LABEL, HK_STATUS_COLOR, HkStatus } from '../lib/standingOrders';
-import { CancelHkDialog, CancelHkButton } from './CancelHkDialog';
+import { CancelHkDialog, ChangeHkAmountDialog, CancelHkButton } from './CancelHkDialog';
 import { ProfileModal } from './ProfileModal';
 
 // "הסתיימה לאחרונה" — כדי לא להציג כברירת מחדל הוראות קבע שהסתיימו לפני
@@ -32,6 +32,7 @@ export function StandingOrdersModal({ onClose }: { onClose: () => void }) {
   // ביטול הוראת קבע — נדרים פלוס לא שולחת מייל על ביטול, וזו הדרך היחידה
   // לספר לגיליון שההוראה נפסקה.
   const [cancelTarget, setCancelTarget] = useState<any | null>(null);
+  const [amountTarget, setAmountTarget] = useState<any | null>(null);
 
   const threshold = settings.hkExpiringThreshold ?? 2;
   const failIdx = useMemo(() => indexFailures(failures), [failures]);
@@ -212,7 +213,7 @@ export function StandingOrdersModal({ onClose }: { onClose: () => void }) {
                     )}
                   </div>
 
-                  <CancelHkButton hk={h} onOpen={setCancelTarget} />
+                  <CancelHkButton hk={h} onOpen={setCancelTarget} onChangeAmount={setAmountTarget} />
                 </div>
               );
             })}
@@ -221,6 +222,7 @@ export function StandingOrdersModal({ onClose }: { onClose: () => void }) {
       </div>
 
       {cancelTarget && <CancelHkDialog target={cancelTarget} onClose={() => setCancelTarget(null)} />}
+      {amountTarget && <ChangeHkAmountDialog target={amountTarget} onClose={() => setAmountTarget(null)} />}
 
       {selectedDonor && <ProfileModal name={selectedDonor} onClose={() => setSelectedDonor(null)} />}
     </div>
