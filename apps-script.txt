@@ -357,6 +357,7 @@ function route_(action, body) {
     case 'getHolidayExtras': return { data: readSync_('holidayExtras') || {} };
     case 'getHistory':       return { data: readSync_('history') || [] };
     case 'getHomeVisits':    return { data: readSync_('homeVisits') || { rounds: [] } };
+    case 'getProjects':      return { data: readSync_('projects') || [] };
     // הגדרות הארגון נשמרות גם בגיליון, כדי שמכשיר נוסף יצטרך רק את
     // כתובת הגיליון ולא יעבור שוב את כל האשף.
     case 'getConfig':        return { data: readSync_('orgConfig') || null };
@@ -367,6 +368,7 @@ function route_(action, body) {
     case 'saveHolidayExtras': writeSync_('holidayExtras', body.data); return { success: true };
     case 'saveHistory':       writeSync_('history', body.data);       return { success: true };
     case 'saveHomeVisits':    writeSync_('homeVisits', body.data);    return { success: true };
+    case 'saveProjects':      writeSync_('projects', body.data);      return { success: true };
     case 'updateRebbe':       writeSync_('rebbeDate', body.date);     return { success: true };
     case 'saveConfig':        writeSync_('orgConfig', body.data);      return { success: true };
 
