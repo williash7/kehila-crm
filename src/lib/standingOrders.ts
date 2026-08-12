@@ -40,6 +40,38 @@ export const HK_STATUS_COLOR: Record<HkStatus, string> = {
   active: 'bg-emerald-50 text-emerald-700 border-emerald-200',
 };
 
+// ── כשל חיוב "פתוח" ─────────────────────────────────────────────────────────
+//
+// לשונית כשלי החיוב היא **יומן היסטורי**: כל מייל סירוב שהתקבל אי פעם יושב
+// בה לנצח. אם מסמנים באדום כל מי שמופיע בה, כמעט כל הרשימה נצבעת — כולל
+// תורם שהכרטיס שלו נדחה פעם אחת לפני שנה, תוקן, ומאז משלם כסדרו. אזהרה
+// שמופיעה תמיד היא אזהרה שמפסיקים לראות.
+//
+// לכן כשל נחשב פתוח רק אם **לא נכנס כסף אחריו**. חיוב מוצלח שמאוחר מהכשל
+// הוא ההוכחה הטובה ביותר שהבעיה נפתרה — אין מייל "הכרטיס תוקן" שיגיד לנו.
+// והוראה שבוטלה לא מוצגת כתקלה בכלל: היא לא אמורה להיגבות.
+
+export function openFailureFor(hk: HkEntry, failByName: Record<string, any>): any | null {
+  const fail = failByName[hk.name];
+  if (!fail) return null;
+  if (hk.cancelDate) return null;
+
+  const failDate = parseDate(fail.date);
+  const billed = parseDate(hk.lastBilled);
+  if (failDate && billed && billed >= failDate) return null;
+
+  return fail;
+}
+
+function parseDate(v?: string | null): Date | null {
+  if (!v) return null;
+  const m = String(v).trim().match(/^(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{2,4})/);
+  if (!m) return null;
+  const yyyy = m[3].length === 2 ? `20${m[3]}` : m[3];
+  const d = new Date(Number(yyyy), Number(m[2]) - 1, Number(m[1]));
+  return isNaN(d.getTime()) ? null : d;
+}
+
 // מסדר: קודם מי שיש לו כשל חיוב פתוח, אחר כך לפי דחיפות סטטוס
 // (מסתיימת בקרוב > הסתיימה > פעילה), ולבסוף לפי כמה חיובים נותרו.
 export function sortHkList(hk: HkEntry[], failNames: Set<string>, threshold: number): HkEntry[] {
