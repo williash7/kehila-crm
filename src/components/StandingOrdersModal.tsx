@@ -180,9 +180,9 @@ export function StandingOrdersModal({ onClose }: { onClose: () => void }) {
                         חיוב אחרון: {h.lastBilled || '—'}
                       </div>
                       {/* כמה כסף באמת נכנס — שאלה נפרדת מ"כמה חיובים עוד לפנינו" */}
-                      {!!h.payments && (
+                      {(!!h.payments || h.unlimited) && (
                         <div className="text-[11px] text-gray-500">
-                          שולמו {h.paid ?? 0} מתוך {h.payments}
+                          שולמו {h.paid ?? 0}{h.unlimited ? ' חיובים · ללא הגבלת זמן' : ` מתוך ${h.payments}`}
                         </div>
                       )}
                       {/* מספר ההוראה ותאריך הפתיחה — בלעדיהם אי אפשר להבחין
@@ -202,7 +202,8 @@ export function StandingOrdersModal({ onClose }: { onClose: () => void }) {
                     <span className={`text-[10px] font-bold px-2 py-1 rounded-full border ${HK_STATUS_COLOR[status]}`}>
                       {HK_STATUS_LABEL[status]}
                       {status === 'cancelled' ? ` · ${h.cancelDate}` : ''}
-                      {status === 'active' || status === 'expiring' ? ` · נותרו ${h.remaining ?? '—'}` : ''}
+                      {(status === 'active' || status === 'expiring') && !h.unlimited ? ` · נותרו ${h.remaining ?? '—'}` : ''}
+                        {status === 'active' && h.unlimited ? ' · ללא הגבלת זמן' : ''}
                     </span>
                     {fail && (
                       <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-red-50 text-red-600 border border-red-200 flex items-center gap-1">

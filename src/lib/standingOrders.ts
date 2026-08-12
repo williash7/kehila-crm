@@ -12,6 +12,8 @@ export interface HkEntry {
   remaining: number;
   /** סך התשלומים שההוראה נפתחה עליהם */
   payments?: number;
+  /** הוראה ללא הגבלת זמן — נגבית עד שעוצרים אותה, ואין לה "נותרו" */
+  unlimited?: boolean;
   /** כמה חיובים נגבו בפועל */
   paid?: number;
   lastBilled: string;
@@ -25,6 +27,8 @@ export type HkStatus = 'cancelled' | 'expired' | 'expiring' | 'active';
 // את עצמה. ההבחנה חשובה — "הסתיימה" זה סיפור מוצלח, "בוטלה" זה תורם שירד.
 export function getHkStatus(hk: HkEntry, threshold: number): HkStatus {
   if (hk.cancelDate) return 'cancelled';
+  // הוראה ללא הגבלה לא מסתיימת ולא "מסתיימת בקרוב" — היא פשוט פעילה.
+  if (hk.unlimited) return 'active';
   const remaining = Number(hk.remaining);
   if (!hk.active || !Number.isFinite(remaining) || remaining <= 0) return 'expired';
   if (remaining <= threshold) return 'expiring';

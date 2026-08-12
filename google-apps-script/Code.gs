@@ -107,6 +107,26 @@ var SETUP_FAILURE_DAYS = 0;   // 0 = אותו יום קלנדרי בלבד
 /** נשאר בעמודת ההערות גם אחרי ביטול-הביטול, כסימן ש"כבר טיפלנו בזה". */
 var AUTO_CANCEL_NOTE = 'בוטל אוטומטית: סורבה ביום ההקמה';
 
+/**
+ * ── הוראת קבע ללא הגבלת זמן ───────────────────────────────────────────────
+ *
+ * ספק הסליקה כותב במייל ההקמה `מס' חיובים: ללא הגבלה` — טקסט, לא מספר.
+ * זו הוראה שתיגבה כל חודש עד שמישהו יעצור אותה, ואלה בדרך כלל התורמים
+ * הקבועים ביותר.
+ *
+ * הערך נשמר בעמודה **כפי שהוא**, כטקסט, כדי שמי שפותח את הגיליון יראה
+ * בדיוק מה הספק אמר. הקוד מזהה אותו בכל מקום שבו הוא שואל "כמה תשלומים".
+ *
+ * להוראה כזו אין לוח זמנים שנגמר: החיובים נוצרים מחודש הפתיחה ועד החודש
+ * הנוכחי בלבד, ולא נכתבים חיובים עתידיים אל תוך אינסוף.
+ */
+var UNLIMITED_TEXT = 'ללא הגבלה';
+
+function isUnlimited_(v) {
+  var s = String(v == null ? '' : v).trim();
+  return !!s && asNumber_(s) <= 0;   // יש ערך, והוא אינו מספר חיובי
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 //  התקנה
 // ═══════════════════════════════════════════════════════════════════════════
@@ -634,12 +654,15 @@ function getHK_() {
 
   return t.rows.map(function (r) {
     var id = String(get_(r, t, 'מזהה') || '').trim();
-    var payments = asNumber_(get_(r, t, 'מספר תשלומים')) || 0;
+    var rawPayments = get_(r, t, 'מספר תשלומים');
+    var unlimited = isUnlimited_(rawPayments);
+    var payments = asNumber_(rawPayments) || 0;
     var start = toDate_(get_(r, t, 'תאריך פתיחה'));
     var cancelDate = toDate_(get_(r, t, 'תאריך ביטול'));
     var done = charges[id] || { count: 0, last: null };
 
-    var remaining = cancelDate ? 0 : futureCharges_(start, payments, today, null);
+    // להוראה ללא הגבלה אין מועד סיום, ולכן אין מספר חיובים שנותרו.
+    var remaining = (cancelDate || unlimited) ? 0 : futureCharges_(start, payments, today, null);
 
     return {
       id:         id,
@@ -647,11 +670,12 @@ function getHK_() {
       startDate:  asDate_(get_(r, t, 'תאריך פתיחה')),
       amount:     asNumber_(get_(r, t, 'סכום')),
       payments:   payments,
+      unlimited:  unlimited,
       paid:       done.count,
       remaining:  remaining,
       lastBilled: done.last ? asDate_(done.last) : '',
       cancelDate: asDate_(get_(r, t, 'תאריך ביטול')),
-      active:     !cancelDate && remaining > 0,
+      active:     !cancelDate && (unlimited || remaining > 0),
     };
   }).filter(function (h) { return h.name; });
 }
@@ -1077,17 +1101,28 @@ function generateStandingOrderCharges() {
     var name = standardName(get_(r, t, 'שם'));
     var start = toDate_(get_(r, t, 'תאריך פתיחה'));
     var amount = asNumber_(get_(r, t, 'סכום'));
-    var payments = asNumber_(get_(r, t, 'מספר תשלומים'));
-    if (!id || !name || !start || !payments || !amount) return;
+    var rawPayments = get_(r, t, 'מספר תשלומים');
+    var unlimited = isUnlimited_(rawPayments);
+    var payments = asNumber_(rawPayments);
+    if (!id || !name || !start || !amount) return;
+    if (!unlimited && !payments) return;
 
     var cancelDate = toDate_(get_(r, t, 'תאריך ביטול'));
     var billingDay = start.getDate();
     var cursor = new Date(start.getFullYear(), start.getMonth(), 1);
 
-    // כל התשלומים נרשמים מראש — כך רואים בגיליון את ההתחייבות המלאה.
-    // מה שמועדו עוד לא הגיע מסומן "עתידי", לא נספר ככסף, ולא נספר
+    // הוראה ללא הגבלה: מייצרים עד החודש הנוכחי בלבד. אין לוח זמנים שנגמר,
+    // ולכן אין משמעות ל"כל התשלומים מראש" — זו הייתה כתיבה אינסופית.
+    // התקרה היא הגנה מפני תאריך פתיחה שגוי בגיליון.
+    var rounds = unlimited
+      ? Math.min(600, (today.getFullYear() - start.getFullYear()) * 12 +
+                      (today.getMonth() - start.getMonth()) + 1)
+      : payments;
+
+    // בהוראה רגילה כל התשלומים נרשמים מראש — כך רואים בגיליון את ההתחייבות
+    // המלאה. מה שמועדו עוד לא הגיע מסומן "עתידי", לא נספר ככסף, ולא נספר
     // כחיוב שבוצע. בכל הרצה נבדק מי מהם הבשיל בינתיים.
-    for (var made = 0; made < payments; made++) {
+    for (var made = 0; made < rounds; made++) {
       var y = cursor.getFullYear(), m = cursor.getMonth();
       var day = Math.min(billingDay, daysInMonth_(y, m));
       var chargeDate = new Date(y, m, day);
@@ -1457,16 +1492,26 @@ function handleStandingOrderEmail_(body, f) {
   var idx = hkIndex_();
   if (idx[id]) return false; // ההוראה כבר רשומה
 
-  var payments = parseInt(field_(body, f.payments), 10) || 0;
+  // "מס' חיובים" יכול להיות מספר או "ללא הגבלה". טקסט לא מספרי נשמר כמות
+  // שהוא — בעבר parseInt החזיר NaN וההוראה נזרקה בשקט, בלי שאיש ידע.
+  var rawPayments = field_(body, f.payments);
+  var payments = parseInt(rawPayments, 10);
+  var paymentsValue = isNaN(payments) || payments <= 0
+    ? (String(rawPayments || '').trim() || UNLIMITED_TEXT)
+    : payments;
+
   var amount = asNumber_(field_(body, f.amount));
-  if (!payments || !amount) return false;
+  if (!amount) {
+    Logger.log('⚠️ הוראת קבע ' + id + ' (' + name + ') נדחתה — לא זוהה סכום חיוב');
+    return false;
+  }
 
   appendByName_(SH.HK, {
     'מזהה':          id,
     'שם':            name,
     'תאריך פתיחה':   (field_(body, f.startDate) || '').split(' ')[0],
     'סכום':          amount,
-    'מספר תשלומים':  payments,
+    'מספר תשלומים':  paymentsValue,
     'טלפון':         field_(body, f.phone),
     'אימייל':        emailIn_(field_(body, f.email)),
     'קמפיין':        field_(body, f.campaign),
