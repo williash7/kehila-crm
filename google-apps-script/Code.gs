@@ -66,8 +66,19 @@ var COLS = {
   SYNC:     ['מפתח', 'ערך'],
 };
 
-/** ערך בעמודת "סטטוס" שמסמן חיוב שנכשל — לא נספר ככסף ולא כחיוב שבוצע. */
-var STATUS_FAILED = 'נכשל';
+/**
+ * ערכי עמודת "סטטוס" ביומן.
+ * ריק = חיוב שבוצע בפועל, נספר ככסף.
+ * שני הערכים כאן **אינם נספרים** — לא בסכומים ולא במניין החיובים שבוצעו.
+ */
+var STATUS_FAILED = 'נכשל';   // הגיע מייל סירוב — הכסף לא נכנס
+var STATUS_FUTURE = 'עתידי';  // חיוב הוראת קבע שמועדו עוד לא הגיע
+
+/** האם שורה כזו נספרת ככסף שנכנס בפועל. */
+function countsAsMoney_(status) {
+  var v = String(status || '').trim();
+  return v !== STATUS_FAILED && v !== STATUS_FUTURE;
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  התקנה
@@ -87,6 +98,7 @@ function setupSheet() {
   seedNedarimRules_();
   flushWrites_();
   installTriggers_();
+  styleLogSheet_();
 
   var def = ss.getSheetByName('Sheet1') || ss.getSheetByName('גיליון1');
   if (def && ss.getSheets().length > 1 && def.getLastRow() === 0) ss.deleteSheet(def);
@@ -96,6 +108,33 @@ function setupSheet() {
     'עכשיו: פריסה ← פריסה חדשה ← אפליקציית אינטרנט\n' +
     'לבצע בתור: עצמי   |   למי יש גישה: כולם\n\n' +
     'עוברים מגיליון ישן? הריצו עכשיו את migrateFromLegacy.');
+}
+
+/**
+ * צביעה מותנה ליומן: חיוב עתידי באפור בהיר, חיוב שנכשל באדום חלש.
+ * כך רואים במבט אחד מה כבר נכנס ומה רק צפוי — בלי לבלבל בין השניים.
+ * מוגדר פעם אחת, בלי עלות בכל ריצה.
+ */
+function styleLogSheet_() {
+  var t = table_(SH.LOG);
+  if (!t.sheet) return;
+  var c = t.col('סטטוס');
+  if (c < 0) return;
+
+  var letter = String.fromCharCode(65 + c); // A, B, C...
+  var range = t.sheet.getRange(2, 1, t.sheet.getMaxRows() - 1, t.headers.length);
+
+  var future = SpreadsheetApp.newConditionalFormatRule()
+    .whenFormulaSatisfied('=$' + letter + '2="' + STATUS_FUTURE + '"')
+    .setBackground('#F1F3F4').setFontColor('#9AA0A6').setItalic(true)
+    .setRanges([range]).build();
+
+  var failed = SpreadsheetApp.newConditionalFormatRule()
+    .whenFormulaSatisfied('=$' + letter + '2="' + STATUS_FAILED + '"')
+    .setBackground('#FCE8E6').setFontColor('#C5221F')
+    .setRanges([range]).build();
+
+  t.sheet.setConditionalFormatRules([future, failed]);
 }
 
 /** ריצות אוטומטיות. מוחק קודם כדי שהרצה חוזרת לא תיצור כפילויות. */
@@ -375,7 +414,7 @@ function getDonations_() {
   var t = table_(SH.LOG);
   var out = [];
   t.rows.forEach(function (r) {
-    if (String(get_(r, t, 'סטטוס') || '').trim() === STATUS_FAILED) return; // חיוב שנכשל אינו כסף
+    if (!countsAsMoney_(get_(r, t, 'סטטוס'))) return; // כשל או חיוב עתידי — לא כסף שנכנס
     var name = fmt_(get_(r, t, 'שם'));
     if (!name) return;
     out.push({
@@ -430,7 +469,7 @@ function chargesByOrder_() {
   t.rows.forEach(function (r) {
     var id = String(get_(r, t, 'מזהה') || '');
     if (id.indexOf('hk:') !== 0) return;
-    if (String(get_(r, t, 'סטטוס') || '').trim() === STATUS_FAILED) return; // כשל אינו חיוב שבוצע
+    if (!countsAsMoney_(get_(r, t, 'סטטוס'))) return; // כשל או עתידי אינם חיוב שבוצע
     var orderId = id.split(':')[1];
     if (!map[orderId]) map[orderId] = { count: 0, last: null };
     map[orderId].count++;
@@ -722,7 +761,17 @@ function onEditHandler(e) {
 function generateStandingOrderCharges() {
   var t = table_(SH.HK);
   var today = new Date();
-  var created = 0;
+  var created = 0, matured = 0;
+
+  // שורות שכבר מסומנות "עתידי" — כדי לזהות מי מהן הבשילה החודש
+  var logT = table_(SH.LOG);
+  var cId = logT.col('מזהה'), cStatus = logT.col('סטטוס'), cDate = logT.col('תאריך תרומה');
+  var futureRows = {};
+  logT.rows.forEach(function (r, i) {
+    if (String(r[cStatus] || '').trim() === STATUS_FUTURE) {
+      futureRows[String(r[cId] || '').trim()] = i + 2; // מספר השורה בגיליון
+    }
+  });
 
   t.rows.forEach(function (r) {
     var id = String(get_(r, t, 'מזהה') || '').trim();
@@ -734,38 +783,43 @@ function generateStandingOrderCharges() {
 
     var billingDay = start.getDate();
     var cursor = new Date(start.getFullYear(), start.getMonth(), 1);
-    var made = 0;
 
-    while (made < payments) {
+    // כל התשלומים נרשמים מראש — כך רואים בגיליון את ההתחייבות המלאה.
+    // מה שמועדו עוד לא הגיע מסומן "עתידי", לא נספר ככסף, ולא נספר
+    // כחיוב שבוצע. בכל הרצה נבדק מי מהם הבשיל בינתיים.
+    for (var made = 0; made < payments; made++) {
       var y = cursor.getFullYear(), m = cursor.getMonth();
-
-      // החודש הנוכחי נספר רק אחרי שהגיע יום החיוב
-      var isFuture = (y > today.getFullYear()) ||
-                     (y === today.getFullYear() && m > today.getMonth()) ||
-                     (y === today.getFullYear() && m === today.getMonth() && today.getDate() < billingDay);
-      if (isFuture) break;
-
+      var day = Math.min(billingDay, daysInMonth_(y, m));
+      var chargeDate = new Date(y, m, day);
+      var isFuture = chargeDate > today;
       var chargeId = hkChargeId_(id, y, m);
+
       if (!logIds_()[chargeId]) {
-        var day = Math.min(billingDay, daysInMonth_(y, m));
         addLogRow_({
           'מזהה':        chargeId,
           'שם':          name,
-          'תאריך תרומה': new Date(y, m, day),
+          'תאריך תרומה': chargeDate,
           'סכום':        amount,
           'ייעוד':       fmt_(get_(r, t, 'קמפיין')),
           'אפיק גבייה':  'הוראת קבע',
           'מקור':        'הוראת קבע ' + id,
+          'סטטוס':       isFuture ? STATUS_FUTURE : '',
         });
         created++;
+      } else if (!isFuture && futureRows[chargeId] && cStatus >= 0) {
+        // הגיע מועדו של חיוב שהיה מסומן עתידי — הופך לחיוב שבוצע
+        logT.sheet.getRange(futureRows[chargeId], cStatus + 1).setValue('');
+        matured++;
       }
-      made++;
+
       cursor.setMonth(cursor.getMonth() + 1);
     }
   });
 
   flushWrites_();
-  if (created) Logger.log('נוצרו ' + created + ' חיובי הוראת קבע');
+  if (created || matured) {
+    Logger.log('נוצרו ' + created + ' חיובי הוראת קבע, ' + matured + ' חיובים עתידיים הבשילו');
+  }
   return created;
 }
 
@@ -910,7 +964,7 @@ var DEFAULT_RULES = [
     // וסינון לפי from: לא מוצא כלום. "תדירות גביה" מופיע רק במייל הזה.
     'פעיל': 'כן',
     'שם הכלל': 'נדרים פלוס — הקמת הוראת קבע',
-    'חיפוש בגימייל': '"תדירות גביה"',
+    'חיפוש בגימייל': 'subject:"[נדרים פלוס] הוראת קבע חדשה"',
     'סוג': 'standingOrder',
     'שדות (JSON)': JSON.stringify({
       id: 'מספר הוראה:', name: 'שם תורם:', amount: 'סכום כל חיוב:',
@@ -921,13 +975,20 @@ var DEFAULT_RULES = [
   {
     'פעיל': 'כן',
     'שם הכלל': 'נדרים פלוס — כשל הוראת קבע',
-    'חיפוש בגימייל': '"סיבת שגיאה"',
+    'חיפוש בגימייל': 'subject:"[נדרים פלוס] שגיאה / סירוב - הוראת קבע"',
     'סוג': 'failure',
     'שדות (JSON)': JSON.stringify({
       name: 'שם לקוח:', order: 'מספר הוראה:', amount: 'סכום:', reason: 'סיבת שגיאה:',
     }),
   },
 ];
+
+var LABEL_NAME = 'לוח בקרה — נקלט';
+
+/** התווית שמסמנת שרשור שכבר נקלט. נוצרת בפעם הראשונה. */
+function processedLabel_() {
+  return GmailApp.getUserLabelByName(LABEL_NAME) || GmailApp.createLabel(LABEL_NAME);
+}
 
 /** @param {boolean} all — true סורק את כל ההיסטוריה, false רק יומיים אחרונים. */
 function syncEmails(all) {
@@ -944,16 +1005,34 @@ function syncEmails(all) {
     try { fields = JSON.parse(get_(r, t, 'שדות (JSON)') || '{}'); }
     catch (e) { return; }
 
-    var threads = GmailApp.search(all ? query : query + ' newer_than:3d');
-    threads.forEach(function (th) {
+    // סורקים במנות, ומדלגים על שרשורים שכבר טופלו (תווית בג'ימייל).
+    // כך סריקה היסטורית של אלפי מיילים לא נופלת על מגבלת הזמן, וריצה
+    // חוזרת לא עוברת שוב על מה שכבר נקלט.
+    var label = processedLabel_();
+    var q = (all ? query : query + ' newer_than:3d') + ' -label:' + LABEL_NAME;
+    var handled = [];
+
+    for (var page = 0; page < 20; page++) {
+      var threads = GmailApp.search(q, 0, 100);
+      if (!threads.length) break;
+
+      threads.forEach(function (th) {
       th.getMessages().forEach(function (msg) {
-        var body = msg.getPlainBody();
+        var body = cleanBody_(msg.getPlainBody());
         if (!body) return;
         if (kind === 'failure') failures += handleFailureEmail_(body, msg.getDate(), fields) ? 1 : 0;
         else if (kind === 'standingOrder') orders += handleStandingOrderEmail_(body, fields) ? 1 : 0;
         else added += handleDonationEmail_(body, msg.getDate(), fields) ? 1 : 0;
       });
-    });
+      handled.push(th);
+      });
+
+      // מסמנים **רק אחרי** שהכתיבה הצליחה. אם נסמן לפני והכתיבה תיכשל,
+      // המיילים האלה לא ייסרקו שוב לעולם והנתונים יאבדו.
+      flushWrites_();
+      handled.forEach(function (th) { th.addLabel(label); });
+      handled = [];
+    }
   });
 
   flushWrites_();
@@ -1012,7 +1091,7 @@ function handleStandingOrderEmail_(body, f) {
     'סכום':          amount,
     'מספר תשלומים':  payments,
     'טלפון':         field_(body, f.phone),
-    'אימייל':        (field_(body, f.email) || '').split(' ')[0],
+    'אימייל':        emailIn_(field_(body, f.email)),
     'קמפיין':        field_(body, f.campaign),
     'הערות':         'נקלט אוטומטית ממייל',
   });
@@ -1096,6 +1175,21 @@ function handleFailureEmail_(body, msgDate, f) {
   });
   if (order) markChargeFailed_(order, msgDate, reason, amount, name);
   return true;
+}
+
+/**
+ * מנקה תווים בלתי נראים מגוף המייל.
+ * מיילים בעברית מלאים בסימני כיווניות (RLM/LRM) ובכוכביות עיצוב, והם
+ * נדבקים לערכים ושוברים את הפענוח. חייב לרוץ לפני כל שליפת שדה.
+ */
+function cleanBody_(body) {
+  return String(body || '').replace(/[\u200B-\u200F\u202A-\u202E\uFEFF*]/g, '');
+}
+
+/** שולף כתובת מייל תקינה מתוך טקסט חופשי. */
+function emailIn_(text) {
+  var m = String(text || '').match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+  return m ? m[0] : '';
 }
 
 /** שולף ערך מגוף מייל לפי התווית שלפניו. */

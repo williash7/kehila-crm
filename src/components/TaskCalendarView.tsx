@@ -7,7 +7,7 @@ export interface CalendarItem {
   date: Date | null; // null = ללא תאריך מפורש
   label: string;
   done: boolean;
-  source?: 'personal' | 'holiday' | 'event' | 'standalone';
+  source?: 'personal' | 'holiday' | 'event' | 'standalone' | 'homeVisit';
 }
 
 const HEBREW_MONTHS = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני', 'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
@@ -15,12 +15,13 @@ const WEEKDAY_LABELS = ['א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ש'];
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 
 // סדר קטגוריות קבוע (לא מתחלף) — אותו סדר צבעים כמו שאר האפליקציה (למשל
-// פירוט אפיקי תרומה בדשבורד): ענבר/כחול/ירוק-אזמרגד/סגול.
+// פירוט אפיקי תרומה בדשבורד): ענבר/כחול/ירוק-אזמרגד/סגול/ורוד (ביקורי בית).
 const SOURCE_STYLE: Record<NonNullable<CalendarItem['source']>, { bg: string; text: string; border: string; dot: string }> = {
   holiday:    { bg: 'bg-amber-50',   text: 'text-amber-800',   border: 'border-amber-200',   dot: 'bg-amber-400' },
   event:      { bg: 'bg-blue-50',    text: 'text-blue-800',    border: 'border-blue-200',    dot: 'bg-blue-400' },
   standalone: { bg: 'bg-emerald-50', text: 'text-emerald-800', border: 'border-emerald-200', dot: 'bg-emerald-400' },
   personal:   { bg: 'bg-purple-50',  text: 'text-purple-800',  border: 'border-purple-200',  dot: 'bg-purple-400' },
+  homeVisit:  { bg: 'bg-rose-50',    text: 'text-rose-800',    border: 'border-rose-200',    dot: 'bg-rose-400' },
 };
 const DEFAULT_STYLE = { bg: 'bg-[#FDF6E3]', text: 'text-[#0D1B2A]', border: 'border-[#EDE6D6]', dot: 'bg-[#C9A84C]' };
 
@@ -111,10 +112,10 @@ export function TaskCalendarView({ items, onSelect }: { items: CalendarItem[]; o
 
       {/* מקרא קטגוריות */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-3 text-[10px] text-gray-500">
-        {(['holiday', 'event', 'standalone', 'personal'] as const).map(src => (
+        {(['holiday', 'event', 'homeVisit', 'standalone', 'personal'] as const).map(src => (
           <span key={src} className="flex items-center gap-1">
             <span className={`w-2 h-2 rounded-full ${SOURCE_STYLE[src].dot}`} />
-            {src === 'holiday' ? 'חג' : src === 'event' ? 'אירוע' : src === 'standalone' ? 'חד-פעמית' : 'תאריך אישי'}
+            {src === 'holiday' ? 'חג' : src === 'event' ? 'אירוע' : src === 'homeVisit' ? 'ביקור בית' : src === 'standalone' ? 'חד-פעמית' : 'תאריך אישי'}
           </span>
         ))}
       </div>

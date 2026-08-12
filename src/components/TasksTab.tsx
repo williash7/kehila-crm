@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAppStore } from '../store/AppContext';
-import { Check, ClipboardList, Calendar, CalendarCheck, Cake, X, ChevronLeft, Plus, Clock, ListTodo, SlidersHorizontal, ChevronDown } from 'lucide-react';
+import { Check, ClipboardList, Calendar, CalendarCheck, Cake, X, ChevronLeft, Plus, Clock, ListTodo, SlidersHorizontal, ChevronDown, Home, Bot } from 'lucide-react';
+import { GlobalAIImportModal } from './GlobalAIImportModal';
 import { ProfileModal } from './ProfileModal';
 import { HolidayModal } from './HolidayModal';
 import { TaskDetailsPanel } from './TaskDetailsPanel';
@@ -15,7 +16,7 @@ import { getCustomHols } from '../lib/api';
 import { logAction } from '../lib/score';
 
 export function TasksTab({ setTab, addTrigger }: { setTab: (t: string) => void; addTrigger?: { tab: string; count: number } }) {
-  const { holidayExtras, updateHolidayExtras, eventsData, updateEventsData, visibleDonors, crm, holidays, markHomeVisitDone, settings } = useAppStore();
+  const { holidayExtras, updateHolidayExtras, eventsData, updateEventsData, visibleDonors, crm, holidays, markHomeVisitDone, settings, homeVisits, updateHomeVisitRoundMeta } = useAppStore();
   const [selectedDonor, setSelectedDonor] = useState<string | null>(null);
   const [selectedHoliday, setSelectedHoliday] = useState<any | null>(null);
   const [isAddOpen, setIsAddOpen] = useState(false);
@@ -30,6 +31,7 @@ export function TasksTab({ setTab, addTrigger }: { setTab: (t: string) => void; 
   const [viewMode, setViewMode] = useState<'grouped' | 'flat' | 'calendar'>(settings.defaultTaskView);
   const [calendarSelectedKey, setCalendarSelectedKey] = useState<string | null>(null);
   const [isControlsOpen, setIsControlsOpen] = useState(false);
+  const [isAIImportOpen, setIsAIImportOpen] = useState(false);
   type CompletionTarget = { kind: 'standalone' } | { kind: 'holiday'; id: string } | { kind: 'event'; id: string } | { kind: 'personal'; key: string };
   const [completionPrompt, setCompletionPrompt] = useState<{ label: string; target: CompletionTarget } | null>(null);
   // כיווץ קבוצות משימות (לפי חג/אירוע) בתצוגה "לפי קטגוריה" — פתוח כברירת
@@ -141,14 +143,46 @@ export function TasksTab({ setTab, addTrigger }: { setTab: (t: string) => void; 
     })
   ).filter(g => g.tasks.length > 0);
 
+  // "משימות ביקורי בית" (kind:'homeVisit') חיות באותו מערך אחסון כמו המשימות
+  // החד-פעמיות (STANDALONE_TASKS_ID) — רק מוצגות כאן בקבוצה נפרדת מבחינה
+  // ויזואלית. ה-idx נשאר אינדקס במערך המקורי allStandaloneTasks בשני
+  // המקרים, כדי שהכפתורים ימשיכו להצביע על הפריט הנכון.
   const allStandaloneTasks: any[] = holidayExtras[STANDALONE_TASKS_ID]?.tasks || [];
-  const standaloneTasks = allStandaloneTasks
+  const openStandaloneAll = allStandaloneTasks
     .map((t: any, idx: number) => ({ t, idx, date: effectiveDate(t, null) }))
     .filter((x: any) => !x.t.done)
     .sort((a, b) => compareTasks(a.t, b.t, sortKey, a.date, b.date));
+  // משימות ההכנה (prepTasks) של מערך ביקורים חיות ברשומת המערך עצמו
+  // (homeVisits.rounds), לא במערך המשימות הרגיל — לכן בונים אותן כאן בנפרד
+  // כדי שיופיעו יחד עם שאר המשימות. כל עוד למערך יש משימת-הכנה פתוחה,
+  // משימות "ביקור בית" שלו (kind:'homeVisit') מוסתרות מרשימת המשימות — הן
+  // אמורות להופיע רק אחרי שסיימו להכין (ר' roundPrepDone).
+  const openPrepTasks = homeVisits.rounds
+    .filter(r => r.status === 'active')
+    .flatMap(r => (r.prepTasks || [])
+      .map((pt, idx) => ({ roundId: r.id, idx, text: pt.text, done: pt.done, purpose: r.purpose }))
+      .filter(pt => !pt.done));
+
+  const roundPrepDone = (roundId?: string) => {
+    if (!roundId) return true;
+    const round = homeVisits.rounds.find(r => r.id === roundId);
+    return !round?.prepTasks?.some(pt => !pt.done);
+  };
+
+  const togglePrepTask = (roundId: string, idx: number) => {
+    const round = homeVisits.rounds.find(r => r.id === roundId);
+    if (!round) return;
+    const tasks = [...(round.prepTasks || [])];
+    tasks[idx] = { ...tasks[idx], done: !tasks[idx].done };
+    updateHomeVisitRoundMeta(roundId, { prepTasks: tasks });
+  };
+
+  const homeVisitTasks = openStandaloneAll.filter(x => x.t.kind === 'homeVisit' && roundPrepDone(x.t.roundId));
+  const standaloneTasks = openStandaloneAll.filter(x => x.t.kind !== 'homeVisit');
 
   const openHolidayCount = holidayGroups.reduce((s, g) => s + g.tasks.length, 0);
   const openEventCount = eventGroups.reduce((s, g) => s + g.tasks.length, 0);
+  const openHomeVisitCount = homeVisitTasks.length + openPrepTasks.length;
   const openStandaloneCount = standaloneTasks.length;
 
   const toggleStandaloneTask = (idx: number) => {
@@ -347,7 +381,7 @@ export function TasksTab({ setTab, addTrigger }: { setTab: (t: string) => void; 
           <div className="flex-1 min-w-0 cursor-pointer" onClick={onToggle}>
             <span className={`text-sm ${t.done ? 'text-gray-400 line-through' : 'text-[#0D1B2A]'}`}>{t.text}</span>
             {t.dueDate && !t.done && (
-              <div className="text-[10px] text-[#9B7A2F] flex items-center gap-1 mt-0.5"><Clock size={10} /> {formatRemaining(new Date(t.dueDate), new Date())}</div>
+              <div className="text-[10px] text-[#9B7A2F] flex items-center gap-1 mt-0.5"><Clock size={10} /> {formatRemaining(effectiveDate(t, null) as Date, new Date())}</div>
             )}
           </div>
           {extra}
@@ -445,14 +479,34 @@ export function TasksTab({ setTab, addTrigger }: { setTab: (t: string) => void; 
     });
   });
 
-  standaloneTasks.forEach(({ t, idx, date }: any) => {
+  openPrepTasks.forEach(pt => {
+    flatRows.push({
+      key: `prep-${pt.roundId}-${pt.idx}`,
+      date: null,
+      priorityObj: {},
+      node: (
+        <div key={`prep-${pt.roundId}-${pt.idx}`}>
+          <div className="text-[10px] text-[#9B7A2F] font-bold mb-1">🏠 הכנה לביקורי בית{pt.purpose ? ` — ${pt.purpose}` : ''}</div>
+          <div className="bg-[#FAF6EE] rounded-xl p-3 shadow-sm border border-[#EDE6D6] flex items-center gap-3">
+            <div onClick={() => togglePrepTask(pt.roundId, pt.idx)} className="w-5 h-5 rounded-md border-2 border-gray-300 flex items-center justify-center shrink-0 cursor-pointer">
+            </div>
+            <div className="flex-1 min-w-0 cursor-pointer" onClick={() => togglePrepTask(pt.roundId, pt.idx)}>
+              <span className="text-sm text-[#0D1B2A]">{pt.text}</span>
+            </div>
+          </div>
+        </div>
+      ),
+    });
+  });
+
+  [...homeVisitTasks, ...standaloneTasks].forEach(({ t, idx, date }: any) => {
     flatRows.push({
       key: `s-${idx}`,
       date,
       priorityObj: t,
       node: (
         <div key={`s-${idx}`}>
-          <div className="text-[10px] text-[#9B7A2F] font-bold mb-1">📌 חד-פעמית</div>
+          <div className="text-[10px] text-[#9B7A2F] font-bold mb-1">{t.kind === 'homeVisit' ? '🏠 ביקור בית' : '📌 חד-פעמית'}</div>
           {renderTaskItem(
             t,
             t.kind === 'homeVisit' ? () => handleMarkHomeVisitDone(t.roundId, t.personName, t.text) : () => toggleStandaloneTask(idx),
@@ -473,7 +527,7 @@ export function TasksTab({ setTab, addTrigger }: { setTab: (t: string) => void; 
   // כדי שמשימות בלי תאריך אמיתי יופיעו במגירת "ללא תאריך" ולא "יתפסו" תא אקראי.
   interface CalItem {
     key: string; date: Date | null; label: string; done: boolean; t: any;
-    source: 'personal' | 'holiday' | 'event' | 'standalone';
+    source: 'personal' | 'holiday' | 'event' | 'standalone' | 'homeVisit';
     onToggle: () => void; onDelete: () => void; onTogglePerson: (p: string) => void; onPatch: (patch: any) => void; extra?: React.ReactNode;
     customCard?: React.ReactNode;
   }
@@ -523,9 +577,11 @@ export function TasksTab({ setTab, addTrigger }: { setTab: (t: string) => void; 
     });
   });
 
-  standaloneTasks.forEach(({ t, idx }: any) => {
+  [...homeVisitTasks, ...standaloneTasks].forEach(({ t, idx }: any) => {
     calendarItems.push({
-      key: `s-${idx}`, date: t.dueDate ? applyTaskTime(new Date(t.dueDate), t) : null, label: `📌 ${t.text}`, done: !!t.done, t, source: 'standalone',
+      key: `s-${idx}`, date: t.dueDate ? applyTaskTime(new Date(`${t.dueDate}T00:00`), t) : null,
+      label: t.kind === 'homeVisit' ? `🏠 ${t.text}` : `📌 ${t.text}`, done: !!t.done, t,
+      source: t.kind === 'homeVisit' ? 'homeVisit' : 'standalone',
       onToggle: t.kind === 'homeVisit' ? () => handleMarkHomeVisitDone(t.roundId, t.personName, t.text) : () => toggleStandaloneTask(idx),
       onDelete: () => deleteStandaloneTask(idx), onTogglePerson: p => toggleStandaloneInvitePerson(idx, p),
       onPatch: patch => patchStandaloneTask(idx, patch), extra: standaloneExtraFor(t),
@@ -549,7 +605,7 @@ export function TasksTab({ setTab, addTrigger }: { setTab: (t: string) => void; 
         </div>
         <div className="flex-1 px-3 md:px-0">
           <div className="font-['Frank_Ruhl_Libre'] text-lg font-bold text-[#C9A84C]">משימות</div>
-          <div className="text-[11px] text-white/45 mt-[1px]">{openHolidayCount + openEventCount + openStandaloneCount} משימות פתוחות · {personalDates.length} תאריכים ב-30 הימים הקרובים</div>
+          <div className="text-[11px] text-white/45 mt-[1px]">{openHolidayCount + openEventCount + openHomeVisitCount + openStandaloneCount} משימות פתוחות · {personalDates.length} תאריכים ב-30 הימים הקרובים</div>
         </div>
         <button
           onClick={() => setIsControlsOpen(o => !o)}
@@ -558,10 +614,15 @@ export function TasksTab({ setTab, addTrigger }: { setTab: (t: string) => void; 
         >
           <SlidersHorizontal size={16} />
         </button>
+        <button onClick={() => setIsAIImportOpen(true)} title="יבוא משימות מבינה מלאכותית" className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 bg-white/10 text-white/80 hover:bg-white/20 transition-colors mr-1.5">
+          <Bot size={16} />
+        </button>
         <button onClick={() => setIsAddOpen(true)} className="w-9 h-9 bg-white/10 rounded-full flex items-center justify-center text-white/80 shrink-0 hover:bg-white/20 transition-colors mr-1.5">
           <Plus size={18} />
         </button>
       </div>
+
+      {isAIImportOpen && <GlobalAIImportModal onClose={() => setIsAIImportOpen(false)} />}
 
       {/* מיון + תצוגה — מכווץ כברירת מחדל, נפתח דרך כפתור הפילטר בטופבר */}
       {isControlsOpen && (
@@ -746,6 +807,50 @@ export function TasksTab({ setTab, addTrigger }: { setTab: (t: string) => void; 
                 );
               })}
             </div>
+          )}
+        </div>
+
+        {/* משימות ביקורי בית — נפרד ממשימות חד-פעמיות, ניתן לכווץ/להרחיב כמו קבוצות חג/אירוע */}
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <button onClick={() => setTab('homevisits')} className="font-['Frank_Ruhl_Libre'] text-lg font-bold text-[#0D1B2A] flex items-center gap-2 hover:underline">
+              <Home size={18} className="text-[#C9A84C]" /> משימות ביקורי בית
+            </button>
+            <button onClick={() => toggleGroupCollapse('hv-tasks')} className="flex items-center gap-1 text-[10px] text-gray-400 px-1.5 py-0.5 rounded hover:bg-[#FAF6EE] transition-colors">
+              {homeVisitTasks.length + openPrepTasks.length} משימות <ChevronDown size={12} className={`transition-transform ${collapsedGroups.has('hv-tasks') ? '' : 'rotate-180'}`} />
+            </button>
+          </div>
+          {!collapsedGroups.has('hv-tasks') && (
+            homeVisitTasks.length === 0 && openPrepTasks.length === 0 ? (
+              <div className="bg-white rounded-xl p-4 text-center text-gray-500 shadow-sm text-sm border border-[#EDE6D6]">
+                אין משימות ביקורי בית פתוחות כרגע. נוצרות אוטומטית ממערך ביקורי הבית.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {openPrepTasks.map(pt => (
+                  <div key={`prep-${pt.roundId}-${pt.idx}`} className="bg-[#FAF6EE] rounded-xl p-3 shadow-sm border border-[#EDE6D6] flex items-center gap-3">
+                    <div onClick={() => togglePrepTask(pt.roundId, pt.idx)} className="w-5 h-5 rounded-md border-2 border-gray-300 flex items-center justify-center shrink-0 cursor-pointer">
+                    </div>
+                    <div className="flex-1 min-w-0 cursor-pointer" onClick={() => togglePrepTask(pt.roundId, pt.idx)}>
+                      <span className="text-sm text-[#0D1B2A]">{pt.text}</span>
+                      <div className="text-[10px] text-[#9B7A2F] flex items-center gap-1 mt-0.5"><ClipboardList size={10} /> הכנה{pt.purpose ? ` — ${pt.purpose}` : ''} · לפני תחילת הביקורים</div>
+                    </div>
+                  </div>
+                ))}
+                {homeVisitTasks.map(({ t, idx }: any) => (
+                  <div key={idx}>
+                    {renderTaskItem(
+                      t,
+                      () => handleMarkHomeVisitDone(t.roundId, t.personName, t.text),
+                      () => deleteStandaloneTask(idx),
+                      p => toggleStandaloneInvitePerson(idx, p),
+                      patch => patchStandaloneTask(idx, patch),
+                      standaloneExtraFor(t)
+                    )}
+                  </div>
+                ))}
+              </div>
+            )
           )}
         </div>
 

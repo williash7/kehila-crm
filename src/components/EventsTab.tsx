@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAppStore } from '../store/AppContext';
-import { Plus, Check, X, ClipboardList, Trash2, Pencil, Clock, Archive, ChevronDown } from 'lucide-react';
+import { Plus, Check, X, ClipboardList, Trash2, Pencil, Clock, Archive, ChevronDown, Mic2, Star } from 'lucide-react';
 import { format } from 'date-fns';
 import { createInviteTask, toggleInvitePerson, inviteRemainingMinutes, MINUTES_PER_CALL, nextEventOccurrence, formatRemaining, createEventMediaTasks, stampCreated } from '../lib/tasks';
 import { logAction } from '../lib/score';
@@ -10,6 +10,7 @@ import { AIPlanningAssistant } from './AIPlanningAssistant';
 import { FacebookPostAssistant } from './FacebookPostAssistant';
 import { TaskDetailsPanel } from './TaskDetailsPanel';
 import { CompletionFollowUpModal } from './CompletionFollowUpModal';
+import { emptyPerformer, Performer } from '../lib/events';
 
 export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: number } } = {}) {
   const { eventsData, updateEventsData, visibleDonors, crm, hk, failures, settings, refresh, history, archiveOccurrence, importTasksFromHistory } = useAppStore();
@@ -21,6 +22,9 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
   const [taskText, setTaskText] = useState('');
   const [taskDate, setTaskDate] = useState('');
   const [taskTime, setTaskTime] = useState('');
+  const [performersEventId, setPerformersEventId] = useState<string | null>(null);
+  const [perfDraft, setPerfDraft] = useState<Performer>(emptyPerformer());
+  const [editingPerformerId, setEditingPerformerId] = useState<string | null>(null);
   const [completionPrompt, setCompletionPrompt] = useState<{ label: string; eventId: string } | null>(null);
   const [attListOpenId, setAttListOpenId] = useState<string | null>(null);
 
@@ -96,6 +100,7 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
         time: evTime,
         attendance: {},
         tasks: createEventMediaTasks(occ ? occ.toISOString().split('T')[0] : undefined),
+        performers: [],
       };
       updateEventsData([...eventsData, newEv]);
       logAction('event_create');
@@ -261,6 +266,41 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
     logAction('task_create', newTasks.length);
   };
 
+  const currentPerformersEvent = eventsData.find((e: any) => e.id === performersEventId);
+
+  const openPerformersModal = (ev: any) => {
+    setPerformersEventId(ev.id);
+    setEditingPerformerId(null);
+    setPerfDraft(emptyPerformer());
+  };
+
+  const savePerformerDraft = () => {
+    if (!perfDraft.name.trim() || !currentPerformersEvent) return;
+    const cleaned: Performer = { ...perfDraft, name: perfDraft.name.trim() };
+    const existing: Performer[] = currentPerformersEvent.performers || [];
+    const nextPerformers = editingPerformerId
+      ? existing.map(p => p.id === editingPerformerId ? cleaned : p)
+      : [...existing, cleaned];
+    updateEventsData(eventsData.map((e: any) => e.id === performersEventId ? { ...e, performers: nextPerformers } : e));
+    setEditingPerformerId(null);
+    setPerfDraft(emptyPerformer());
+  };
+
+  const editPerformer = (p: Performer) => {
+    setEditingPerformerId(p.id);
+    setPerfDraft(p);
+  };
+
+  const deletePerformer = (id: string) => {
+    if (!currentPerformersEvent) return;
+    const nextPerformers = (currentPerformersEvent.performers || []).filter((p: Performer) => p.id !== id);
+    updateEventsData(eventsData.map((e: any) => e.id === performersEventId ? { ...e, performers: nextPerformers } : e));
+    if (editingPerformerId === id) {
+      setEditingPerformerId(null);
+      setPerfDraft(emptyPerformer());
+    }
+  };
+
   const donorNames = Object.keys(visibleDonors).filter(n => {
     if (attSearch && !n.includes(attSearch)) return false;
     if (attCategory !== 'all') {
@@ -349,6 +389,14 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
                       </button>
                       <button onClick={() => openAttModal(ev)} className="bg-[#C9A84C]/10 text-[#9B7A2F] text-xs font-bold px-3 py-1.5 rounded-lg active:scale-95 transition-transform flex items-center gap-1.5 whitespace-nowrap">
                          <Check size={14}/> נוכחות
+                      </button>
+                      <button onClick={() => openPerformersModal(ev)} className="relative bg-pink-50 text-pink-700 text-xs font-bold px-3 py-1.5 rounded-lg active:scale-95 transition-transform flex items-center gap-1.5 whitespace-nowrap">
+                         <Mic2 size={14}/> אמנים
+                         {(ev.performers || []).length > 0 && (
+                           <span className="absolute -top-1.5 -left-1.5 w-4 h-4 bg-[#C9A84C] text-[#0D1B2A] rounded-full text-[9px] font-bold flex items-center justify-center">
+                             {ev.performers.length}
+                           </span>
+                         )}
                       </button>
                       <button onClick={() => openEditModal(ev)} title="עריכת אירוע" className="bg-gray-50 text-gray-500 p-1.5 rounded-lg active:scale-95 transition-transform shrink-0">
                          <Pencil size={14}/>
@@ -708,6 +756,74 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
                  <ClipboardList size={14} /> הוסף משימת הזמנה ל-{donorNames.length} אנשים (≈{donorNames.length * MINUTES_PER_CALL} דק׳)
                </button>
              </div>
+             </div>
+           </div>
+        </div>
+      )}
+
+      {/* Performers Modal */}
+      {performersEventId && currentPerformersEvent && (
+        <div className="fixed inset-0 bg-black/60 z-[200] flex items-end justify-center p-0 md:p-4 backdrop-blur-sm" onClick={(e) => e.target === e.currentTarget && setPerformersEventId(null)}>
+           <div className="bg-[#FAF6EE] rounded-t-3xl md:rounded-3xl p-5 pb-8 w-full max-w-[430px] max-h-[90vh] flex flex-col animate-in slide-in-from-bottom duration-300">
+             <div className="flex justify-between items-start mb-4">
+               <h2 className="font-['Frank_Ruhl_Libre'] text-xl font-bold text-[#0D1B2A] flex items-center gap-2">🎤 אמנים — {currentPerformersEvent.name}</h2>
+               <button onClick={() => setPerformersEventId(null)} className="bg-gray-200/50 p-2 rounded-full text-gray-500 hover:bg-gray-200 shrink-0"><X size={16}/></button>
+             </div>
+
+             <div className="flex-1 overflow-y-auto pr-1 custom-scrollbar space-y-2 mb-4">
+               {(currentPerformersEvent.performers || []).length === 0 && (
+                 <div className="text-sm text-gray-400 text-center bg-white rounded-xl p-4 border border-[#EDE6D6]">אין עדיין אמנים לאירוע הזה. אם לא הוזמן אמן, אפשר להשאיר ריק.</div>
+               )}
+               {(currentPerformersEvent.performers || []).map((p: Performer) => (
+                 <div key={p.id} className="bg-white rounded-xl p-3 shadow-sm border border-[#EDE6D6]">
+                   <div className="flex items-center justify-between gap-2">
+                     <div className="flex-1 min-w-0">
+                       <div className="font-bold text-[#0D1B2A] text-sm">{p.name}</div>
+                       <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-gray-500 mt-0.5">
+                         {!!p.rating && (
+                           <span className="flex items-center gap-0.5 text-[#C9A84C]">
+                             {Array.from({ length: 5 }).map((_, i) => (
+                               <Star key={i} size={11} fill={i < (p.rating || 0) ? 'currentColor' : 'none'} />
+                             ))}
+                           </span>
+                         )}
+                         {p.phone && <span>📞 {p.phone}</span>}
+                         {p.price != null && <span>💰 {p.price}₪</span>}
+                         {p.address && <span>📍 {p.address}</span>}
+                       </div>
+                       {p.notes && <div className="text-[11px] text-gray-500 mt-1">{p.notes}</div>}
+                     </div>
+                     <div className="flex items-center gap-1 shrink-0">
+                       <button onClick={() => editPerformer(p)} className="text-gray-400 hover:text-[#0D1B2A] p-1"><Pencil size={13}/></button>
+                       <button onClick={() => deletePerformer(p.id)} className="text-red-300 hover:text-red-500 p-1"><Trash2 size={13}/></button>
+                     </div>
+                   </div>
+                 </div>
+               ))}
+             </div>
+
+             <div className="border-t border-dashed border-[#EDE6D6] pt-3 space-y-2 shrink-0">
+               <div className="text-[11px] font-bold text-gray-500 uppercase">{editingPerformerId ? 'עריכת אמן' : 'הוספת אמן'}</div>
+               <input value={perfDraft.name} onChange={e => setPerfDraft({ ...perfDraft, name: e.target.value })} type="text" className="w-full bg-white border border-[#EDE6D6] rounded-xl px-3 py-2.5 text-sm outline-none focus:border-[#C9A84C]" placeholder="שם האמן" />
+               <div className="flex items-center gap-1">
+                 {Array.from({ length: 5 }).map((_, i) => (
+                   <button key={i} onClick={() => setPerfDraft({ ...perfDraft, rating: perfDraft.rating === i + 1 ? undefined : i + 1 })} className="text-[#C9A84C]">
+                     <Star size={20} fill={i < (perfDraft.rating || 0) ? 'currentColor' : 'none'} />
+                   </button>
+                 ))}
+               </div>
+               <div className="grid grid-cols-2 gap-2">
+                 <input value={perfDraft.phone || ''} onChange={e => setPerfDraft({ ...perfDraft, phone: e.target.value })} type="text" className="w-full bg-white border border-[#EDE6D6] rounded-xl px-3 py-2 text-sm outline-none focus:border-[#C9A84C]" placeholder="טלפון" />
+                 <input value={perfDraft.price ?? ''} onChange={e => setPerfDraft({ ...perfDraft, price: e.target.value ? Number(e.target.value) : undefined })} type="number" className="w-full bg-white border border-[#EDE6D6] rounded-xl px-3 py-2 text-sm outline-none focus:border-[#C9A84C]" placeholder="מחיר ₪" />
+               </div>
+               <input value={perfDraft.address || ''} onChange={e => setPerfDraft({ ...perfDraft, address: e.target.value })} type="text" className="w-full bg-white border border-[#EDE6D6] rounded-xl px-3 py-2 text-sm outline-none focus:border-[#C9A84C]" placeholder="כתובת" />
+               <textarea value={perfDraft.notes || ''} onChange={e => setPerfDraft({ ...perfDraft, notes: e.target.value })} className="w-full bg-white border border-[#EDE6D6] rounded-xl px-3 py-2 text-sm outline-none focus:border-[#C9A84C] resize-none" rows={2} placeholder="הערות" />
+               <div className="flex gap-2">
+                 <button onClick={savePerformerDraft} className="flex-1 bg-[#0D1B2A] rounded-xl py-2.5 text-[#E8C97A] font-bold shadow-sm">{editingPerformerId ? 'שמור שינויים' : 'הוסף אמן'}</button>
+                 {editingPerformerId && (
+                   <button onClick={() => { setEditingPerformerId(null); setPerfDraft(emptyPerformer()); }} className="px-4 bg-gray-100 rounded-xl text-gray-500 font-bold">ביטול</button>
+                 )}
+               </div>
              </div>
            </div>
         </div>
