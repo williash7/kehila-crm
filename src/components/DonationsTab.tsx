@@ -5,6 +5,7 @@ import { getHkStatus, sortHkList, countHkByStatus, openFailureFor, indexFailures
 import { parseDdMmYyyy } from '../lib/dateUtils';
 import { ProfileModal } from './ProfileModal';
 import { CancelHkDialog, ChangeHkAmountDialog, CancelHkButton } from './CancelHkDialog';
+import { AddHkDialog } from './AddHkDialog';
 import { ThankYouLetterModal } from './ThankYouLetterModal';
 
 type MainTab = 'donations' | 'hk' | 'errors';
@@ -19,6 +20,7 @@ export function DonationsTab() {
   const [editFields, setEditFields] = useState<Record<string, any>>({});
   const [cancelTarget, setCancelTarget] = useState<any | null>(null);
   const [amountTarget, setAmountTarget] = useState<any | null>(null);
+  const [addHkOpen, setAddHkOpen] = useState(false);
 
   // ── תרומות ──────────────────────────────────────────────────────────────
   const [search, setSearch] = useState('');
@@ -246,9 +248,16 @@ export function DonationsTab() {
                 <div className="text-[10px] text-gray-500 mt-0.5">הסתיימו</div>
               </div>
             </div>
-            <div className="relative mb-2">
-              <Search size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input value={hkSearch} onChange={e => setHkSearch(e.target.value)} placeholder="חיפוש לפי שם או מספר הוראה..." className="w-full bg-white border border-[#EDE6D6] rounded-xl py-2.5 pr-9 pl-3 text-sm outline-none focus:border-[#C9A84C]" />
+            <div className="flex gap-2 mb-2">
+              <div className="relative flex-1">
+                <Search size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input value={hkSearch} onChange={e => setHkSearch(e.target.value)} placeholder="חיפוש לפי שם או מספר הוראה..." className="w-full bg-white border border-[#EDE6D6] rounded-xl py-2.5 pr-9 pl-3 text-sm outline-none focus:border-[#C9A84C]" />
+              </div>
+              {/* הוראה שלא הגיעה במייל — הסימן היחיד שלה הוא תרומה חוזרת */}
+              <button onClick={() => setAddHkOpen(true)}
+                className="shrink-0 px-3.5 rounded-xl text-sm font-bold bg-[#0D1B2A] text-[#C9A84C] whitespace-nowrap">
+                + ידנית
+              </button>
             </div>
             <div className="flex gap-1.5 overflow-x-auto pb-3 no-scrollbar">
               {([
@@ -469,6 +478,7 @@ export function DonationsTab() {
 
       {cancelTarget && <CancelHkDialog target={cancelTarget} onClose={() => setCancelTarget(null)} />}
       {amountTarget && <ChangeHkAmountDialog target={amountTarget} onClose={() => setAmountTarget(null)} />}
+      {addHkOpen && <AddHkDialog onClose={() => setAddHkOpen(false)} />}
     </div>
   );
 }

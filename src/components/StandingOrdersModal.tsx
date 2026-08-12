@@ -1,8 +1,9 @@
 import React, { useState, useMemo } from 'react';
-import { X, Search, RefreshCw, AlertTriangle, ChevronDown, ChevronLeft } from 'lucide-react';
+import { X, Search, RefreshCw, AlertTriangle, ChevronDown, ChevronLeft, Plus } from 'lucide-react';
 import { useAppStore } from '../store/AppContext';
 import { getHkStatus, sortHkList, countHkByStatus, openFailureFor, indexFailures, HK_STATUS_LABEL, HK_STATUS_COLOR, HkStatus } from '../lib/standingOrders';
 import { CancelHkDialog, ChangeHkAmountDialog, CancelHkButton } from './CancelHkDialog';
+import { AddHkDialog } from './AddHkDialog';
 import { ProfileModal } from './ProfileModal';
 
 // "הסתיימה לאחרונה" — כדי לא להציג כברירת מחדל הוראות קבע שהסתיימו לפני
@@ -33,6 +34,7 @@ export function StandingOrdersModal({ onClose }: { onClose: () => void }) {
   // לספר לגיליון שההוראה נפסקה.
   const [cancelTarget, setCancelTarget] = useState<any | null>(null);
   const [amountTarget, setAmountTarget] = useState<any | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
 
   const threshold = settings.hkExpiringThreshold ?? 2;
   const failIdx = useMemo(() => indexFailures(failures), [failures]);
@@ -73,9 +75,14 @@ export function StandingOrdersModal({ onClose }: { onClose: () => void }) {
           <X size={22} />
         </button>
         <h2 className="font-['Frank_Ruhl_Libre'] text-lg font-bold text-[#C9A84C]">הוראות קבע</h2>
-        <button onClick={() => refresh()} className="p-2 -m-2 text-white/60 hover:text-white transition-colors" title="רענן">
-          <RefreshCw size={18} />
-        </button>
+        <div className="flex items-center gap-1">
+          <button onClick={() => setAddOpen(true)} className="p-2 -m-1 text-white/60 hover:text-white transition-colors" title="הוראת קבע ידנית">
+            <Plus size={20} />
+          </button>
+          <button onClick={() => refresh()} className="p-2 -m-2 text-white/60 hover:text-white transition-colors" title="רענן">
+            <RefreshCw size={18} />
+          </button>
+        </div>
       </div>
 
       {/* Summary strip */}
@@ -223,6 +230,7 @@ export function StandingOrdersModal({ onClose }: { onClose: () => void }) {
 
       {cancelTarget && <CancelHkDialog target={cancelTarget} onClose={() => setCancelTarget(null)} />}
       {amountTarget && <ChangeHkAmountDialog target={amountTarget} onClose={() => setAmountTarget(null)} />}
+      {addOpen && <AddHkDialog onClose={() => setAddOpen(false)} />}
 
       {selectedDonor && <ProfileModal name={selectedDonor} onClose={() => setSelectedDonor(null)} />}
     </div>

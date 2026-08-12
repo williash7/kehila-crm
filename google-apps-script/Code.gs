@@ -808,20 +808,37 @@ function addMeeting_(body) {
 }
 
 /** הוספת הוראת קבע ידנית — מה שעד היום היה אפשרי רק בעריכה בגיליון. */
+/**
+ * הוספת הוראת קבע ידנית.
+ *
+ * לא כל הוראה מגיעה במייל: לפעמים ההודעה לא נשלחה, נמחקה, או שההוראה
+ * הוקמה בטלפון מול הספק. הסימן היחיד הוא תרומה קבועה שחוזרת כל חודש.
+ *
+ * **כדאי מאוד למלא את מספר ההוראה האמיתי** מממשק הספק. הוא מה שיקשר בין
+ * ההוראה הזו לבין מיילי הסירוב שיגיעו עליה בעתיד. בלעדיו נוצר מזהה
+ * פנימי, וכשל שיגיע לא יידע לאיזו הוראה הוא שייך.
+ */
 function addStandingOrder_(body) {
   var name = standardName(body.name);
-  var payments = asNumber_(body.payments);
   var amount = asNumber_(body.amount);
-  if (!name || !payments || !amount) return { success: false, error: 'חסרים שם, סכום או מספר תשלומים' };
+  var unlimited = !!body.unlimited || isUnlimited_(body.payments);
+  var payments = asNumber_(body.payments);
+
+  if (!name) return { success: false, error: 'חסר שם התורם' };
+  if (!amount) return { success: false, error: 'חסר סכום החיוב' };
+  if (!unlimited && !payments) return { success: false, error: 'חסר מספר תשלומים' };
 
   var id = String(body.id || '').trim() || 'man' + new Date().getTime();
+  if (hkIndex_()[id]) {
+    return { success: false, error: 'הוראת קבע במספר ' + id + ' כבר קיימת בגיליון' };
+  }
 
   appendByName_(SH.HK, {
     'מזהה':          id,
     'שם':            name,
     'תאריך פתיחה':   body.startDate || todayStr_(),
     'סכום':          amount,
-    'מספר תשלומים':  payments,
+    'מספר תשלומים':  unlimited ? UNLIMITED_TEXT : payments,
     'טלפון':         body.phone || '',
     'אימייל':        body.email || '',
     'קמפיין':        body.campaign || '',
@@ -830,8 +847,10 @@ function addStandingOrder_(body) {
   ensureContact_(name, body.phone, body.address);
   flushWrites_();      // ההוראה חייבת להיות בגיליון לפני ייצור החיובים
   _contactIndex = null;
-  generateStandingOrderCharges();
-  return { success: true, id: id };
+  _hkIndex = null;
+  _logIds = null;
+  var created = generateStandingOrderCharges();
+  return { success: true, id: id, created: created };
 }
 
 /**
