@@ -78,7 +78,11 @@ export function DonationsTab() {
   let hkList = useMemo(() => sortHkList(hk, failNames, threshold), [hk, failNames, threshold]);
   if (hkFilter === 'errors') hkList = hkList.filter(h => failNames.has(h.name));
   else if (hkFilter !== 'all') hkList = hkList.filter(h => getHkStatus(h, threshold) === hkFilter);
-  if (hkSearch) hkList = hkList.filter(h => h.name?.toLowerCase().includes(hkSearch.toLowerCase()));
+  // חיפוש גם לפי מספר הוראה — לתורם עם כמה הוראות זהות זו הדרך היחידה
+  if (hkSearch) {
+    const q = hkSearch.toLowerCase();
+    hkList = hkList.filter(h => h.name?.toLowerCase().includes(q) || String(h.id || '').includes(q));
+  }
 
   const mainTabs: { id: MainTab; label: string; count: number }[] = [
     { id: 'donations', label: 'תרומות', count: donationRecords.length },
@@ -243,7 +247,7 @@ export function DonationsTab() {
             </div>
             <div className="relative mb-2">
               <Search size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input value={hkSearch} onChange={e => setHkSearch(e.target.value)} placeholder="חיפוש לפי שם..." className="w-full bg-white border border-[#EDE6D6] rounded-xl py-2.5 pr-9 pl-3 text-sm outline-none focus:border-[#C9A84C]" />
+              <input value={hkSearch} onChange={e => setHkSearch(e.target.value)} placeholder="חיפוש לפי שם או מספר הוראה..." className="w-full bg-white border border-[#EDE6D6] rounded-xl py-2.5 pr-9 pl-3 text-sm outline-none focus:border-[#C9A84C]" />
             </div>
             <div className="flex gap-1.5 overflow-x-auto pb-3 no-scrollbar">
               {([
@@ -271,6 +275,13 @@ export function DonationsTab() {
                       <div className="min-w-0">
                         <div className="text-sm font-bold text-[#0D1B2A] truncate">{h.name}</div>
                         <div className="text-[11px] text-gray-500 mt-0.5">חיוב אחרון: {h.lastBilled || '—'}</div>
+                        {/* מספר ההוראה ותאריך הפתיחה — בלעדיהם אי אפשר להבחין
+                            בין שתי הוראות של אותו תורם על אותו סכום */}
+                        {h.id && (
+                          <div className="text-[10px] text-gray-400 mt-0.5" dir="ltr">
+                            #{h.id}{h.startDate ? ` · ${h.startDate}` : ''}
+                          </div>
+                        )}
                       </div>
                       <div className="text-left shrink-0">
                         <div className="font-['Frank_Ruhl_Libre'] text-base font-bold text-[#9B7A2F]">₪{(Number(h.amount) || 0).toLocaleString()}</div>

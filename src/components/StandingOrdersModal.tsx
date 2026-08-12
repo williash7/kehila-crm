@@ -49,7 +49,11 @@ export function StandingOrdersModal({ onClose }: { onClose: () => void }) {
   if (!showOld) list = list.filter(h => isRecentlyRelevant(h, threshold));
   if (filter === 'errors') list = list.filter(h => failNames.has(h.name));
   else if (filter !== 'all') list = list.filter(h => getHkStatus(h, threshold) === filter);
-  if (search) list = list.filter(h => h.name?.toLowerCase().includes(search.toLowerCase()));
+  // חיפוש גם לפי מספר הוראה — לתורם עם כמה הוראות זהות זו הדרך היחידה
+  if (search) {
+    const q = search.toLowerCase();
+    list = list.filter(h => h.name?.toLowerCase().includes(q) || String(h.id || '').includes(q));
+  }
 
   const filterTabs: { id: 'all' | HkStatus | 'errors'; label: string; count: number }[] = [
     { id: 'all', label: showOld ? 'הכל (כולל ישנות)' : 'הכל', count: list.length },
@@ -96,7 +100,7 @@ export function StandingOrdersModal({ onClose }: { onClose: () => void }) {
           <input
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="חיפוש לפי שם..."
+            placeholder="חיפוש לפי שם או מספר הוראה..."
             className="w-full bg-white border border-[#EDE6D6] rounded-xl py-2.5 pr-9 pl-3 text-sm outline-none focus:border-[#C9A84C]"
           />
         </div>
@@ -175,6 +179,13 @@ export function StandingOrdersModal({ onClose }: { onClose: () => void }) {
                       <div className="text-[11px] text-gray-500 mt-0.5">
                         חיוב אחרון: {h.lastBilled || '—'}
                       </div>
+                      {/* מספר ההוראה ותאריך הפתיחה — בלעדיהם אי אפשר להבחין
+                          בין שתי הוראות של אותו תורם על אותו סכום */}
+                      {h.id && (
+                        <div className="text-[10px] text-gray-400 mt-0.5" dir="ltr">
+                          #{h.id}{h.startDate ? ` · ${h.startDate}` : ''}
+                        </div>
+                      )}
                     </div>
                     <div className="text-left shrink-0">
                       <div className="font-['Frank_Ruhl_Libre'] text-base font-bold text-[#9B7A2F]">₪{(Number(h.amount) || 0).toLocaleString()}</div>
