@@ -107,6 +107,26 @@ var SETUP_FAILURE_DAYS = 0;   // 0 = אותו יום קלנדרי בלבד
 /** נשאר בעמודת ההערות גם אחרי ביטול-הביטול, כסימן ש"כבר טיפלנו בזה". */
 var AUTO_CANCEL_NOTE = 'בוטל אוטומטית: סורבה ביום ההקמה';
 
+/**
+ * ── הוראת קבע ללא הגבלת זמן ───────────────────────────────────────────────
+ *
+ * ספק הסליקה כותב במייל ההקמה `מס' חיובים: ללא הגבלה` — טקסט, לא מספר.
+ * זו הוראה שתיגבה כל חודש עד שמישהו יעצור אותה, ואלה בדרך כלל התורמים
+ * הקבועים ביותר.
+ *
+ * הערך נשמר בעמודה **כפי שהוא**, כטקסט, כדי שמי שפותח את הגיליון יראה
+ * בדיוק מה הספק אמר. הקוד מזהה אותו בכל מקום שבו הוא שואל "כמה תשלומים".
+ *
+ * להוראה כזו אין לוח זמנים שנגמר: החיובים נוצרים מחודש הפתיחה ועד החודש
+ * הנוכחי בלבד, ולא נכתבים חיובים עתידיים אל תוך אינסוף.
+ */
+var UNLIMITED_TEXT = 'ללא הגבלה';
+
+function isUnlimited_(v) {
+  var s = String(v == null ? '' : v).trim();
+  return !!s && asNumber_(s) <= 0;   // יש ערך, והוא אינו מספר חיובי
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 //  התקנה
 // ═══════════════════════════════════════════════════════════════════════════
@@ -549,6 +569,7 @@ function route_(action, body) {
     case 'addMeeting':         return addMeeting_(body);
     case 'addStandingOrder':   return addStandingOrder_(body);
     case 'cancelStandingOrder': return cancelStandingOrder_(body);
+    case 'updateStandingOrderAmount': return updateStandingOrderAmount_(body);
     case 'updateDonorField':   return updateDonorField_(body);
     case 'updatePersonalDate': return updateDonorField_(body);
     case 'createHolidayDoc':   return createHolidayDoc_(body);
@@ -613,21 +634,36 @@ function getDonations_() {
 
 /**
  * הוראות קבע.
- * "נותרו" ו"חיוב אחרון" מחושבים מהיומן בכל קריאה — לא נשמרים בשום מקום,
- * ולכן לא יכולים לצאת מסנכרון.
+ *
+ * ── מה זה "נותרו" ─────────────────────────────────────────────────────────
+ *
+ * **מספר מועדי החיוב שעוד לפנינו בלוח השנה.** לא "כמה כסף חסר".
+ *
+ * ההבחנה הזו קריטית, וקודם היא הייתה שגויה. הוראה על 12 תשלומים שנפתחה
+ * ביולי 2025 סיימה את לוח הזמנים שלה ביוני 2026 — הספק לא יגבה ממנה עוד
+ * שקל, לא משנה כמה חיובים הצליחו בדרך. חישוב של "תשלומים פחות מה שנגבה"
+ * הציג הוראה שאחד-עשר מחיוביה נכשלו כ"נותרו 1", כאילו עוד צפוי כסף, ואף
+ * הציג הוראה שהסתיימה לגמרי כ"פעילה · נותרו 10".
+ *
+ * כמה כסף באמת נכנס מוצג בנפרד — `paid` מתוך `payments` — כי זו שאלה
+ * אחרת לגמרי, וגם היא חשובה.
  */
 function getHK_() {
   var t = table_(SH.HK);
   var charges = chargesByOrder_();
+  var today = new Date();
 
   return t.rows.map(function (r) {
     var id = String(get_(r, t, 'מזהה') || '').trim();
-    var payments = asNumber_(get_(r, t, 'מספר תשלומים')) || 0;
+    var rawPayments = get_(r, t, 'מספר תשלומים');
+    var unlimited = isUnlimited_(rawPayments);
+    var payments = asNumber_(rawPayments) || 0;
+    var start = toDate_(get_(r, t, 'תאריך פתיחה'));
+    var cancelDate = toDate_(get_(r, t, 'תאריך ביטול'));
     var done = charges[id] || { count: 0, last: null };
-    var cancelled = !!toDate_(get_(r, t, 'תאריך ביטול'));
 
-    // הוראה שבוטלה — לא "נותרו" לה תשלומים, גם אם המכסה לא מוצתה.
-    var remaining = cancelled ? 0 : Math.max(0, payments - done.count);
+    // להוראה ללא הגבלה אין מועד סיום, ולכן אין מספר חיובים שנותרו.
+    var remaining = (cancelDate || unlimited) ? 0 : futureCharges_(start, payments, today, null);
 
     return {
       id:         id,
@@ -635,12 +671,35 @@ function getHK_() {
       startDate:  asDate_(get_(r, t, 'תאריך פתיחה')),
       amount:     asNumber_(get_(r, t, 'סכום')),
       payments:   payments,
+      unlimited:  unlimited,
+      paid:       done.count,
       remaining:  remaining,
       lastBilled: done.last ? asDate_(done.last) : '',
       cancelDate: asDate_(get_(r, t, 'תאריך ביטול')),
-      active:     !cancelled && remaining > 0,
+      active:     !cancelDate && (unlimited || remaining > 0),
     };
   }).filter(function (h) { return h.name; });
+}
+
+/**
+ * כמה ממועדי החיוב של ההוראה עוד לא הגיעו.
+ * אותו לוח זמנים בדיוק שמייצר generateStandingOrderCharges — יום החיוב
+ * הוא יום הפתיחה, ובחודש קצר מדי נופל ליום האחרון בו.
+ */
+function futureCharges_(start, payments, today, cancelDate) {
+  if (!start || !payments) return 0;
+  var billingDay = start.getDate();
+  var cursor = new Date(start.getFullYear(), start.getMonth(), 1);
+  var count = 0;
+
+  for (var i = 0; i < payments; i++) {
+    var y = cursor.getFullYear(), m = cursor.getMonth();
+    var d = new Date(y, m, Math.min(billingDay, daysInMonth_(y, m)));
+    if (cancelDate && d >= cancelDate) break;
+    if (d > today) count++;
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+  return count;
 }
 
 /** סופר כמה חיובים מוצלחים כבר קיימים ביומן לכל הוראת קבע, ומתי האחרון. */
@@ -749,20 +808,37 @@ function addMeeting_(body) {
 }
 
 /** הוספת הוראת קבע ידנית — מה שעד היום היה אפשרי רק בעריכה בגיליון. */
+/**
+ * הוספת הוראת קבע ידנית.
+ *
+ * לא כל הוראה מגיעה במייל: לפעמים ההודעה לא נשלחה, נמחקה, או שההוראה
+ * הוקמה בטלפון מול הספק. הסימן היחיד הוא תרומה קבועה שחוזרת כל חודש.
+ *
+ * **כדאי מאוד למלא את מספר ההוראה האמיתי** מממשק הספק. הוא מה שיקשר בין
+ * ההוראה הזו לבין מיילי הסירוב שיגיעו עליה בעתיד. בלעדיו נוצר מזהה
+ * פנימי, וכשל שיגיע לא יידע לאיזו הוראה הוא שייך.
+ */
 function addStandingOrder_(body) {
   var name = standardName(body.name);
-  var payments = asNumber_(body.payments);
   var amount = asNumber_(body.amount);
-  if (!name || !payments || !amount) return { success: false, error: 'חסרים שם, סכום או מספר תשלומים' };
+  var unlimited = !!body.unlimited || isUnlimited_(body.payments);
+  var payments = asNumber_(body.payments);
+
+  if (!name) return { success: false, error: 'חסר שם התורם' };
+  if (!amount) return { success: false, error: 'חסר סכום החיוב' };
+  if (!unlimited && !payments) return { success: false, error: 'חסר מספר תשלומים' };
 
   var id = String(body.id || '').trim() || 'man' + new Date().getTime();
+  if (hkIndex_()[id]) {
+    return { success: false, error: 'הוראת קבע במספר ' + id + ' כבר קיימת בגיליון' };
+  }
 
   appendByName_(SH.HK, {
     'מזהה':          id,
     'שם':            name,
     'תאריך פתיחה':   body.startDate || todayStr_(),
     'סכום':          amount,
-    'מספר תשלומים':  payments,
+    'מספר תשלומים':  unlimited ? UNLIMITED_TEXT : payments,
     'טלפון':         body.phone || '',
     'אימייל':        body.email || '',
     'קמפיין':        body.campaign || '',
@@ -771,8 +847,10 @@ function addStandingOrder_(body) {
   ensureContact_(name, body.phone, body.address);
   flushWrites_();      // ההוראה חייבת להיות בגיליון לפני ייצור החיובים
   _contactIndex = null;
-  generateStandingOrderCharges();
-  return { success: true, id: id };
+  _hkIndex = null;
+  _logIds = null;
+  var created = generateStandingOrderCharges();
+  return { success: true, id: id, created: created };
 }
 
 /**
@@ -828,6 +906,71 @@ function cancelStandingOrder_(body) {
   }
 
   return { success: false, error: 'הוראת קבע ' + id + ' לא נמצאה' };
+}
+
+/**
+ * ── שינוי סכום של הוראת קבע ───────────────────────────────────────────────
+ *
+ * תורם שהעלה את ההוראה מ-₪100 ל-₪300 לא מייצר שום מייל אצל הספק, בדיוק
+ * כמו ביטול. הגיליון מכיר רק את הסכום מיום ההקמה, וימשיך לספור 100 לנצח.
+ *
+ * ולא די בלתקן את הסכום בשורת ההוראה: החיובים החודשיים כבר נכתבו מראש
+ * לכל תקופת ההתחייבות, וכל אחד מהם נושא את הסכום הישן. לכן מעדכנים כאן
+ * גם אותם — **מהתאריך שנבחר והלאה בלבד**.
+ *
+ * חיוב שנכשל או שבוטל לא נגעים בו: הוא לא ייגבה, והסכום שרשום עליו הוא
+ * חלק מהתיעוד של מה שקרה.
+ */
+function updateStandingOrderAmount_(body) {
+  var id = String(body.id || '').trim();
+  var amount = asNumber_(body.amount);
+  var from = toDate_(body.date);
+  if (!id) return { success: false, error: 'חסר מזהה הוראה' };
+  if (!amount || amount <= 0) return { success: false, error: 'סכום חייב להיות גדול מאפס' };
+  if (!from) return { success: false, error: 'חסר תאריך תחילת הסכום החדש' };
+
+  var t = table_(SH.HK);
+  if (!t.sheet) return { success: false, error: 'לשונית הוראות הקבע לא נמצאה' };
+  var cAmount = t.col('סכום'), cNotes = t.col('הערות');
+  if (cAmount < 0) return { success: false, error: 'עמודת הסכום לא נמצאה' };
+
+  var row = -1, oldAmount = 0;
+  for (var i = 0; i < t.rows.length; i++) {
+    if (String(get_(t.rows[i], t, 'מזהה') || '').trim() !== id) continue;
+    row = i + 2;
+    oldAmount = asNumber_(t.rows[i][cAmount]);
+    break;
+  }
+  if (row < 0) return { success: false, error: 'הוראת קבע ' + id + ' לא נמצאה' };
+
+  t.sheet.getRange(row, cAmount + 1).setValue(amount);
+  if (cNotes >= 0) {
+    var prev = String(t.rows[row - 2][cNotes] || '').trim();
+    var note = 'סכום שונה מ-₪' + oldAmount + ' ל-₪' + amount + ' החל מ-' + asDate_(from);
+    t.sheet.getRange(row, cNotes + 1).setValue(prev ? prev + ' · ' + note : note);
+  }
+
+  // ── והחיובים עצמם ────────────────────────────────────────────────────────
+  var logT = table_(SH.LOG);
+  var cId = logT.col('מזהה'), cDate = logT.col('תאריך תרומה');
+  var cLogAmount = logT.col('סכום'), cStatus = logT.col('סטטוס');
+  var updated = 0;
+
+  if (logT.sheet && cId >= 0 && cLogAmount >= 0) {
+    var prefix = 'hk:' + id + ':';
+    logT.rows.forEach(function (r, i) {
+      if (String(r[cId] || '').indexOf(prefix) !== 0) return;
+      var status = cStatus >= 0 ? String(r[cStatus] || '').trim() : '';
+      if (status === STATUS_FAILED || status === STATUS_CANCELLED) return;
+      var d = toDate_(r[cDate]);
+      if (!d || d < from) return;
+      logT.sheet.getRange(i + 2, cLogAmount + 1).setValue(amount);
+      updated++;
+    });
+  }
+
+  Logger.log('הוראה ' + id + ': הסכום שונה ל-₪' + amount + ', עודכנו ' + updated + ' חיובים');
+  return { success: true, id: id, amount: amount, updated: updated, from: asDate_(from) };
 }
 
 /** מעדכן תא בודד באנשי הקשר. יוצר את העמודה אם היא לא קיימת, ואת השורה אם צריך. */
@@ -1043,17 +1186,28 @@ function generateStandingOrderCharges() {
     var name = standardName(get_(r, t, 'שם'));
     var start = toDate_(get_(r, t, 'תאריך פתיחה'));
     var amount = asNumber_(get_(r, t, 'סכום'));
-    var payments = asNumber_(get_(r, t, 'מספר תשלומים'));
-    if (!id || !name || !start || !payments || !amount) return;
+    var rawPayments = get_(r, t, 'מספר תשלומים');
+    var unlimited = isUnlimited_(rawPayments);
+    var payments = asNumber_(rawPayments);
+    if (!id || !name || !start || !amount) return;
+    if (!unlimited && !payments) return;
 
     var cancelDate = toDate_(get_(r, t, 'תאריך ביטול'));
     var billingDay = start.getDate();
     var cursor = new Date(start.getFullYear(), start.getMonth(), 1);
 
-    // כל התשלומים נרשמים מראש — כך רואים בגיליון את ההתחייבות המלאה.
-    // מה שמועדו עוד לא הגיע מסומן "עתידי", לא נספר ככסף, ולא נספר
+    // הוראה ללא הגבלה: מייצרים עד החודש הנוכחי בלבד. אין לוח זמנים שנגמר,
+    // ולכן אין משמעות ל"כל התשלומים מראש" — זו הייתה כתיבה אינסופית.
+    // התקרה היא הגנה מפני תאריך פתיחה שגוי בגיליון.
+    var rounds = unlimited
+      ? Math.min(600, (today.getFullYear() - start.getFullYear()) * 12 +
+                      (today.getMonth() - start.getMonth()) + 1)
+      : payments;
+
+    // בהוראה רגילה כל התשלומים נרשמים מראש — כך רואים בגיליון את ההתחייבות
+    // המלאה. מה שמועדו עוד לא הגיע מסומן "עתידי", לא נספר ככסף, ולא נספר
     // כחיוב שבוצע. בכל הרצה נבדק מי מהם הבשיל בינתיים.
-    for (var made = 0; made < payments; made++) {
+    for (var made = 0; made < rounds; made++) {
       var y = cursor.getFullYear(), m = cursor.getMonth();
       var day = Math.min(billingDay, daysInMonth_(y, m));
       var chargeDate = new Date(y, m, day);
@@ -1423,16 +1577,26 @@ function handleStandingOrderEmail_(body, f) {
   var idx = hkIndex_();
   if (idx[id]) return false; // ההוראה כבר רשומה
 
-  var payments = parseInt(field_(body, f.payments), 10) || 0;
+  // "מס' חיובים" יכול להיות מספר או "ללא הגבלה". טקסט לא מספרי נשמר כמות
+  // שהוא — בעבר parseInt החזיר NaN וההוראה נזרקה בשקט, בלי שאיש ידע.
+  var rawPayments = field_(body, f.payments);
+  var payments = parseInt(rawPayments, 10);
+  var paymentsValue = isNaN(payments) || payments <= 0
+    ? (String(rawPayments || '').trim() || UNLIMITED_TEXT)
+    : payments;
+
   var amount = asNumber_(field_(body, f.amount));
-  if (!payments || !amount) return false;
+  if (!amount) {
+    Logger.log('⚠️ הוראת קבע ' + id + ' (' + name + ') נדחתה — לא זוהה סכום חיוב');
+    return false;
+  }
 
   appendByName_(SH.HK, {
     'מזהה':          id,
     'שם':            name,
     'תאריך פתיחה':   (field_(body, f.startDate) || '').split(' ')[0],
     'סכום':          amount,
-    'מספר תשלומים':  payments,
+    'מספר תשלומים':  paymentsValue,
     'טלפון':         field_(body, f.phone),
     'אימייל':        emailIn_(field_(body, f.email)),
     'קמפיין':        field_(body, f.campaign),
@@ -1448,26 +1612,26 @@ function handleDonationEmail_(body, msgDate, f) {
   var name = standardName(field_(body, f.name));
   if (!name) return false;
 
-  // עסקה בתשלומים אינה תרומה חד-פעמית: "סכום" במייל הזה הוא הסכום הכולל
-  // של הוראת קבע שכבר מדווחת במייל "ההוראה שהוקמה", והחיובים החודשיים
-  // מיוצרים ממנה. רישום הסכום המלא כאן = ספירה כפולה של אותו כסף.
-  //
-  // אבל לא מדלגים בשקט: אם אין הוראת קבע תואמת, הכסף היה נעלם — ולכן
-  // רושמים אזהרה בלוג במקום להתעלם.
-  if (payments > 1) {
-    var monthly = asNumber_(field_(body, f.amount)) / payments;
-    if (!hasMatchingStandingOrder_(name, monthly)) {
-      Logger.log('⚠️ עסקה בתשלומים ללא הוראת קבע תואמת: ' + name +
-                 ' · ₪' + asNumber_(field_(body, f.amount)) +
-                 ' ב-' + payments + ' תשלומים (₪' + Math.round(monthly) + ' לחודש). ' +
-                 'לבדוק ידנית — הסכום לא נרשם.');
-    }
-    return false;
-  }
-
   var amount = asNumber_(field_(body, f.amount));
   var extId = field_(body, f.id);
   var dateStr = (field_(body, f.date) || '').split(' ')[0];
+  var txDate = toDate_(dateStr) || msgDate;
+
+  // ── עסקה שנפרסה לתשלומים ────────────────────────────────────────────────
+  //
+  // שני דברים שונים לגמרי מגיעים באותו מבנה מייל:
+  //
+  //  1. **הוראת קבע** — הספק שולח גם מייל "הוראה שהוקמה", והחיובים
+  //     החודשיים מיוצרים ממנו. רישום הסכום המלא גם כאן = ספירה כפולה.
+  //  2. **תרומה חד-פעמית בתשלומי אשראי** — ₪1,200 ב-12 תשלומים. אין שום
+  //     הוראת קבע, ואם לא נרשום אותה, הכסף פשוט לא קיים.
+  //
+  // ההבחנה: האם יש הוראת קבע של אותו אדם, באותו סכום חודשי, שנפתחה בסמוך.
+  // בעבר כל עסקה בתשלומים נזרקה, ומקרה 2 רק נרשם כאזהרה ליומן הריצה —
+  // כלומר הכסף נעלם ואף אחד לא ידע.
+  if (payments > 1) {
+    if (hasMatchingStandingOrder_(name, amount / payments, txDate)) return false;
+  }
 
   // מזהה יציב מהספק. אם אין — נופלים לחתימה של שם+תאריך+סכום.
   var id = extId ? 'ned:' + extId : 'ned:' + name + '|' + dateStr + '|' + amount;
@@ -1480,17 +1644,31 @@ function handleDonationEmail_(body, msgDate, f) {
     'ייעוד':       field_(body, f.purpose),
     'אפיק גבייה':  'קישור ישיר',
     'מקור':        'מייל',
+    'סיכום ותובנות': payments > 1 ? 'שולם ב-' + payments + ' תשלומים' : '',
   });
   if (ok) ensureContact_(name, field_(body, f.phone), field_(body, f.address));
   return ok;
 }
 
-/** האם קיימת הוראת קבע לאותו אדם בערך באותו סכום חודשי (סטייה של עד ₪1). */
-function hasMatchingStandingOrder_(name, monthly) {
+/**
+ * האם העסקה הזו היא בעצם הוראת קבע שכבר רשומה אצלנו?
+ *
+ * שלושה תנאים ביחד, וכולם נחוצים: אותו אדם, אותו סכום חודשי (סטייה של עד
+ * ₪1 בגלל עיגול), **ותאריך פתיחה סמוך**. בלי תנאי התאריך, תורם שיש לו
+ * הוראת קבע ותיקה על ₪100 ותרם בנפרד ₪1,200 בשנים-עשר תשלומים היה מאבד
+ * את התרומה — היא הייתה נראית כמו אותה הוראה.
+ */
+function hasMatchingStandingOrder_(name, monthly, when) {
   var t = table_(SH.HK);
   for (var i = 0; i < t.rows.length; i++) {
     if (standardName(get_(t.rows[i], t, 'שם')) !== name) continue;
-    if (Math.abs(asNumber_(get_(t.rows[i], t, 'סכום')) - monthly) <= 1) return true;
+    if (Math.abs(asNumber_(get_(t.rows[i], t, 'סכום')) - monthly) > 1) continue;
+
+    if (when) {
+      var start = toDate_(get_(t.rows[i], t, 'תאריך פתיחה'));
+      if (start && Math.abs(start.getTime() - when.getTime()) > 35 * 86400000) continue;
+    }
+    return true;
   }
   return false;
 }
