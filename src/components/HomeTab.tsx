@@ -9,9 +9,12 @@ import { ThankYouLetterModal } from './ThankYouLetterModal';
 import { StandingOrdersModal } from './StandingOrdersModal';
 import { getCustomHols } from '../lib/api';
 import { computePersonalDateEvents } from '../lib/personalDates';
+import { parseDdMmYyyy } from '../lib/dateUtils';
 import { countHkByStatus, isMonthlyReminderReviewed, markMonthlyReminderReviewed } from '../lib/standingOrders';
 import { HDate } from '@hebcal/core';
 import { toCanonicalHebrewString } from '../lib/hebrewDates';
+
+const FAILURE_WINDOW_DAYS = 30;
 
 export function HomeTab({ setTab, onDonationClick, onQuickAdd }: { setTab: (t: string) => void, onDonationClick: () => void, onQuickAdd: (tab: string) => void }) {
   const { summary, effectiveSummary, donations, failures, hk, rebbeDate, crm, visibleDonors, shabbat, holidays, hebrewDate, updateRebbeDate, holidayExtras, eventsData, settings } = useAppStore();
@@ -298,22 +301,36 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd }: { setTab: (t: s
     </div>
   );
 
+  // ── שגיאות חיוב בדשבורד: רק מהחודש האחרון ────────────────────────────────
+  //
+  // לשונית כשלי החיוב היא יומן היסטורי מלא, וזה נכון — אבל הדשבורד הוא מסך
+  // "מה דורש טיפול עכשיו". סירוב מלפני חצי שנה שכבר טופל אינו משימה פתוחה,
+  // והצגתו כאן רק מלמדת להתעלם מהכותרת האדומה.
+  const recentFailures = React.useMemo(() => {
+    const cutoff = Date.now() - FAILURE_WINDOW_DAYS * 86400000;
+    return failures.filter((f: any) => {
+      const d = parseDdMmYyyy(String(f.date || '').split(' ')[0]);
+      return !d || d.getTime() >= cutoff;   // בלי תאריך — לא מסתירים
+    });
+  }, [failures]);
+
   const renderFailures = () => {
-    if (failures.length === 0) return null;
+    if (recentFailures.length === 0) return null;
     return (
       <div>
         <div className="flex justify-between items-center mb-3">
           <h2 className="font-['Frank_Ruhl_Libre'] text-lg font-bold text-red-600 flex items-center gap-2">
             <AlertTriangle size={18} /> שגיאות חיוב
+            <span className="text-[11px] font-normal text-gray-400">· {FAILURE_WINDOW_DAYS} הימים האחרונים</span>
           </h2>
-          {failures.length > 3 && (
+          {recentFailures.length > 3 && (
             <button onClick={() => setSelectedMethodForDetails('failures_modal')} className="text-xs font-semibold text-red-600 flex items-center">
-              הצג הכל ({failures.length}) <ChevronLeft size={14} />
+              הצג הכל ({recentFailures.length}) <ChevronLeft size={14} />
             </button>
           )}
         </div>
         <div className="space-y-2">
-          {failures.slice(0, 3).map((f, i) => (
+          {recentFailures.slice(0, 3).map((f, i) => (
             <div key={i} className="bg-red-50 rounded-xl p-3 pr-4 border-r-4 border-red-500 flex items-start gap-3 cursor-pointer" onClick={() => setSelectedDonor(f.name)}>
               <span className="text-xl shrink-0 mt-0.5">❌</span>
               <div>
@@ -334,7 +351,7 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd }: { setTab: (t: s
     if (hkReminderDismissed || hk.length === 0) return null;
     const threshold = settings.hkExpiringThreshold ?? 2;
     const counts = countHkByStatus(hk, threshold);
-    const failCount = failures.filter(f => hk.some(h => h.name === f.name)).length;
+    const failCount = recentFailures.filter(f => hk.some(h => h.name === f.name)).length;
     if (counts.expiring === 0 && counts.expired === 0 && failCount === 0) return null;
 
     const dismiss = () => { markMonthlyReminderReviewed(); setHkReminderDismissed(true); };

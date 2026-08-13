@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Bot, X, Copy, Check, Sparkles, Trash2, Undo2 } from 'lucide-react';
+import { Bot, X, Copy, Check, Sparkles, Trash2, Undo2, Download } from 'lucide-react';
 import { useAppStore } from '../store/AppContext';
 import { buildHolidayList } from '../lib/holidayList';
 import { getCustomHols, saveCustomHols, apiPost } from '../lib/api';
@@ -187,6 +187,50 @@ export function GlobalAIImportModal({ onClose }: { onClose: () => void }) {
     }, null, 2));
     parts.push('```');
     setPrompt(parts.join('\n'));
+  };
+
+  // ── גיבוי מלא, באותה תבנית בדיוק ─────────────────────────────────────────
+  //
+  // הקובץ שיוצא מכאן הוא בדיוק המבנה שהמסך הזה קולט. זה נשמע מיותר עד
+  // שמנסים: ייצוא ל-CSV מאבד חצי מהשדות ואת כל הקשרים, וקובץ שלא חוזר
+  // פנימה הוא לא גיבוי אלא דוח.
+  //
+  // אפשר להדביק אותו כאן ישירות בלי AI, ואפשר לתת אותו ל-AI יחד עם מידע
+  // נוסף ולבקש שימזג — וזה בדיוק מה ש-AI טוב בו.
+  const downloadBackup = () => {
+    const backup = {
+      contacts: Object.values(donors).map((d: any) => {
+        const out: Record<string, any> = { 'שם מלא': d.name };
+        const c = (donors as any)[d.name] || {};
+        Object.keys(c).forEach(k => {
+          if (['name', 'donations', 'total', 'lastDate'].includes(k)) return;
+          if (c[k] !== undefined && c[k] !== '') out[k] = c[k];
+        });
+        return out;
+      }),
+      events: (eventsData as any[]).map(e => ({
+        name: e.name, type: e.type, freq: e.freq, date: e.date, time: e.time,
+      })),
+      projects: (projects as any[]).map(p => ({
+        name: p.name, kind: p.kind, goal: p.goal, deadline: p.deadline || '', notes: p.notes || '',
+      })),
+      holidays: getCustomHols().map((h: any) => ({ name: h.name, date: h.date, desc: h.desc || '' })),
+      items: Object.entries(holidayExtras).flatMap(([id, extra]: any) =>
+        (extra?.tasks || []).filter((t: any) => !t.done).map((t: any) => ({
+          text: t.text,
+          targetKind: id === STANDALONE_TASKS_ID ? 'standalone' : 'holiday',
+          targetLabel: id === STANDALONE_TASKS_ID ? '' : id,
+        }))
+      ),
+    };
+
+    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `גיבוי-${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const copyPrompt = async () => {
@@ -435,9 +479,18 @@ export function GlobalAIImportModal({ onClose }: { onClose: () => void }) {
               בדיוק מה עומד להיכנס, ולאן.
             </p>
             {!prompt ? (
-              <button onClick={buildPrompt} className="w-full flex items-center justify-center gap-2 bg-purple-600 text-white text-sm font-bold py-2.5 rounded-xl active:scale-95 transition-transform">
-                <Sparkles size={15} /> צור פרומפט
-              </button>
+              <>
+                <button onClick={buildPrompt} className="w-full flex items-center justify-center gap-2 bg-purple-600 text-white text-sm font-bold py-2.5 rounded-xl active:scale-95 transition-transform">
+                  <Sparkles size={15} /> צור פרומפט
+                </button>
+                <button onClick={downloadBackup} className="w-full flex items-center justify-center gap-2 border border-[#EDE6D6] text-gray-600 text-xs font-bold py-2 rounded-xl hover:bg-gray-50">
+                  <Download size={14} /> הורד גיבוי מלא (JSON)
+                </button>
+                <p className="text-[10px] text-gray-400 leading-relaxed">
+                  הגיבוי יוצא בדיוק באותה תבנית שהמסך הזה קולט — אפשר להדביק אותו כאן
+                  בחזרה בלי AI, או לתת אותו ל-AI יחד עם מידע נוסף ולבקש שימזג.
+                </p>
+              </>
             ) : (
               <>
                 <div className="relative">

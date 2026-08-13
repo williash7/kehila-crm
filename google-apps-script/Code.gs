@@ -784,6 +784,21 @@ function getFailures_() {
  * חשוב: הסכום כולל את חיובי הוראות הקבע, כי הם יושבים באותו יומן כמו
  * כל תרומה אחרת. בגרסה הקודמת הם ישבו בלשונית נפרדת ולא נספרו כלל.
  */
+/** חלון הזמן שבו כשל חיוב נחשב "דורש טיפול" בדשבורד. */
+var FAILURE_WINDOW_DAYS = 30;
+
+function recentFailureCount_(now) {
+  var t = table_(SH.FAILURES);
+  var cutoff = now.getTime() - FAILURE_WINDOW_DAYS * 86400000;
+  var n = 0;
+  t.rows.forEach(function (r) {
+    if (!fmt_(get_(r, t, 'שם'))) return;
+    var d = toDate_(get_(r, t, 'תאריך'));
+    if (!d || d.getTime() >= cutoff) n++;   // בלי תאריך — סופרים, לא מסתירים
+  });
+  return n;
+}
+
 function getSummary_() {
   var donations = getDonations_();
   var hk = getHK_();
@@ -808,7 +823,9 @@ function getSummary_() {
     thisMonthTotal: thisMonth,
     donorCount: Object.keys(names).length,
     hkActive: hk.filter(function (h) { return h.active; }).length,
-    failureCount: getFailures_().length,
+    // רק כשלים מהחודש האחרון. הלשונית עצמה נשארת יומן היסטורי מלא, אבל
+    // הדשבורד הוא מסך "מה דורש טיפול" — וסירוב מלפני חצי שנה כבר לא כזה.
+    failureCount: recentFailureCount_(now),
     byMethod: byMethod,
   };
 }
