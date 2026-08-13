@@ -439,10 +439,54 @@ function doGet(e) {
 function doPost(e) {
   return json_(safe_(function () {
     var body = JSON.parse((e && e.postData && e.postData.contents) || '{}');
+
+    // ── בקשת כתיבה שמותר לשלוח שוב ──────────────────────────────────────
+    //
+    // תשובה של גוגל יכולה ללכת לאיבוד בדרך — עומס רגעי, רשת, או תוסף
+    // בדפדפן שמשכפל בקשות. האפליקציה לא יכולה לדעת אם הפעולה נרשמה או
+    // לא, ולכן לא העזנו לשלוח שוב: תרומה שנרשמה פעמיים גרועה מתרומה
+    // שנכשלה. התוצאה הייתה שכל תקלה רגעית הפילה כל פעולת כתיבה.
+    //
+    // הפתרון: האפליקציה מצרפת מזהה ייחודי לכל בקשה. אם אותו מזהה חוזר,
+    // מחזירים את התשובה השמורה בלי לבצע שוב. כך שליחה חוזרת בטוחה
+    // לחלוטין, וגם אם הבקשה נשלחה שלוש פעמים היא בוצעה בדיוק פעם אחת.
+    var reqId = String(body.reqId || '').trim();
+    if (reqId) {
+      var cached = recallRequest_(reqId);
+      if (cached) return cached;
+    }
+
     var res = route_(body.action || '', body);
     flushWrites_();
+    if (reqId) rememberRequest_(reqId, res);
     return res;
   }));
+}
+
+var REQ_LIST_KEY = 'recentRequests';
+var REQ_KEEP = 40;   // מספיק לכיסוי ניסיונות חוזרים, בלי לנפח את האחסון
+
+function recallRequest_(id) {
+  try {
+    var raw = PropertiesService.getScriptProperties().getProperty('req:' + id);
+    return raw ? JSON.parse(raw) : null;
+  } catch (err) {
+    return null;   // ספק — עדיף לבצע מחדש מאשר להיתקע
+  }
+}
+
+function rememberRequest_(id, res) {
+  try {
+    var props = PropertiesService.getScriptProperties();
+    props.setProperty('req:' + id, JSON.stringify(res));
+
+    var list = (props.getProperty(REQ_LIST_KEY) || '').split(',').filter(String);
+    list.push(id);
+    while (list.length > REQ_KEEP) props.deleteProperty('req:' + list.shift());
+    props.setProperty(REQ_LIST_KEY, list.join(','));
+  } catch (err) {
+    Logger.log('שמירת מזהה הבקשה נכשלה: ' + err);
+  }
 }
 
 function safe_(fn) {
@@ -566,6 +610,8 @@ function route_(action, body) {
     case 'saveConfig':        writeSync_('orgConfig', body.data);      return { success: true };
 
     case 'addDonation':        return addDonation_(body);
+    case 'updateDonation':     return updateDonation_(body);
+    case 'deleteDonation':     return deleteDonation_(body);
     case 'addMeeting':         return addMeeting_(body);
     case 'addStandingOrder':   return addStandingOrder_(body);
     case 'cancelStandingOrder': return cancelStandingOrder_(body);
@@ -738,6 +784,21 @@ function getFailures_() {
  * חשוב: הסכום כולל את חיובי הוראות הקבע, כי הם יושבים באותו יומן כמו
  * כל תרומה אחרת. בגרסה הקודמת הם ישבו בלשונית נפרדת ולא נספרו כלל.
  */
+/** חלון הזמן שבו כשל חיוב נחשב "דורש טיפול" בדשבורד. */
+var FAILURE_WINDOW_DAYS = 30;
+
+function recentFailureCount_(now) {
+  var t = table_(SH.FAILURES);
+  var cutoff = now.getTime() - FAILURE_WINDOW_DAYS * 86400000;
+  var n = 0;
+  t.rows.forEach(function (r) {
+    if (!fmt_(get_(r, t, 'שם'))) return;
+    var d = toDate_(get_(r, t, 'תאריך'));
+    if (!d || d.getTime() >= cutoff) n++;   // בלי תאריך — סופרים, לא מסתירים
+  });
+  return n;
+}
+
 function getSummary_() {
   var donations = getDonations_();
   var hk = getHK_();
@@ -762,7 +823,9 @@ function getSummary_() {
     thisMonthTotal: thisMonth,
     donorCount: Object.keys(names).length,
     hkActive: hk.filter(function (h) { return h.active; }).length,
-    failureCount: getFailures_().length,
+    // רק כשלים מהחודש האחרון. הלשונית עצמה נשארת יומן היסטורי מלא, אבל
+    // הדשבורד הוא מסך "מה דורש טיפול" — וסירוב מלפני חצי שנה כבר לא כזה.
+    failureCount: recentFailureCount_(now),
     byMethod: byMethod,
   };
 }
@@ -906,6 +969,85 @@ function cancelStandingOrder_(body) {
   }
 
   return { success: false, error: 'הוראת קבע ' + id + ' לא נמצאה' };
+}
+
+/**
+ * ── עריכת שורה ביומן ──────────────────────────────────────────────────────
+ *
+ * טעות בהקלדה — אפיק גבייה שגוי, סכום שהוקלד לא נכון, ייעוד שנשכח — היא
+ * הדבר השכיח ביותר, ועד עכשיו לא הייתה שום דרך לתקן אותה מהאפליקציה.
+ *
+ * מעדכנים רק שדות שנשלחו בפועל. שדה שלא נשלח נשאר כמו שהוא, כך שאפשר
+ * לשנות דבר אחד בלי לדרוס בטעות את השאר.
+ */
+function updateDonation_(body) {
+  var id = String(body.id || '').trim();
+  if (!id) return { success: false, error: 'חסר מזהה התרומה' };
+
+  var t = table_(SH.LOG);
+  if (!t.sheet) return { success: false, error: 'לשונית היומן לא נמצאה' };
+
+  var cId = t.col('מזהה');
+  if (cId < 0) return { success: false, error: 'עמודת המזהה לא נמצאה' };
+
+  var row = -1;
+  for (var i = 0; i < t.rows.length; i++) {
+    if (String(t.rows[i][cId] || '').trim() === id) { row = i + 2; break; }
+  }
+  if (row < 0) return { success: false, error: 'התרומה לא נמצאה ביומן' };
+
+  var map = {
+    'שם':            body.name === undefined ? undefined : standardName(body.name),
+    'תאריך תרומה':   body.date,
+    'סכום':          body.amount === undefined ? undefined : asNumber_(body.amount),
+    'ייעוד':         body.purpose,
+    'אפיק גבייה':    body.method,
+    'סיכום ותובנות': body.notes,
+  };
+
+  var changed = [];
+  Object.keys(map).forEach(function (col) {
+    if (map[col] === undefined) return;
+    var c = t.col(col);
+    if (c < 0) return;
+    t.sheet.getRange(row, c + 1).setValue(map[col]);
+    changed.push(col);
+  });
+
+  if (body.name) { ensureContact_(standardName(body.name), body.phone, body.address); flushWrites_(); }
+  Logger.log('תרומה ' + id + ' עודכנה: ' + changed.join(', '));
+  return { success: true, id: id, changed: changed };
+}
+
+/**
+ * מחיקת שורה מהיומן.
+ *
+ * חיוב של הוראת קבע (מזהה שמתחיל ב-hk:) חסום כאן במכוון: מנוע ההוראות
+ * ייצר אותו מחדש בריצה הבאה, והמשתמש היה נלחם בו שוב ושוב בלי להבין.
+ * את אלה עוצרים בתאריך ביטול או בשינוי סכום — ההודעה אומרת את זה.
+ */
+function deleteDonation_(body) {
+  var id = String(body.id || '').trim();
+  if (!id) return { success: false, error: 'חסר מזהה התרומה' };
+
+  if (id.indexOf('hk:') === 0) {
+    return { success: false, error:
+      'זהו חיוב של הוראת קבע, והוא ייווצר מחדש אם יימחק. ' +
+      'כדי לעצור את ההוראה השתמשו ב"בטל הוראה", ולשינוי סכום ב"שינוי סכום".' };
+  }
+
+  var t = table_(SH.LOG);
+  var cId = t.col('מזהה');
+  if (!t.sheet || cId < 0) return { success: false, error: 'לשונית היומן לא נמצאה' };
+
+  for (var i = 0; i < t.rows.length; i++) {
+    if (String(t.rows[i][cId] || '').trim() !== id) continue;
+    t.sheet.deleteRow(i + 2);
+    _logIds = null;   // המזהה פנוי שוב, אם אותו מייל ייסרק בעתיד
+    Logger.log('תרומה ' + id + ' נמחקה');
+    return { success: true, id: id };
+  }
+  return { success: false, error: 'התרומה לא נמצאה ביומן' };
 }
 
 /**
