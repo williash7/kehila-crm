@@ -4,7 +4,7 @@ import { Plus, X, Target, Wallet, Users, Trash2, Search, CheckCircle2 } from 'lu
 import { BudgetEditor, emptyBudget } from './BudgetEditor';
 import {
   Project, Solicitation, SolicitationStatus, emptyProject, projectProgress,
-  projectDonations, syncSolicitationsWithDonations,
+  projectDonations, syncSolicitationsWithDonations, buildGivingIndex, suggestedAsk, totalAsk,
   SOLICITATION_LABEL, SOLICITATION_COLOR, SOLICITATION_ORDER,
 } from '../lib/projects';
 import { logAction } from '../lib/score';
@@ -195,11 +195,35 @@ function ProjectDetail({ project, donations, donorNames, crm, pane, setPane, add
   const setSol = (idx: number, changes: Partial<Solicitation>) =>
     onPatch({ solicitations: sols.map((s, i) => (i === idx ? { ...s, ...changes } : s)) });
 
+  // מדד נתינה לכל תורם — נבנה פעם אחת ומשמש את כל השורות
+  const giving = React.useMemo(
+    () => buildGivingIndex(donations, project.purposeTag),
+    [donations, project.purposeTag]
+  );
+
   const addPerson = (name: string) => {
     if (sols.some(s => s.name === name)) return;
-    onPatch({ solicitations: [...sols, { name, status: 'todo' }] });
+    onPatch({ solicitations: [...sols, { name, status: 'todo', ask: suggestedAsk(giving[name]) || '' }] });
     setAddPersonSearch('');
   };
+
+  // ── הוספה מרוכזת ────────────────────────────────────────────────────────
+  // קמפיין אמיתי מתחיל מהרשימה כולה, לא מהקלדת מאתיים שמות אחד-אחד. כל
+  // אדם נכנס עם סכום מוצע לפי מה שנתן בעבר — נקודת פתיחה, לא החלטה.
+  const addMany = (names: string[]) => {
+    const existing = new Set(sols.map(s => s.name));
+    const fresh = names.filter(n => n && !existing.has(n));
+    if (!fresh.length) return;
+    onPatch({
+      solicitations: [
+        ...sols,
+        ...fresh.map(name => ({ name, status: 'todo' as SolicitationStatus, ask: suggestedAsk(giving[name]) || '' })),
+      ],
+    });
+  };
+
+  const gaveLastYear = donorNames.filter(n => (giving[n]?.lastYear || 0) > 0);
+  const askSum = totalAsk(sols);
 
   const candidates = donorNames
     .filter(n => !sols.some(s => s.name === n))
@@ -304,7 +328,41 @@ function ProjectDetail({ project, donations, donorNames, crm, pane, setPane, add
                       ))}
                   </div>
                 )}
+
+                {!addPersonSearch && (
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    <button onClick={() => addMany(gaveLastYear)}
+                      className="text-xs font-bold bg-[#0D1B2A] text-[#C9A84C] px-2.5 py-1.5 rounded-lg">
+                      + כל מי שתרם השנה ({gaveLastYear.filter(n => !sols.some(s => s.name === n)).length})
+                    </button>
+                    <button onClick={() => addMany(donorNames)}
+                      className="text-xs font-bold bg-white border border-[#EDE6D6] text-gray-600 px-2.5 py-1.5 rounded-lg">
+                      + כל אנשי הקשר ({donorNames.filter(n => !sols.some(s => s.name === n)).length})
+                    </button>
+                  </div>
+                )}
               </div>
+
+              {/* האם הרשימה בכלל מכסה את היעד */}
+              {sols.length > 0 && (
+                <div className="bg-white rounded-xl border border-[#EDE6D6] p-3 flex items-center justify-between gap-3 text-sm">
+                  <div>
+                    <div className="text-[10px] text-gray-400 font-bold uppercase">סה"כ מבוקש מהרשימה</div>
+                    <div className="font-['Frank_Ruhl_Libre'] font-bold text-lg text-[#0D1B2A]">
+                      ₪{askSum.toLocaleString()}
+                    </div>
+                  </div>
+                  {Number(project.goal) > 0 && (
+                    <div className={`text-xs font-bold px-2.5 py-1.5 rounded-lg ${
+                      askSum >= Number(project.goal) ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+                    }`}>
+                      {askSum >= Number(project.goal)
+                        ? 'הרשימה מכסה את היעד'
+                        : `חסר ₪${(Number(project.goal) - askSum).toLocaleString()} ברשימה`}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {sols.length === 0 ? (
                 <p className="text-sm text-gray-400 text-center py-6 leading-relaxed">
@@ -324,9 +382,9 @@ function ProjectDetail({ project, donations, donorNames, crm, pane, setPane, add
                             <div className="flex items-center gap-1.5 shrink-0">
                               {s.status === 'pledged' && (
                                 <input
-                                  type="number" value={s.pledged ?? ''} placeholder="סכום"
+                                  type="number" value={s.pledged ?? ''} placeholder="הבטיח"
                                   onChange={e => setSol(i, { pledged: e.target.value })}
-                                  className="w-20 border border-[#EDE6D6] rounded-lg px-2 py-1 text-xs outline-none focus:border-[#C9A84C]"
+                                  className="w-[68px] border border-amber-200 bg-amber-50 rounded-lg px-2 py-1 text-xs outline-none focus:border-[#C9A84C]"
                                 />
                               )}
                               <select
@@ -340,6 +398,30 @@ function ProjectDetail({ project, donations, donorNames, crm, pane, setPane, add
                                       className="text-gray-300 hover:text-red-500"><Trash2 size={13} /></button>
                             </div>
                           </div>
+
+                          {/* כמה לבקש, ומול מה — בלי זה השורה היא שם ותו לא */}
+                          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                            <label className="flex items-center gap-1 text-[11px] text-gray-500">
+                              לבקש
+                              <input
+                                type="number" value={s.ask ?? ''} placeholder="₪"
+                                onChange={e => setSol(i, { ask: e.target.value })}
+                                className="w-[68px] border border-[#EDE6D6] rounded-lg px-2 py-1 text-xs outline-none focus:border-[#C9A84C]"
+                              />
+                            </label>
+                            {(() => {
+                              const g = giving[s.name];
+                              if (!g) return <span className="text-[11px] text-gray-400">לא תרם מעולם</span>;
+                              return (
+                                <span className="text-[11px] text-gray-500">
+                                  שנה אחרונה <b className="text-[#0D1B2A]">₪{g.lastYear.toLocaleString()}</b>
+                                  {' · '}מאז ומעולם <b className="text-[#0D1B2A]">₪{g.allTime.toLocaleString()}</b>
+                                  {g.toProject > 0 && <> · <b className="text-emerald-700">₪{g.toProject.toLocaleString()} לפרויקט</b></>}
+                                </span>
+                              );
+                            })()}
+                          </div>
+
                           {crm[s.name]?.phone && <div className="text-[11px] text-gray-400 mt-0.5">{crm[s.name].phone}</div>}
                         </div>
                       ))}

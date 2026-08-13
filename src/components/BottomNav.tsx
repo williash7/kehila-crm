@@ -1,11 +1,14 @@
 import React from 'react';
-import { Home, Users, CalendarDays, PieChart, CalendarCheck, Settings, ClipboardList, TrendingUp, HandCoins, History, DoorOpen } from 'lucide-react';
+import { Home, Users, CalendarDays, PieChart, CalendarCheck, Settings, ClipboardList, TrendingUp, HandCoins, History, DoorOpen, Target, Image as ImageIcon, BookOpen } from 'lucide-react';
 
 interface BottomNavProps {
   currentTab: string;
   setTab: (tab: string) => void;
 }
 
+// הסרגל נגלל אופקית, ולכן אין תקרה למספר המסכים. חשוב מכך: כל מסך שקיים
+// בסיידבר של המחשב חייב להיות גם כאן — מסך שאי אפשר להגיע אליו מהטלפון
+// הוא מסך שלא קיים, וזה בדיוק מה שקרה לפרויקטים, לפוסטר ולמדריך.
 export function BottomNav({ currentTab, setTab }: BottomNavProps) {
   const navItems = [
     { id: 'home', icon: Home, label: 'דשבורד' },
@@ -15,9 +18,12 @@ export function BottomNav({ currentTab, setTab }: BottomNavProps) {
     { id: 'homevisits', icon: DoorOpen, label: 'ביקורי בית' },
     { id: 'donations', icon: HandCoins, label: 'תרומות' },
     { id: 'events', icon: CalendarCheck, label: 'אירועים' },
+    { id: 'projects', icon: Target, label: 'פרויקטים' },
     { id: 'calendar', icon: CalendarDays, label: 'חגים' },
     { id: 'history', icon: History, label: 'היסטוריה' },
     { id: 'reports', icon: PieChart, label: 'דוחות' },
+    { id: 'poster', icon: ImageIcon, label: 'פוסטר' },
+    { id: 'guide', icon: BookOpen, label: 'מדריך' },
     { id: 'settings', icon: Settings, label: 'הגדרות' },
   ];
 
