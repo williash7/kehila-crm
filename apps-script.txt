@@ -54,6 +54,21 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
+/**
+ * חותמת הגרסה של הקובץ הזה.
+ *
+ * הבעיה שהיא פותרת: אחרי הדבקה ופריסה אין שום דרך לדעת אם הגיליון באמת
+ * מריץ את הקוד החדש. Apps Script מגיש תמונת מצב מרגע הפריסה, ולכן קוד
+ * שנשמר אבל לא נפרס נראה מעודכן בעורך ומיושן בפועל — וכל הבדיקות
+ * נראות תקינות בזמן שהאפליקציה מדברת עם גרסה בת שבוע.
+ *
+ * החותמת מוחזרת ב-ping ובסיכום, ומוצגת באפליקציה תחת הגדרות. אחרי כל
+ * פריסה אפשר לוודא בחמש שניות שהמספר השתנה.
+ *
+ * **מעדכנים אותה בכל שינוי מהותי בקובץ.**
+ */
+var CODE_VERSION = '2026-08-18';
+
 // ── שמות הלשוניות ────────────────────────────────────────────────────────────
 var SH = {
   CONTACTS: 'אנשי קשר',
@@ -83,8 +98,13 @@ var COLS = {
   // מייל כשהוראה מבוטלת — לא כשאתה מבטל אותה בממשק, ולא כשהתורם מבקש.
   // בלי השדה הזה הגיליון ממשיך לייצר חיובים לנצח על הוראה מתה.
   // חיובים שתאריכם לפני התאריך הזה נשארים ונספרים; ממנו והלאה — לא.
+  //
+  // "חידוש של" מחזיק את מספר ההוראה הקודמת של אותו תורם. חידוש אינו עדכון
+  // של השורה הישנה אלא שורה חדשה — כי בפועל זו הוראה אחרת אצל הספק, עם
+  // מספר משלה, תאריך משלה ולעיתים סכום אחר. השדה הזה הוא מה שמונע מהאפליקציה
+  // "להתחיל מאפס": דרכו היא מחברת חזרה את כל שרשרת ההוראות של אותו אדם.
   HK: ['מזהה', 'שם', 'תאריך פתיחה', 'סכום', 'מספר תשלומים',
-       'טלפון', 'אימייל', 'קמפיין', 'תאריך ביטול', 'הערות'],
+       'טלפון', 'אימייל', 'קמפיין', 'תאריך ביטול', 'חידוש של', 'הערות'],
 
   FAILURES: ['תאריך', 'שם', 'מזהה הוראה', 'סכום', 'סיבה'],
   ALIASES:  ['שם שגוי / כפילות', 'השם התקין'],
@@ -593,7 +613,8 @@ function route_(action, body) {
 
   switch (action) {
     // קריאה
-    case 'ping':             return { ok: true, sheet: SpreadsheetApp.getActiveSpreadsheet().getName() };
+    case 'ping':             return { ok: true, version: CODE_VERSION,
+                                      sheet: SpreadsheetApp.getActiveSpreadsheet().getName() };
     case 'getSummary':       return getSummary_();
     case 'getDonations':     return { donations: getDonations_() };
     case 'getDonors':        return { donors: getDonors_() };
@@ -627,7 +648,9 @@ function route_(action, body) {
     case 'addStandingOrder':   return addStandingOrder_(body);
     case 'cancelStandingOrder': return cancelStandingOrder_(body);
     case 'updateStandingOrderAmount': return updateStandingOrderAmount_(body);
+    case 'renewStandingOrder': return renewStandingOrder_(body);
     case 'updateDonorField':   return updateDonorField_(body);
+    case 'deleteContactColumns': return deleteContactColumns_(body);
     case 'updatePersonalDate': return updateDonorField_(body);
     case 'createHolidayDoc':   return createHolidayDoc_(body);
     case 'importRows':         return importRows_(body);
@@ -733,6 +756,7 @@ function getHK_() {
       remaining:  remaining,
       lastBilled: done.last ? asDate_(done.last) : '',
       cancelDate: asDate_(get_(r, t, 'תאריך ביטול')),
+      renewalOf:  String(get_(r, t, 'חידוש של') || '').trim(),
       active:     !cancelDate && (unlimited || remaining > 0),
     };
   }).filter(function (h) { return h.name; });
@@ -834,6 +858,7 @@ function getSummary_() {
     thisMonthTotal: thisMonth,
     donorCount: Object.keys(names).length,
     hkActive: hk.filter(function (h) { return h.active; }).length,
+    codeVersion: CODE_VERSION,
     // רק כשלים מהחודש האחרון. הלשונית עצמה נשארת יומן היסטורי מלא, אבל
     // הדשבורד הוא מסך "מה דורש טיפול" — וסירוב מלפני חצי שנה כבר לא כזה.
     failureCount: recentFailureCount_(now),
@@ -937,6 +962,132 @@ function addStandingOrder_(body) {
  *
  * body.date ריק = ביטול הביטול: מנקה את התאריך והחיובים חוזרים.
  */
+// ─────────────────────────────────────────────────────────────────────────────
+// חידוש הוראת קבע.
+//
+// כשתורם מחדש הוראה שהסתיימה, נדרים פלוס פותחת אצלה **הוראה חדשה עם מספר
+// חדש** — ולכן גם כאן זו שורה חדשה, ולא עריכה של הישנה. הפיתוי לדרוס את
+// השורה הקיימת גדול (שורה אחת לכל תורם, נוח), אבל המחיר הוא בדיוק מה
+// שהתלוננת עליו: תאריך הפתיחה קופץ קדימה, מונה החיובים מתאפס, וכל מה
+// שהאיש נתן עד היום נמחק מהמסך.
+//
+// השורה החדשה מצביעה על הישנה דרך "חידוש של", וכך שתיהן נשארות שלמות:
+// החיובים הישנים עם הסכום שבו באמת נגבו, החדשים עם הסכום החדש, וההיסטוריה
+// מצטרפת לשרשרת אחת שהאפליקציה יודעת להציג.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** מועד החיוב הראשון שאחרי סוף ההוראה — הנקודה שממנה נכון להתחיל חידוש. */
+function hkNextSlot_(start, payments, unlimited, cancelDate) {
+  if (!start) return null;
+  if (cancelDate) return cancelDate;
+  var billingDay = start.getDate();
+  var months = unlimited
+    ? ((new Date()).getFullYear() - start.getFullYear()) * 12 +
+      ((new Date()).getMonth() - start.getMonth()) + 1
+    : (payments || 0);
+  var c = new Date(start.getFullYear(), start.getMonth() + months, 1);
+  return new Date(c.getFullYear(), c.getMonth(),
+                  Math.min(billingDay, daysInMonth_(c.getFullYear(), c.getMonth())));
+}
+
+function renewStandingOrder_(body) {
+  var id = String(body.id || '').trim();
+  if (!id) return { success: false, error: 'חסר מזהה ההוראה שמחדשים' };
+
+  var t = table_(SH.HK);
+  if (!t.sheet) return { success: false, error: 'לשונית הוראות הקבע לא נמצאה' };
+  if (t.col('חידוש של') < 0) {
+    return { success: false, error: 'העמודה "חידוש של" חסרה — הריצו setupSheet פעם אחת' };
+  }
+
+  var row = -1, r = null;
+  for (var i = 0; i < t.rows.length; i++) {
+    if (String(get_(t.rows[i], t, 'מזהה') || '').trim() === id) { row = i + 2; r = t.rows[i]; break; }
+  }
+  if (row < 0) return { success: false, error: 'הוראת קבע ' + id + ' לא נמצאה' };
+
+  var name = standardName(get_(r, t, 'שם'));
+  var oldStart = toDate_(get_(r, t, 'תאריך פתיחה'));
+  var oldCancel = toDate_(get_(r, t, 'תאריך ביטול'));
+  var oldRawPay = get_(r, t, 'מספר תשלומים');
+  var oldUnlimited = isUnlimited_(oldRawPay);
+  var oldPayments = asNumber_(oldRawPay) || 0;
+  var oldAmount = asNumber_(get_(r, t, 'סכום'));
+
+  var amount = asNumber_(body.amount) || oldAmount;
+  if (!amount || amount <= 0) return { success: false, error: 'סכום חייב להיות גדול מאפס' };
+
+  var unlimited = body.unlimited === undefined
+    ? (isUnlimited_(body.payments) || (body.payments === undefined && oldUnlimited))
+    : !!body.unlimited;
+  var payments = asNumber_(body.payments) || (unlimited ? 0 : oldPayments);
+  if (!unlimited && !payments) return { success: false, error: 'חסר מספר תשלומים לחידוש' };
+
+  var start = body.startDate ? toDate_(body.startDate)
+                             : hkNextSlot_(oldStart, oldPayments, oldUnlimited, oldCancel);
+  if (!start) return { success: false, error: 'לא הצלחתי לקבוע תאריך התחלה לחידוש' };
+
+  // מזהה חדש. אם יש בידך את מספר ההוראה האמיתי מנדרים פלוס — הוא עדיף:
+  // מיילי הסירוב נושאים אותו, וזה מה שמצמיד כשל להוראה הנכונה.
+  var newId = String(body.newId || '').trim();
+  if (!newId) {
+    // מתבססים על **המזהה השורשי** ולא על זה שמחדשים: חידוש של חידוש היה
+    // מייצר "ren:ren:8002:2:2" ואחריו שרשרת שאי אפשר לקרוא בגיליון.
+    var rootMatch = String(id).match(/^ren:(.+):\d+$/);
+    var root = rootMatch ? rootMatch[1] : id;
+    var n = 2;
+    while (hkIndex_()['ren:' + root + ':' + n]) n++;
+    newId = 'ren:' + root + ':' + n;
+  }
+  if (hkIndex_()[newId]) {
+    return { success: false, error: 'הוראת קבע במספר ' + newId + ' כבר קיימת בגיליון' };
+  }
+
+  // ── ההוראה הישנה עדיין רצה אל תוך תקופת החידוש? ─────────────────────────
+  // אז החידוש מחליף אותה מאותו יום. בלי זה שתי ההוראות היו מייצרות חיובים
+  // במקביל, והתורם היה נראה כמי שמשלם פעמיים בחודש.
+  var closedOld = '';
+  var stillRunning = !oldCancel && (oldUnlimited || futureCharges_(oldStart, oldPayments, start, null) > 0);
+  if (stillRunning) {
+    var cCancel = t.col('תאריך ביטול');
+    t.sheet.getRange(row, cCancel + 1).setValue(start);
+    closedOld = asDate_(start);
+  }
+
+  var cNotes = t.col('הערות');
+  if (cNotes >= 0) {
+    var prev = String(r[cNotes] || '').trim();
+    var note = 'חודשה בהוראה ' + newId + ' מ-' + asDate_(start);
+    t.sheet.getRange(row, cNotes + 1).setValue(prev ? prev + ' · ' + note : note);
+  }
+
+  appendByName_(SH.HK, {
+    'מזהה':          newId,
+    'שם':            name,
+    'תאריך פתיחה':   start,
+    'סכום':          amount,
+    'מספר תשלומים':  unlimited ? UNLIMITED_TEXT : payments,
+    'טלפון':         fmt_(get_(r, t, 'טלפון')),
+    'אימייל':        fmt_(get_(r, t, 'אימייל')),
+    'קמפיין':        body.campaign || fmt_(get_(r, t, 'קמפיין')),
+    'חידוש של':      id,
+    'הערות':         'חידוש של הוראה ' + id +
+                     (amount !== oldAmount ? ' · הסכום עודכן מ-₪' + oldAmount + ' ל-₪' + amount : ''),
+  });
+
+  flushWrites_();
+  _hkIndex = null;
+  _logIds = null;
+  var created = generateStandingOrderCharges();
+
+  return {
+    success: true, id: newId, renewalOf: id, name: name,
+    amount: amount, startDate: asDate_(start),
+    payments: unlimited ? UNLIMITED_TEXT : payments,
+    closedOld: closedOld, created: created,
+  };
+}
+
 function cancelStandingOrder_(body) {
   var id = String(body.id || '').trim();
   if (!id) return { success: false, error: 'חסר מזהה הוראה' };
@@ -1149,6 +1300,43 @@ function updateDonorField_(body) {
 
   t.sheet.getRange(row, col + 1).setValue(body.value);
   return { success: true };
+}
+
+/**
+ * ── מחיקת עמודות מלשונית אנשי הקשר ────────────────────────────────────────
+ *
+ * נדרש בגלל טעות תכן שתוקנה: שם הנפטר נשמר כשם של **עמודה**
+ * (`יארצייט (פנחס בן לייב)`), ועמודה קיימת אצל כל אנשי הקשר. עם מאתיים
+ * אנשים ושלושה נפטרים לכל אחד הגיליון הגיע למאות עמודות ריקות.
+ *
+ * היארצייטים עברו לרשומות בתוך הכרטיס, והפעולה הזו מנקה את מה שנשאר.
+ * המחיקה מתבצעת מימין לשמאל — מחיקה משמאל מזיזה את כל האינדקסים
+ * שאחריה, וכל מחיקה נוספת הייתה פוגעת בעמודה הלא נכונה.
+ */
+function deleteContactColumns_(body) {
+  var names = (body && body.columns) || [];
+  if (Object.prototype.toString.call(names) !== '[object Array]' || !names.length) {
+    return { success: false, error: 'לא צוינו עמודות למחיקה' };
+  }
+
+  var t = table_(SH.CONTACTS);
+  if (!t.sheet) return { success: false, error: 'לשונית אנשי הקשר לא נמצאה' };
+
+  // אף פעם לא מוחקים עמודת ליבה, גם אם התבקשנו
+  var PROTECTED = COLS.CONTACTS;
+  var indices = [];
+  names.forEach(function (n) {
+    var name = String(n || '').trim();
+    if (!name || PROTECTED.indexOf(name) >= 0) return;
+    var c = t.col(name);
+    if (c >= 0) indices.push(c);
+  });
+
+  indices.sort(function (a, b) { return b - a; });   // מימין לשמאל
+  indices.forEach(function (c) { t.sheet.deleteColumn(c + 1); });
+
+  Logger.log('נמחקו ' + indices.length + ' עמודות מאנשי הקשר');
+  return { success: true, deleted: indices.length };
 }
 
 /**
@@ -2176,6 +2364,7 @@ function showSummary() {
 
   var lines = [
     '📊 מצב הנתונים',
+    'גרסת הסקריפט: ' + CODE_VERSION,
     '',
     'סך כל התרומות:  ₪' + Math.round(s.total).toLocaleString(),
     'הוראות קבע פעילות:  ' + s.hkActive + ' מתוך ' + hk.length,
