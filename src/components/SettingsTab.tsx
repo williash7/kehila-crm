@@ -12,7 +12,7 @@ import { isSignedIn, signOut, currentAccount, isGoogleLoginAvailable } from '../
 import { deleteConfigFromDrive } from '../lib/driveConfig';
 
 export function SettingsTab() {
-  const { settings, updateSettings, donors, visibleDonors, eventsData, holidayExtras, donations, refresh, holidays } = useAppStore();
+  const { settings, updateSettings, donors, visibleDonors, eventsData, holidayExtras, donations, refresh, holidays, summary } = useAppStore();
   const org = getOrg();
   const vis = settings.holidayVisibility;
   const [openCat, setOpenCat] = useState<HolidayCategory | null>(null);
@@ -119,6 +119,14 @@ export function SettingsTab() {
             <div className="text-xs text-gray-400 mt-1">
               {org.gsUrl ? '✓ מחובר לגיליון Google' : '⚠ לא מחובר לגיליון — הנתונים לא נשמרים'}
             </div>
+            {/* גרסת הסקריפט שהגיליון באמת מריץ.
+                Apps Script מגיש תמונת מצב מרגע הפריסה, ולכן קוד שנשמר אבל
+                לא נפרס נראה מעודכן בעורך ומיושן בפועל. כאן רואים את האמת. */}
+            {summary?.codeVersion && (
+              <div className="text-xs text-gray-400 mt-0.5">
+                גרסת הסקריפט בגיליון: <b className="text-gray-500">{summary.codeVersion}</b>
+              </div>
+            )}
             {isGoogleLoginAvailable() && (
               <div className="text-xs text-gray-400 mt-0.5">
                 {isSignedIn()

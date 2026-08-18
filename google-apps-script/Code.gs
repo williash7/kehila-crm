@@ -54,6 +54,21 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
+/**
+ * חותמת הגרסה של הקובץ הזה.
+ *
+ * הבעיה שהיא פותרת: אחרי הדבקה ופריסה אין שום דרך לדעת אם הגיליון באמת
+ * מריץ את הקוד החדש. Apps Script מגיש תמונת מצב מרגע הפריסה, ולכן קוד
+ * שנשמר אבל לא נפרס נראה מעודכן בעורך ומיושן בפועל — וכל הבדיקות
+ * נראות תקינות בזמן שהאפליקציה מדברת עם גרסה בת שבוע.
+ *
+ * החותמת מוחזרת ב-ping ובסיכום, ומוצגת באפליקציה תחת הגדרות. אחרי כל
+ * פריסה אפשר לוודא בחמש שניות שהמספר השתנה.
+ *
+ * **מעדכנים אותה בכל שינוי מהותי בקובץ.**
+ */
+var CODE_VERSION = '2026-08-13';
+
 // ── שמות הלשוניות ────────────────────────────────────────────────────────────
 var SH = {
   CONTACTS: 'אנשי קשר',
@@ -593,7 +608,8 @@ function route_(action, body) {
 
   switch (action) {
     // קריאה
-    case 'ping':             return { ok: true, sheet: SpreadsheetApp.getActiveSpreadsheet().getName() };
+    case 'ping':             return { ok: true, version: CODE_VERSION,
+                                      sheet: SpreadsheetApp.getActiveSpreadsheet().getName() };
     case 'getSummary':       return getSummary_();
     case 'getDonations':     return { donations: getDonations_() };
     case 'getDonors':        return { donors: getDonors_() };
@@ -834,6 +850,7 @@ function getSummary_() {
     thisMonthTotal: thisMonth,
     donorCount: Object.keys(names).length,
     hkActive: hk.filter(function (h) { return h.active; }).length,
+    codeVersion: CODE_VERSION,
     // רק כשלים מהחודש האחרון. הלשונית עצמה נשארת יומן היסטורי מלא, אבל
     // הדשבורד הוא מסך "מה דורש טיפול" — וסירוב מלפני חצי שנה כבר לא כזה.
     failureCount: recentFailureCount_(now),
@@ -2176,6 +2193,7 @@ function showSummary() {
 
   var lines = [
     '📊 מצב הנתונים',
+    'גרסת הסקריפט: ' + CODE_VERSION,
     '',
     'סך כל התרומות:  ₪' + Math.round(s.total).toLocaleString(),
     'הוראות קבע פעילות:  ' + s.hkActive + ' מתוך ' + hk.length,
