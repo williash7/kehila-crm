@@ -65,6 +65,40 @@ export function coalesceDonorsByMerges<T extends Record<string, any>>(
   return result;
 }
 
+/**
+ * ממזג את רשומת ה-CRM של כינוי לתוך זו של השם הקנוני.
+ *
+ * ── מה שהיה כאן קודם ──────────────────────────────────────────────────────
+ *
+ * הפונקציה בנתה אובייקט חדש עם **ארבעה שדות בלבד** — מעגל, יעד, טלפון
+ * ושדות מותאמים — וכל השאר נמחק בשקט. כלומר מיזוג שני אנשי קשר מחק את
+ * רשומות המשפחה (היארצייטים!) של שניהם, וכל שדה עתידי שיתווסף לכרטיס היה
+ * נמחק גם הוא, בלי שאיש ישים לב.
+ *
+ * עכשיו הבסיס הוא **כל השדות של שניהם**, והכללים המפורשים חלים רק מעליו.
+ */
+export function mergeCrmPair(aliasData: any, canonicalData: any): any {
+  const a = aliasData || {};
+  const c = canonicalData || {};
+  // הקנוני מנצח בהתנגשות; הכינוי ממלא רק מה שחסר
+  const out: any = { ...a, ...c };
+
+  out.circle = c.circle || a.circle;
+  out.target = c.target ?? a.target;
+  out.phone = c.phone || a.phone;
+  out.customFields = { ...(a.customFields || {}), ...(c.customFields || {}) };
+
+  // רשומות משפחה מצטרפות ולא נדרסות — לאותו אדם יכולים להיות כמה יארצייטים,
+  // ומיזוג שני כרטיסים אמור לאסוף את כולם.
+  const family = [...(a.family || []), ...(c.family || [])];
+  const seen = new Set<string>();
+  const uniqueFamily = family.filter(f => f && f.id && !seen.has(f.id) && !!seen.add(f.id));
+  if (uniqueFamily.length) out.family = uniqueFamily;
+  else delete out.family;
+
+  return out;
+}
+
 // מפעיל את המיזוגים על ה-CRM עצמו: שדות הכינוי ממלאים חוסרים אצל הקנוני, ואז נמחקים
 export function applyMergesToCrm(crmRest: Record<string, any>, merges: Record<string, string>): Record<string, any> {
   if (!merges || Object.keys(merges).length === 0) return crmRest;
@@ -72,14 +106,7 @@ export function applyMergesToCrm(crmRest: Record<string, any>, merges: Record<st
   Object.keys(merges).forEach(alias => {
     if (!result[alias]) return;
     const canonical = resolveCanonicalName(alias, merges);
-    const aliasData = result[alias];
-    const canonicalData = result[canonical] || {};
-    result[canonical] = {
-      circle: canonicalData.circle || aliasData.circle,
-      target: canonicalData.target ?? aliasData.target,
-      phone: canonicalData.phone || aliasData.phone,
-      customFields: { ...(aliasData.customFields || {}), ...(canonicalData.customFields || {}) },
-    };
+    result[canonical] = mergeCrmPair(result[alias], result[canonical]);
     delete result[alias];
   });
   return result;

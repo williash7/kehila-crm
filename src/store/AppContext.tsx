@@ -13,7 +13,7 @@ import {
 import { Donor, Donation, ReportSummary } from '../types';
 import { annotateRenewals } from '../lib/standingOrders';
 import { mergeManualDonations } from '../lib/manualDonations';
-import { extractMerges, applyMergesToCrm, coalesceDonorsByMerges, resolveCanonicalName, MERGES_KEY } from '../lib/nameMerges';
+import { extractMerges, applyMergesToCrm, mergeCrmPair, coalesceDonorsByMerges, resolveCanonicalName, MERGES_KEY } from '../lib/nameMerges';
 import { AppSettings, loadSettings, saveSettings, filterDonorsBySettings } from '../lib/settings';
 import { logAction } from '../lib/score';
 import { computeSummarySince, computeDonorTotalSince } from '../lib/donationFilter';
@@ -59,8 +59,8 @@ interface AppState {
   updateEventsData: (data: any[]) => void;
   updateProjects: (data: Project[]) => void;
   updateRebbeDate: (date: Date) => void;
-  mergeContacts: (aliasName: string, canonicalName: string) => void;
-  unmergeContact: (aliasName: string) => void;
+  mergeContacts: (aliasName: string, canonicalName: string) => Promise<boolean>;
+  unmergeContact: (aliasName: string) => Promise<boolean>;
   archiveOccurrence: (params: { type: 'holiday' | 'event'; id: string; name: string; occurrenceDate?: string }) => void;
   importTasksFromHistory: (params: { type: 'holiday' | 'event'; id: string; name: string }) => boolean;
   updateHistoryEntry: (id: string, data: Partial<HistoryEntry>) => void;
@@ -382,38 +382,57 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // ממזג שני שמות (למשל "אברהם אריאל" ו"אברהם אריאל ציגנוב") לאיש קשר אחד.
   // aliasName נעלם מהרשימות; כל התרומות/המפגשים/פרטי ה-CRM שלו עוברים ל-canonicalName.
   // מתעדכן מיידית בצד הלקוח (בלי סיבוב רשת), ונשמר ברקע לענן.
-  const mergeContacts = (aliasName: string, canonicalName: string) => {
-    if (!aliasName || !canonicalName || aliasName === canonicalName) return;
-    setNameMerges(prevMerges => {
-      const nextMerges = { ...prevMerges, [aliasName]: canonicalName };
-      saveCRMDataCloud({ ...crm, [MERGES_KEY]: nextMerges });
-      return nextMerges;
+  /**
+   * ── מיזוג שני אנשי קשר ────────────────────────────────────────────────
+   *
+   * שני באגים ישבו כאן, ושניהם גרמו למיזוג "להתבטל מעצמו":
+   *
+   * 1. **מה שנשמר לא היה מה שהשתנה.** השמירה שלחה `{...crm, merges}` עם
+   *    ה-crm שנקרא בזמן הרינדור — כלומר **לפני** המיזוג. השינוי האמיתי
+   *    (איחוד הרשומות ומחיקת הכינוי) נעשה ב-setCrm שאחריו, ומעולם לא הגיע
+   *    לגיליון. בטעינה הבאה השרת החזיר את המצב הישן.
+   *
+   * 2. **שמירה שלא ממתינים לה.** הרענון שבא אחרי המיזוג הספיק לפעמים
+   *    להקדים את הכתיבה, למשוך את המצב הקודם, ולמחוק גם את מפת המיזוגים.
+   *
+   * לכן: בונים כאן את המצב המלא — גם ה-crm הממוזג וגם המפה — שומרים אותו
+   * בשמירה אחת שממתינים לה, ומחזירים אם הצליחה.
+   */
+  const mergeContacts = async (aliasName: string, canonicalName: string): Promise<boolean> => {
+    if (!aliasName || !canonicalName || aliasName === canonicalName) return false;
+
+    const nextMerges = { ...nameMerges, [aliasName]: canonicalName };
+    let snapshot: Record<string, any> = {};
+
+    setCrm(prev => {
+      const next = { ...prev };
+      if (next[aliasName]) {
+        next[canonicalName] = mergeCrmPair(next[aliasName], next[canonicalName]);
+        delete next[aliasName];
+      }
+      snapshot = next;
+      return next;
     });
+    setNameMerges(nextMerges);
     setDonations(prev => prev.map(d => (d.name === aliasName ? { ...d, name: canonicalName } : d)));
     setDonors(prev => coalesceDonorsByMerges(prev, { [aliasName]: canonicalName }));
-    setCrm(prev => {
-      if (!prev[aliasName]) return prev;
-      const { [aliasName]: aliasData, ...rest } = prev;
-      const canonicalData = rest[canonicalName] || {};
-      rest[canonicalName] = {
-        circle: canonicalData.circle || aliasData.circle,
-        target: canonicalData.target ?? aliasData.target,
-        phone: canonicalData.phone || aliasData.phone,
-        customFields: { ...(aliasData.customFields || {}), ...(canonicalData.customFields || {}) },
-      };
-      return rest;
-    });
+
+    await new Promise(r => setTimeout(r, 0));
+    return saveCRMDataCloudSync({ ...snapshot, [MERGES_KEY]: nextMerges });
   };
 
   // מבטל מיזוג — טוען מחדש מהשרת כדי לפצל בחזרה לשתי רשומות נפרדות עם הנתונים המקוריים
-  const unmergeContact = (aliasName: string) => {
-    setNameMerges(prevMerges => {
-      const nextMerges = { ...prevMerges };
-      delete nextMerges[aliasName];
-      saveCRMDataCloud({ ...crm, [MERGES_KEY]: nextMerges });
-      return nextMerges;
-    });
-    setTimeout(() => loadAll(), 400);
+  /** ביטול מיזוג. גם כאן ממתינים לשמירה לפני שמושכים מחדש. */
+  const unmergeContact = async (aliasName: string): Promise<boolean> => {
+    const nextMerges = { ...nameMerges };
+    delete nextMerges[aliasName];
+    setNameMerges(nextMerges);
+
+    const ok = await saveCRMDataCloudSync({ ...crm, [MERGES_KEY]: nextMerges });
+    // הטעינה מחדש רק אחרי שהשמירה אושרה — "setTimeout(400)" היה הימור, ואם
+    // הוא הפסיד, הקריאה החזירה את המיזוג בדיוק אחרי שביטלת אותו.
+    if (ok) loadAll({ silent: true });
+    return ok;
   };
 
   const updateHolidayExtras = (id: string, data: any) => {

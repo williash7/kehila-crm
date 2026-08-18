@@ -8,6 +8,8 @@ export function MergeContactsModal({ onClose, presetName, onMerged }: { onClose:
   const [nameA, setNameA] = useState(presetName || '');
   const [nameB, setNameB] = useState('');
   const [keep, setKeep] = useState<'a' | 'b'>('a');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
 
   const donorNames = Object.keys(donors).sort((x, y) => x.localeCompare(y, 'he'));
   const mergeEntries = Object.entries(nameMerges);
@@ -15,13 +17,25 @@ export function MergeContactsModal({ onClose, presetName, onMerged }: { onClose:
   const canMerge = nameA.trim() && nameB.trim() && nameA.trim() !== nameB.trim()
     && donors[nameA.trim()] && donors[nameB.trim()];
 
-  const doMerge = () => {
+  // סוגרים את החלון **רק אחרי** שהגיליון אישר את הכתיבה. קודם הוא נסגר מיד,
+  // והמיזוג "התבטל" בשקט כשהשמירה לא הספיקה להגיע לפני הרענון הבא.
+  const doMerge = async () => {
     const a = nameA.trim();
     const b = nameB.trim();
-    if (!canMerge) return;
+    if (!canMerge || busy) return;
     const canonicalName = keep === 'a' ? a : b;
     const aliasName = keep === 'a' ? b : a;
-    mergeContacts(aliasName, canonicalName);
+
+    setBusy(true);
+    setError('');
+    const ok = await mergeContacts(aliasName, canonicalName);
+    setBusy(false);
+
+    if (!ok) {
+      setError('המיזוג לא נשמר בגיליון. בדוק את החיבור ונסה שוב — שום דבר לא השתנה.');
+      return;
+    }
+
     setNameA('');
     setNameB('');
     setKeep('a');
@@ -110,12 +124,16 @@ export function MergeContactsModal({ onClose, presetName, onMerged }: { onClose:
               </div>
             )}
 
+            {error && (
+              <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-xl p-3 mb-2 leading-relaxed">{error}</div>
+            )}
+
             <button
               onClick={doMerge}
-              disabled={!canMerge}
+              disabled={!canMerge || busy}
               className="w-full bg-[#0D1B2A] text-[#E8C97A] py-3.5 rounded-xl font-bold text-sm shadow-lg active:scale-[0.98] transition-transform disabled:opacity-40"
             >
-              מזג לאיש קשר אחד
+              {busy ? 'שומר בגיליון...' : 'מזג לאיש קשר אחד'}
             </button>
           </div>
         ) : (
