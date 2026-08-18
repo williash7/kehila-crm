@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAppStore } from '../store/AppContext';
 import { Check, ClipboardList, Calendar, CalendarCheck, Cake, X, ChevronLeft, Plus, Clock, ListTodo, SlidersHorizontal, ChevronDown, Home, Bot } from 'lucide-react';
+import { FullScreenView } from './FullScreenView';
 import { GlobalAIImportModal } from './GlobalAIImportModal';
 import { ProfileModal } from './ProfileModal';
 import { HolidayModal } from './HolidayModal';
@@ -993,24 +994,26 @@ export function TasksTab({ setTab, addTrigger }: { setTab: (t: string) => void; 
         </div>
       )}
 
-      {selectedDonor && <ProfileModal name={selectedDonor} onClose={() => setSelectedDonor(null)} />}
-      {selectedHoliday && <HolidayModal holiday={selectedHoliday} onClose={() => setSelectedHoliday(null)} />}
+      {selectedDonor && <ProfileModal name={selectedDonor} onClose={() => setSelectedDonor(null)} backLabel="משימות" />}
+      {selectedHoliday && <HolidayModal holiday={selectedHoliday} onClose={() => setSelectedHoliday(null)} backLabel="משימות" />}
 
       {/* פרטי משימה מלוח השנה */}
       {calendarSelected && (
-        <div className="fixed inset-0 bg-black/60 z-[220] flex items-center justify-center p-4 backdrop-blur-sm" onClick={e => e.target === e.currentTarget && setCalendarSelectedKey(null)}>
-          <div className="bg-transparent w-full max-w-sm animate-in fade-in zoom-in duration-200 relative">
-            <button onClick={() => setCalendarSelectedKey(null)} className="absolute -top-9 left-0 text-white/70 hover:text-white"><X size={20} /></button>
-            {calendarSelected.customCard || renderTaskItem(
-              calendarSelected.t,
-              calendarSelected.onToggle,
-              () => { calendarSelected.onDelete(); setCalendarSelectedKey(null); },
-              calendarSelected.onTogglePerson,
-              calendarSelected.onPatch,
-              calendarSelected.extra
-            )}
-          </div>
-        </div>
+        <FullScreenView
+          eyebrow="משימה"
+          title={calendarSelected.t?.text || 'משימה'}
+          backLabel="יומן"
+          onClose={() => setCalendarSelectedKey(null)}
+        >
+          {calendarSelected.customCard || renderTaskItem(
+            calendarSelected.t,
+            calendarSelected.onToggle,
+            () => { calendarSelected.onDelete(); setCalendarSelectedKey(null); },
+            calendarSelected.onTogglePerson,
+            calendarSelected.onPatch,
+            calendarSelected.extra
+          )}
+        </FullScreenView>
       )}
 
       {completionPrompt && (

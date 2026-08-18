@@ -1,10 +1,11 @@
 import React, { useState, useMemo } from 'react';
-import { X, Search, RefreshCw, AlertTriangle, ChevronDown, ChevronLeft, Plus } from 'lucide-react';
+import { X, Search, RefreshCw, AlertTriangle, ChevronDown, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import { useAppStore } from '../store/AppContext';
 import { getHkStatus, sortHkList, countHkByStatus, openFailureFor, indexFailures, HK_STATUS_LABEL, HK_STATUS_COLOR, HkStatus } from '../lib/standingOrders';
 import { CancelHkDialog, ChangeHkAmountDialog, RenewHkDialog, CancelHkButton } from './CancelHkDialog';
 import { AddHkDialog } from './AddHkDialog';
 import { ProfileModal } from './ProfileModal';
+import { useCloseOnBack } from './FullScreenView';
 
 // "הסתיימה לאחרונה" — כדי לא להציג כברירת מחדל הוראות קבע שהסתיימו לפני
 // שנים ואינן רלוונטיות יותר. אפשר להרחיב לצפייה בהיסטוריה המלאה דרך המתג
@@ -39,6 +40,9 @@ export function StandingOrdersModal({ onClose }: { onClose: () => void }) {
   const [amountTarget, setAmountTarget] = useState<any | null>(null);
   const [renewTarget, setRenewTarget] = useState<any | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+
+  // גם כאן כפתור "אחורה" של הטלפון סוגר את המסך במקום לצאת מהאפליקציה
+  useCloseOnBack(onClose);
 
   const threshold = settings.hkExpiringThreshold ?? 2;
   const failIdx = useMemo(() => indexFailures(failures), [failures]);
@@ -75,8 +79,9 @@ export function StandingOrdersModal({ onClose }: { onClose: () => void }) {
     <div className="fixed inset-0 bg-[#FAF6EE] z-[100] flex flex-col h-full" dir="rtl">
       {/* Header */}
       <div className="bg-[#0D1B2A] text-white px-4 py-3 flex items-center justify-between shrink-0 shadow-md">
-        <button onClick={onClose} className="p-2 -m-2 text-white/60 hover:text-white transition-colors">
-          <X size={22} />
+        <button onClick={onClose} className="flex items-center gap-1 h-9 px-2.5 -mr-2 rounded-full text-white/80 hover:bg-white/10 transition-colors">
+          <ChevronRight size={20} />
+          <span className="text-sm font-bold">חזרה</span>
         </button>
         <h2 className="font-['Frank_Ruhl_Libre'] text-lg font-bold text-[#C9A84C]">הוראות קבע</h2>
         <div className="flex items-center gap-1">
@@ -244,7 +249,7 @@ export function StandingOrdersModal({ onClose }: { onClose: () => void }) {
       {renewTarget && <RenewHkDialog target={renewTarget} onClose={() => setRenewTarget(null)} />}
       {addOpen && <AddHkDialog onClose={() => setAddOpen(false)} />}
 
-      {selectedDonor && <ProfileModal name={selectedDonor} onClose={() => setSelectedDonor(null)} />}
+      {selectedDonor && <ProfileModal name={selectedDonor} onClose={() => setSelectedDonor(null)} backLabel="הוראות קבע" />}
     </div>
   );
 }

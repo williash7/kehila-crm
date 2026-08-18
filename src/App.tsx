@@ -99,7 +99,7 @@ function AppContent() {
       <BottomNav currentTab={activeTab} setTab={setActiveTab} />
 
       {isDonationOpen && <DonationModal onClose={() => setIsDonationOpen(false)} />}
-      {scoreOpenContact && <ProfileModal name={scoreOpenContact} onClose={() => setScoreOpenContact(null)} />}
+      {scoreOpenContact && <ProfileModal name={scoreOpenContact} onClose={() => setScoreOpenContact(null)} backLabel="ניקוד" />}
     </div>
   );
 }

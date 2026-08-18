@@ -3,6 +3,7 @@ import { useAppStore } from '../store/AppContext';
 import { MessageSquare, Phone, X, Edit, Calendar, PlusCircle, ClipboardList, RefreshCw, CalendarDays, MapPin, Navigation } from 'lucide-react';
 import { format } from 'date-fns';
 import { DonationModal } from './DonationModal';
+import { FullScreenView, SiblingItem } from './FullScreenView';
 import { MeetingModal } from './MeetingModal';
 import { ThankYouModal } from './ThankYouModal';
 import { ThankYouLetterModal } from './ThankYouLetterModal';
@@ -23,7 +24,15 @@ import { logAction } from '../lib/score';
 import { CalendarPlus } from 'lucide-react';
 import { withCity } from '../lib/orgConfig';
 
-export function ProfileModal({ name, onClose }: { name: string, onClose: () => void }) {
+export function ProfileModal({ name, onClose, backLabel, siblings, onSelectSibling }: {
+  name: string;
+  onClose: () => void;
+  /** מאיפה נפתח הכרטיס — מופיע ליד חץ החזרה */
+  backLabel?: string;
+  /** שאר אנשי הקשר ברשימה שממנה נפתח, לדילוג ישיר ביניהם */
+  siblings?: SiblingItem[];
+  onSelectSibling?: (name: string) => void;
+}) {
   const { donors, crm, donations, updateCrm, refresh, settings, holidayExtras, updateHolidayExtras } = useAppStore();
   const [editingPhone, setEditingPhone] = useState(false);
   const [phoneInput, setPhoneInput] = useState('');
@@ -271,22 +280,25 @@ export function ProfileModal({ name, onClose }: { name: string, onClose: () => v
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-[200] flex items-end md:items-center justify-center" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="bg-[#FAF6EE] rounded-t-3xl md:rounded-3xl p-5 pb-10 md:pb-6 w-full max-w-[430px] md:max-w-2xl max-h-[92vh] overflow-y-auto animate-in slide-in-from-bottom duration-300">
-        
-        <div className="flex justify-between items-start mb-4">
-           <button onClick={onClose} className="p-2 bg-white rounded-full shadow-sm">
-             <X size={20} className="text-gray-500" />
-           </button>
-           <button
-             onClick={() => setIsMergeOpen(true)}
-             className="flex items-center gap-1.5 bg-white px-3 py-2 rounded-full shadow-sm text-xs font-bold text-gray-500 hover:text-[#0D1B2A] transition-colors"
-             title="חיבור עם איש קשר כפול"
-           >
-             <Link2 size={14} /> מזג עם איש קשר אחר
-           </button>
-        </div>
-
+    <FullScreenView
+      title={name}
+      backLabel={backLabel || 'חזרה'}
+      onClose={onClose}
+      siblings={siblings}
+      siblingsTitle="אנשי קשר נוספים"
+      activeSiblingId={name}
+      onSelectSibling={onSelectSibling}
+      actions={
+        <button
+          onClick={() => setIsMergeOpen(true)}
+          className="flex items-center gap-1.5 h-9 px-3 rounded-full text-white/70 hover:bg-white/10 text-xs font-bold transition-colors"
+          title="חיבור עם איש קשר כפול"
+        >
+          <Link2 size={14} /> <span className="hidden md:inline">מזג עם איש קשר אחר</span>
+        </button>
+      }
+    >
+      <>
         {/* Profile Header */}
         <div className="flex flex-col items-center mb-6">
           <div 
@@ -781,8 +793,8 @@ export function ProfileModal({ name, onClose }: { name: string, onClose: () => v
           </div>
         )}
 
-      </div>
-      
+      </>
+
       {isDonationOpen && <DonationModal onClose={() => setIsDonationOpen(false)} defaultName={name} />}
       {isMeetingOpen && <MeetingModal onClose={() => setIsMeetingOpen(false)} donorName={name} />}
       {isDateConverterOpen && <DateConverterModal onClose={() => setIsDateConverterOpen(false)} />}
@@ -797,6 +809,6 @@ export function ProfileModal({ name, onClose }: { name: string, onClose: () => v
           onClose={() => setLetterInfo(null)}
         />
       )}
-    </div>
+    </FullScreenView>
   );
 }

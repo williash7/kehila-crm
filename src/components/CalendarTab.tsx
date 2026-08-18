@@ -171,7 +171,7 @@ export function CalendarTab({ addTrigger }: { addTrigger?: { tab: string; count:
         </div>
       )}
 
-      {selectedHoliday && <HolidayModal holiday={selectedHoliday} onClose={() => setSelectedHoliday(null)} />}
+      {selectedHoliday && <HolidayModal holiday={selectedHoliday} onClose={() => setSelectedHoliday(null)} backLabel="לוח שנה" />}
     </div>
   );
 }

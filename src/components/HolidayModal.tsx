@@ -8,11 +8,12 @@ import { AIPlanningAssistant } from './AIPlanningAssistant';
 import { TaskDetailsPanel } from './TaskDetailsPanel';
 import { findLatestHistoryFor } from '../lib/history';
 import { Archive } from 'lucide-react';
+import { FullScreenView } from './FullScreenView';
 import { CompletionFollowUpModal } from './CompletionFollowUpModal';
 import { eventsForHoliday, buildHolidayEvent, eventAttendeeNames, holidayAttendeeNames } from '../lib/holidayEvents';
 import { getOrg } from '../lib/orgConfig';
 
-export function HolidayModal({ holiday, onClose }: { holiday: any, onClose: () => void }) {
+export function HolidayModal({ holiday, onClose, backLabel }: { holiday: any, onClose: () => void, backLabel?: string }) {
   const { holidayExtras, updateHolidayExtras, visibleDonors, crm, hk, failures, refresh, history, archiveOccurrence, importTasksFromHistory, eventsData, updateEventsData } = useAppStore();
   const [inviteCategory, setInviteCategory] = useState('all');
 
@@ -428,27 +429,22 @@ ${docs.length > 0 ? section('📄 מסמכים מקושרים',
   }).slice(0, 5) as any[];
 
   return (
-    <div className="fixed inset-0 bg-black/60 z-[200] flex items-end md:items-center justify-center p-0 md:p-4 backdrop-blur-sm" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="bg-[#FAF6EE] rounded-t-3xl md:rounded-3xl p-5 pb-10 md:pb-6 w-full max-w-[430px] md:max-w-2xl max-h-[92vh] overflow-y-auto animate-in slide-in-from-bottom duration-300">
-        <div className="flex justify-between items-start mb-4">
-          <div>
-            <div className="text-[11px] font-bold text-gray-500 uppercase tracking-widest">{holiday.hebrew || 'אירוע'}</div>
-            <h2 className="font-['Frank_Ruhl_Libre'] text-2xl font-bold text-[#0D1B2A]">{holiday.name}</h2>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleExportReport}
-              title="ייצוא דוח"
-              className="flex items-center gap-1.5 px-3 py-2 bg-[#C9A84C]/10 text-[#9B7A2F] rounded-xl text-xs font-bold hover:bg-[#C9A84C]/20 transition-colors"
-            >
-              <Download size={14} />
-              ייצוא דוח
-            </button>
-            <button onClick={onClose} className="p-2 bg-gray-200/50 rounded-full text-gray-500 hover:bg-gray-200">
-              <X size={20} />
-            </button>
-          </div>
-        </div>
+    <FullScreenView
+      eyebrow={holiday.hebrew || 'אירוע'}
+      title={holiday.name}
+      backLabel={backLabel || 'חזרה'}
+      onClose={onClose}
+      actions={
+        <button
+          onClick={handleExportReport}
+          title="ייצוא דוח"
+          className="flex items-center gap-1.5 h-9 px-3 rounded-full text-white/70 hover:bg-white/10 text-xs font-bold transition-colors"
+        >
+          <Download size={14} /> <span className="hidden md:inline">ייצוא דוח</span>
+        </button>
+      }
+    >
+      <>
 
         {/* העברה להיסטוריה — שומר תמונת מצב (משימות/נוכחות/תקציב) ומרוקן את
             המשימות החיות כדי שהמופע הבא (השנה הבאה) יתחיל נקי */}
@@ -1132,8 +1128,7 @@ ${docs.length > 0 ? section('📄 מסמכים מקושרים',
             </div>
           </div>
         )}
-
-      </div>
+      </>
 
       {/* Attendance Modal */}
       {isAttOpen && (
@@ -1224,6 +1219,6 @@ ${docs.length > 0 ? section('📄 מסמכים מקושרים',
           }}
         />
       )}
-    </div>
+    </FullScreenView>
   );
 }

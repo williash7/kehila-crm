@@ -356,7 +356,7 @@ export function DonationsTab() {
         )}
       </div>
 
-      {selectedDonor && <ProfileModal name={selectedDonor} onClose={() => setSelectedDonor(null)} />}
+      {selectedDonor && <ProfileModal name={selectedDonor} onClose={() => setSelectedDonor(null)} backLabel="תרומות" />}
 
       {/* Donation Detail Modal */}
       {selectedDonation && !showThankYou && (

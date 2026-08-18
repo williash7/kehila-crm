@@ -552,8 +552,8 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd }: { setTab: (t: s
 
       {renderMethodModal()}
 
-      {selectedDonor && <ProfileModal name={selectedDonor} onClose={() => setSelectedDonor(null)} />}
-      {selectedHoliday && <HolidayModal holiday={selectedHoliday} onClose={() => setSelectedHoliday(null)} />}
+      {selectedDonor && <ProfileModal name={selectedDonor} onClose={() => setSelectedDonor(null)} backLabel="דף הבית" />}
+      {selectedHoliday && <HolidayModal holiday={selectedHoliday} onClose={() => setSelectedHoliday(null)} backLabel="דף הבית" />}
       {isDateConverterOpen && <DateConverterModal onClose={() => setIsDateConverterOpen(false)} />}
       {thankYouInfo && <ThankYouModal donorName={thankYouInfo.name} amount={thankYouInfo.amount} phone={thankYouInfo.phone} onClose={() => setThankYouInfo(null)} />}
       {letterInfo && (

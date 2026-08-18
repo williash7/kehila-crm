@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAppStore } from '../store/AppContext';
 import { Plus, Check, X, ClipboardList, Trash2, Pencil, Clock, Archive, ChevronDown, Mic2, Star, Wallet } from 'lucide-react';
+import { FullScreenView } from './FullScreenView';
 import { format } from 'date-fns';
 import { createInviteTask, toggleInvitePerson, inviteRemainingMinutes, MINUTES_PER_CALL, nextEventOccurrence, formatRemaining, createEventMediaTasks, stampCreated } from '../lib/tasks';
 import { logAction } from '../lib/score';
@@ -486,12 +487,13 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
 
       {/* Add/Edit Event Modal */}
       {isAddingMode && (
-        <div className="fixed inset-0 bg-black/60 z-[200] flex items-end justify-center p-0 md:p-4 backdrop-blur-sm" onClick={(e) => e.target === e.currentTarget && setIsAddingMode(false)}>
-           <div className="bg-[#FAF6EE] rounded-t-3xl md:rounded-3xl p-5 pb-8 w-full max-w-[430px] animate-in slide-in-from-bottom duration-300">
-             <div className="flex justify-between items-center mb-5">
-               <h2 className="font-['Frank_Ruhl_Libre'] text-xl font-bold text-[#0D1B2A]">{editingEventId ? '✏️ עריכת אירוע קבוע' : '📌 הוספת אירוע קבוע'}</h2>
-               <button onClick={() => setIsAddingMode(false)} className="bg-gray-200/50 p-2 rounded-full text-gray-500 hover:bg-gray-200"><X size={16}/></button>
-             </div>
+        <FullScreenView
+          eyebrow="אירוע קבוע"
+          title={editingEventId ? 'עריכת אירוע קבוע' : 'הוספת אירוע קבוע'}
+          backLabel="אירועים"
+          onClose={() => setIsAddingMode(false)}
+        >
+           <>
              
              <div className="space-y-4">
                <div>
@@ -529,29 +531,35 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
                  {editingEventId ? 'שמור שינויים' : 'שמור אירוע'}
                </button>
              </div>
-           </div>
-        </div>
+           </>
+        </FullScreenView>
       )}
 
       {/* Attendance Modal */}
       {attEventId && (
-        <div className="fixed inset-0 bg-black/60 z-[200] flex items-end justify-center p-0 md:p-4 backdrop-blur-sm" onClick={(e) => e.target === e.currentTarget && setAttEventId(null)}>
-           <div className="bg-[#FAF6EE] rounded-t-3xl md:rounded-3xl p-5 pb-8 w-full max-w-[430px] max-h-[90vh] flex flex-col animate-in slide-in-from-bottom duration-300">
-             <div className="flex justify-between items-start mb-4">
-               <div className="flex-1">
-                 <h2 className="font-['Frank_Ruhl_Libre'] text-xl font-bold text-[#0D1B2A] flex items-center gap-2">✅ נוכחות — {currentAttEvent?.name}</h2>
-                 <div className="flex items-center gap-2 mt-1.5">
-                   <label className="text-xs text-gray-500 shrink-0">תאריך המפגש:</label>
-                   <input
-                     type="date"
-                     value={attDateISO}
-                     onChange={e => changeAttDate(e.target.value)}
-                     className="bg-white border border-[#EDE6D6] rounded-lg px-2 py-1 text-xs outline-none focus:border-[#C9A84C]"
-                   />
-                 </div>
-                 <div className="text-[10px] text-gray-400 mt-1">אפשר לבחור תאריך מהעבר כדי לעדכן נוכחות למפגש שכבר התקיים (למשל שיעור שבועי משבוע שעבר).</div>
+        <FullScreenView
+          eyebrow="נוכחות"
+          title={currentAttEvent?.name || 'נוכחות'}
+          backLabel="אירועים"
+          onClose={() => setAttEventId(null)}
+          footer={
+            <button onClick={saveAttendance} className="w-full bg-gradient-to-br from-[#0D1B2A] to-[#1A2E45] text-white rounded-xl py-3.5 font-bold shadow-md">
+              שמור נוכחות ({Object.values(pendingAtt).filter(Boolean).length})
+            </button>
+          }
+        >
+           <>
+             <div className="bg-white rounded-xl border border-[#EDE6D6] p-3 mb-3">
+               <div className="flex items-center gap-2">
+                 <label className="text-xs text-gray-500 shrink-0">תאריך המפגש:</label>
+                 <input
+                   type="date"
+                   value={attDateISO}
+                   onChange={e => changeAttDate(e.target.value)}
+                   className="bg-white border border-[#EDE6D6] rounded-lg px-2 py-1 text-xs outline-none focus:border-[#C9A84C]"
+                 />
                </div>
-               <button onClick={() => setAttEventId(null)} className="bg-gray-200/50 p-2 rounded-full text-gray-500 hover:bg-gray-200 shrink-0"><X size={16}/></button>
+               <div className="text-[10px] text-gray-400 mt-1">אפשר לבחור תאריך מהעבר כדי לעדכן נוכחות למפגש שכבר התקיים (למשל שיעור שבועי משבוע שעבר).</div>
              </div>
 
              <input
@@ -586,7 +594,7 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
                ))}
              </div>
 
-             <div className="flex-1 overflow-y-auto pr-1 space-y-2 mb-4 custom-scrollbar">
+             <div className="space-y-2">
                 {donorNames.map(n => {
                   const isChecked = pendingAtt[n];
                   return (
@@ -603,29 +611,25 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
                 })}
              </div>
 
-             <button onClick={saveAttendance} className="w-full bg-gradient-to-br from-[#0D1B2A] to-[#1A2E45] text-white rounded-xl py-3.5 font-bold shadow-md shrink-0">
-               שמור נוכחות ({Object.values(pendingAtt).filter(Boolean).length})
-             </button>
-           </div>
-        </div>
+           </>
+        </FullScreenView>
       )}
 
       {/* Tasks Modal */}
       {tasksEventId && currentTasksEvent && (
-        <div className="fixed inset-0 bg-black/60 z-[200] flex items-end justify-center p-0 md:p-4 backdrop-blur-sm" onClick={(e) => e.target === e.currentTarget && setTasksEventId(null)}>
-           <div className="bg-[#FAF6EE] rounded-t-3xl md:rounded-3xl p-5 pb-8 w-full max-w-[430px] max-h-[90vh] flex flex-col animate-in slide-in-from-bottom duration-300">
-             <div className="flex justify-between items-start mb-4">
-               <div>
-                 <h2 className="font-['Frank_Ruhl_Libre'] text-xl font-bold text-[#0D1B2A] flex items-center gap-2">📋 משימות — {currentTasksEvent.name}</h2>
-                 {(() => {
-                   const nextOcc = nextEventOccurrence(currentTasksEvent, new Date());
-                   return nextOcc ? (
-                     <div className="text-[11px] text-[#9B7A2F] flex items-center gap-1 mt-1"><Clock size={11}/> {formatRemaining(nextOcc, new Date())} עד המפגש הבא — כדאי לסיים עד אז</div>
-                   ) : null;
-                 })()}
-               </div>
-               <button onClick={() => setTasksEventId(null)} className="bg-gray-200/50 p-2 rounded-full text-gray-500 hover:bg-gray-200 shrink-0"><X size={16}/></button>
-             </div>
+        <FullScreenView
+          eyebrow="משימות"
+          title={currentTasksEvent.name}
+          backLabel="אירועים"
+          onClose={() => setTasksEventId(null)}
+        >
+           <>
+             {(() => {
+               const nextOcc = nextEventOccurrence(currentTasksEvent, new Date());
+               return nextOcc ? (
+                 <div className="text-[11px] text-[#9B7A2F] flex items-center gap-1 mb-3"><Clock size={11}/> {formatRemaining(nextOcc, new Date())} עד המפגש הבא — כדאי לסיים עד אז</div>
+               ) : null;
+             })()}
 
              <button
                onClick={() => {
@@ -637,7 +641,7 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
                <Archive size={13} /> סמן מופע זה כהסתיים והעבר להיסטוריה
              </button>
 
-             <div className="flex-1 overflow-y-auto pr-1 custom-scrollbar space-y-3">
+             <div className="space-y-3">
              {(!currentTasksEvent.tasks || currentTasksEvent.tasks.length === 0) && findLatestHistoryFor(history, 'event', currentTasksEvent.name) && (
                <button
                  onClick={() => importTasksFromHistory({ type: 'event', id: currentTasksEvent.id, name: currentTasksEvent.name })}
@@ -768,37 +772,28 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
                </button>
              </div>
              </div>
-           </div>
-        </div>
+           </>
+        </FullScreenView>
       )}
 
       {/* Budget Modal */}
       {budgetEventId && currentBudgetEvent && (
-        <div
-          className="fixed inset-0 bg-black/60 z-[200] flex items-end justify-center p-0 md:p-4 backdrop-blur-sm"
-          onClick={e => e.target === e.currentTarget && setBudgetEventId(null)}
+        <FullScreenView
+          eyebrow="תקציב האירוע"
+          title={currentBudgetEvent.name}
+          backLabel="אירועים"
+          onClose={() => setBudgetEventId(null)}
         >
-          <div className="bg-[#FAF6EE] rounded-t-3xl md:rounded-3xl p-5 pb-6 w-full max-w-[430px] md:max-w-lg max-h-[88vh] flex flex-col animate-in slide-in-from-bottom duration-300">
-            <div className="w-10 h-1 bg-gray-300 rounded-full mx-auto mb-5 md:hidden shrink-0" />
-            <div className="flex justify-between items-center mb-4 shrink-0">
-              <div className="min-w-0">
-                <h2 className="font-['Frank_Ruhl_Libre'] text-xl font-bold text-[#0D1B2A] truncate">תקציב האירוע</h2>
-                <p className="text-xs text-gray-500 truncate">{currentBudgetEvent.name}</p>
-              </div>
-              <button onClick={() => setBudgetEventId(null)} className="bg-gray-200/50 p-2 rounded-full text-gray-500 hover:bg-gray-200 shrink-0">
-                <X size={16} />
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto pr-1">
+          <>
+            <div>
               <BudgetEditor
                 budget={currentBudgetEvent.budget || emptyBudget()}
                 onChange={next => updateEventsData(eventsData.map((e: any) =>
                   e.id === budgetEventId ? { ...e, budget: next } : e))}
               />
             </div>
-          </div>
-        </div>
+          </>
+        </FullScreenView>
       )}
 
       {/* Performers Modal */}

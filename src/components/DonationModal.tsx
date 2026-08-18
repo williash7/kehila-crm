@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { FullScreenView } from './FullScreenView';
 import { useAppStore } from '../store/AppContext';
 import { apiPost } from '../lib/api';
 import { ThankYouModal } from './ThankYouModal';
@@ -68,11 +69,22 @@ export function DonationModal({ onClose, defaultName = '' }: DonationModalProps)
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-[200] flex items-end justify-center" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="bg-[#FAF6EE] rounded-t-3xl p-5 pb-10 w-full max-w-[430px] max-h-[92vh] overflow-y-auto animate-in slide-in-from-bottom duration-300">
-        <div className="w-10 h-1 bg-gray-300 rounded-full mx-auto mb-5" />
-        <h2 className="font-['Frank_Ruhl_Libre'] text-xl font-bold text-[#0D1B2A] mb-5">💰 הוספת תרומה</h2>
-        
+    <FullScreenView
+      eyebrow="תרומה"
+      title="הוספת תרומה"
+      backLabel="חזרה"
+      onClose={onClose}
+      footer={
+        <button
+          disabled={loading}
+          onClick={handleSave}
+          className={`w-full text-white rounded-xl p-3.5 font-['Frank_Ruhl_Libre'] text-lg font-bold shadow-md active:scale-95 transition-all disabled:opacity-60 disabled:pointer-events-none ${sendWa ? 'bg-[#059669]' : 'bg-gradient-to-br from-[#C9A84C] to-[#9B7A2F]'}`}
+        >
+          {loading ? 'שומר בגיליון...' : (sendWa ? '✓ שמור ושלח WhatsApp' : '✓ שמור תרומה בגיליון')}
+        </button>
+      }
+    >
+      <>
         <div className="space-y-4">
           <div>
             <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">שם תורם</label>
@@ -185,15 +197,8 @@ export function DonationModal({ onClose, defaultName = '' }: DonationModalProps)
             </label>
           </div>
 
-          <button 
-            disabled={loading}
-            onClick={handleSave}
-            className={`w-full text-white rounded-xl p-3.5 font-['Frank_Ruhl_Libre'] text-lg font-bold shadow-md active:scale-95 transition-all disabled:opacity-60 disabled:pointer-events-none mt-2 ${sendWa ? 'bg-[#059669]' : 'bg-gradient-to-br from-[#C9A84C] to-[#9B7A2F]'}`}
-          >
-            {loading ? 'שומר בגיליון...' : (sendWa ? '✓ שמור ושלח WhatsApp' : '✓ שמור תרומה בגיליון')}
-          </button>
         </div>
-      </div>
+      </>
       {showThankYou && (
         <ThankYouModal 
           donorName={name.trim()} 
@@ -205,6 +210,6 @@ export function DonationModal({ onClose, defaultName = '' }: DonationModalProps)
           }} 
         />
       )}
-    </div>
+    </FullScreenView>
   );
 }

@@ -439,7 +439,22 @@ export function DonorsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
         </>
       )}
 
-      {selectedDonor && <ProfileModal name={selectedDonor} onClose={() => setSelectedDonor(null)} />}
+      {/* הרשימה המסוננת שממנה נפתח הכרטיס נשלחת כ"אחים": אחרי שסיננת
+          למעגל מסוים אתה עובר עליהם אחד-אחד, ולחזור לרשימה בכל פעם רק כדי
+          ללחוץ על השם הבא זה חיכוך מיותר. */}
+      {selectedDonor && (
+        <ProfileModal
+          name={selectedDonor}
+          onClose={() => setSelectedDonor(null)}
+          backLabel="אנשי קשר"
+          siblings={list.map(d => ({
+            id: d.name,
+            label: d.name,
+            sub: d.total ? `₪${Number(d.total).toLocaleString()}` : undefined,
+          }))}
+          onSelectSibling={setSelectedDonor}
+        />
+      )}
 
       {/* Map / Route modal */}
       {isMapOpen && (() => {
