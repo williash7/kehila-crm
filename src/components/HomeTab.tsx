@@ -54,11 +54,19 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd }: { setTab: (t: s
     return { openHolidayTasks, openEventTasks, personalDates };
   }, [holidays, holidayExtras, eventsData, visibleDonors, crm]);
 
-  const recent = [...donations].sort((a, b) => {
-    const aDate = a.date.split('/').reverse().join('-');
-    const bDate = b.date.split('/').reverse().join('-');
-    return new Date(bDate).getTime() - new Date(aDate).getTime();
-  }).slice(0, 5);
+  // "תרומות אחרונות". המיון עבר ל-parseDdMmYyyy במקום פיצול ידני על '/':
+  // תאריך עם נקודות (כך יוצא toLocaleDateString בעברית) או שדה ריק החזירו
+  // Invalid Date, וההשוואה מול NaN היא תמיד false — כלומר המיון פשוט לא
+  // קרה, והרשימה הציגה את מה שבמקרה היה ראשון בגיליון במקום את החדש.
+  const recent = React.useMemo(() => {
+    const withTime = donations.map(d => {
+      const parsed = parseDdMmYyyy((d as any).date);
+      return { d, t: parsed ? parsed.getTime() : -Infinity };
+    });
+    // תרומה בלי תאריך תקין יורדת לסוף במקום להתפזר באמצע
+    withTime.sort((a, b) => b.t - a.t);
+    return withTime.slice(0, 5).map(x => x.d);
+  }, [donations]);
 
   // ── Render helpers ──────────────────────────────────────────────────────────
 

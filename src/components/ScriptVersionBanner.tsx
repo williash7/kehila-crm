@@ -13,7 +13,7 @@ import { useAppStore } from '../store/AppContext';
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** הגרסה שהאפליקציה הזו מצפה למצוא בגיליון. שווה ל-CODE_VERSION שב-Code.gs. */
-export const EXPECTED_CODE_VERSION = '2026-08-18c';
+export const EXPECTED_CODE_VERSION = '2026-08-18d';
 
 const DISMISS_KEY = 'script_version_notice_dismissed';
 
