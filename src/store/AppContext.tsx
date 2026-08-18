@@ -12,6 +12,7 @@ import {
 } from '../lib/api';
 import { Donor, Donation, ReportSummary } from '../types';
 import { annotateRenewals } from '../lib/standingOrders';
+import { mergeManualDonations } from '../lib/manualDonations';
 import { extractMerges, applyMergesToCrm, coalesceDonorsByMerges, resolveCanonicalName, MERGES_KEY } from '../lib/nameMerges';
 import { AppSettings, loadSettings, saveSettings, filterDonorsBySettings } from '../lib/settings';
 import { logAction } from '../lib/score';
@@ -266,10 +267,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       });
 
       const serverDonations: any[] = donRes.donations || [];
-      const manualDonations = getManualDonations();
-      // Merge: manual donations not already present in server list (deduplicate by name+date+amount)
-      const serverKeys = new Set(serverDonations.map((d: any) => `${d.name}|${d.date}|${d.amount}`));
-      const uniqueManual = manualDonations.filter((d: any) => !serverKeys.has(`${d.name}|${d.date}|${d.amount}`));
+      // מיזוג העותקים המקומיים. ההשוואה מנורמלת (ראה manualDonations.ts) —
+      // בלעדיה תרומה ידנית נספרה פעמיים, כי התאריך שהאפליקציה יוצרת מגיע עם
+      // נקודות והגיליון מחזיר לוכסנים.
+      const { keepLocal: uniqueManual, pruned } = mergeManualDonations(serverDonations, getManualDonations());
+      // מה שכבר הגיע מהשרת אינו צריך להישאר מקומית. בלי הגיזום הזה הרשימה
+      // המקומית גדלה לנצח, וכל שגיאת נרמול עתידית הייתה מתגלגלת על כולה.
+      if (pruned > 0) saveManualDonations(uniqueManual);
       // שם קנוני (אחרי מיזוגי אנשי קשר) לכל רשומה — כדי שתרומות/מפגשים של שני
       // שמות ממוזגים יופיעו כמקשה אחת בכל מקום שמשתמש ברשימת donations הזו
       const allDonations = [...serverDonations, ...uniqueManual].map((d: any) =>

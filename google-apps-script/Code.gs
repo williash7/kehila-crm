@@ -67,7 +67,7 @@
  *
  * **מעדכנים אותה בכל שינוי מהותי בקובץ.**
  */
-var CODE_VERSION = '2026-08-18';
+var CODE_VERSION = '2026-08-18b';
 
 // ── שמות הלשוניות ────────────────────────────────────────────────────────────
 var SH = {
@@ -1734,10 +1734,14 @@ function debugMailRules() {
     var name = String(get_(r, t, 'שם הכלל') || '');
     var query = String(get_(r, t, 'חיפוש בגימייל') || '').trim();
     var active = String(get_(r, t, 'פעיל') || '').trim() === 'כן';
-    var found = 0;
+    var found = 0, afterFilter = 0;
     try { found = GmailApp.search(query).length; } catch (e) { found = -1; }
+    // גם עם המסנן שמדלג על מה שכבר נקלט — כאן מתגלה שאילתה שבורה:
+    // המספר השמאלי גדול והימני אפס, בלי שום סיבה נראית לעין.
+    try { afterFilter = GmailApp.search(query + labelFilter_()).length; } catch (e) { afterFilter = -1; }
     lines.push((active ? '' : '(כבוי) ') + name + ':  ' +
-               (found < 0 ? 'שגיאה בחיפוש' : found + ' שיחות'));
+               (found < 0 ? 'שגיאה בחיפוש' : found + ' שיחות') +
+               ' · חדשות לסריקה: ' + (afterFilter < 0 ? 'שגיאה' : afterFilter));
     lines.push('   ' + query);
   });
 
@@ -1822,6 +1826,24 @@ var DEFAULT_RULES = [
 
 var LABEL_NAME = 'לוח בקרה — נקלט';
 
+/**
+ * ── שם התווית בתוך שאילתת חיפוש ───────────────────────────────────────────
+ *
+ * **המרכאות כאן הן לא קישוט.** שם התווית מכיל רווחים, וג'ימייל מפרק שאילתה
+ * לפי רווחים לפני שהוא מפרש אותה. בלי מרכאות,
+ *
+ *     -label:לוח בקרה — נקלט
+ *
+ * נקרא כ"לא בתווית *לוח*", ובנוסף **חייב להכיל** את המילים "בקרה" ו"נקלט".
+ * מייל תרומה מנדרים פלוס לא מכיל אף אחת מהן — ולכן החיפוש החזיר אפס תוצאות,
+ * תמיד. הסריקה רצה כסדרה, דיווחה "0 נקלטו", ושום תרומה חדשה לא נכנסה.
+ *
+ * זו הייתה תקלה שקטה מהסוג הגרוע: הכל נראה עובד, ופשוט אין נתונים.
+ */
+function labelFilter_() {
+  return ' -label:"' + LABEL_NAME + '"';
+}
+
 /** התווית שמסמנת שרשור שכבר נקלט. נוצרת בפעם הראשונה. */
 function processedLabel_() {
   return GmailApp.getUserLabelByName(LABEL_NAME) || GmailApp.createLabel(LABEL_NAME);
@@ -1846,7 +1868,7 @@ function syncEmails(all) {
     // כך סריקה היסטורית של אלפי מיילים לא נופלת על מגבלת הזמן, וריצה
     // חוזרת לא עוברת שוב על מה שכבר נקלט.
     var label = processedLabel_();
-    var q = (all ? query : query + ' newer_than:3d') + ' -label:' + LABEL_NAME;
+    var q = (all ? query : query + ' newer_than:3d') + labelFilter_();
     var handled = [];
 
     for (var page = 0; page < 20; page++) {
