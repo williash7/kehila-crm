@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useAppStore } from '../store/AppContext';
-import { apiPost } from '../lib/api';
+import { apiPost, explainApiError} from '../lib/api';
 import { todayISO } from './CancelHkDialog';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -50,7 +50,7 @@ export function AddHkDialog({ onClose }: { onClose: () => void }) {
       notes: 'נוספה ידנית מהאפליקציה',
     });
     setBusy(false);
-    if (res?.error || res?.success === false) { setError(res.error || 'ההוספה נכשלה'); return; }
+    if (res?.error || res?.success === false) { setError(explainApiError(res.error) || 'ההוספה נכשלה'); return; }
     setDone(res);
     refresh();
   }

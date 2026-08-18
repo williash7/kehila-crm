@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAppStore } from '../store/AppContext';
-import { apiPost } from '../lib/api';
+import { apiPost, explainApiError} from '../lib/api';
 import { buildChainIndex, chainFor, chainSummary, HkEntry } from '../lib/standingOrders';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -39,7 +39,7 @@ export function CancelHkDialog({ target, onClose }: { target: any; onClose: () =
     });
     setBusy(false);
     if (res?.error || res?.success === false) {
-      setError(res.error || 'הפעולה נכשלה');
+      setError(explainApiError(res.error) || 'הפעולה נכשלה');
       return;
     }
     onClose();
@@ -136,7 +136,7 @@ export function ChangeHkAmountDialog({ target, onClose }: { target: any; onClose
     setError('');
     const res = await apiPost('updateStandingOrderAmount', { id: target.id, amount: value, date });
     setBusy(false);
-    if (res?.error || res?.success === false) { setError(res.error || 'העדכון נכשל'); return; }
+    if (res?.error || res?.success === false) { setError(explainApiError(res.error) || 'העדכון נכשל'); return; }
     setDone(res);
     refresh();
   }
@@ -244,7 +244,7 @@ export function RenewHkDialog({ target, onClose }: { target: any; onClose: () =>
       newId: newId.trim(),
     });
     setBusy(false);
-    if (res?.error || res?.success === false) { setError(res.error || 'החידוש נכשל'); return; }
+    if (res?.error || res?.success === false) { setError(explainApiError(res.error) || 'החידוש נכשל'); return; }
     setDone(res);
     refresh();
   }

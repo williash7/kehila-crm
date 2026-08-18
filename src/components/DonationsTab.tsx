@@ -6,7 +6,8 @@ import { parseDdMmYyyy } from '../lib/dateUtils';
 import { ProfileModal } from './ProfileModal';
 import { CancelHkDialog, ChangeHkAmountDialog, RenewHkDialog, CancelHkButton } from './CancelHkDialog';
 import { AddHkDialog } from './AddHkDialog';
-import { apiPost } from '../lib/api';
+import { FullScreenView } from './FullScreenView';
+import { apiPost, explainApiError} from '../lib/api';
 import { activeProjects } from '../lib/projects';
 import { ThankYouLetterModal } from './ThankYouLetterModal';
 
@@ -360,19 +361,23 @@ export function DonationsTab() {
 
       {/* Donation Detail Modal */}
       {selectedDonation && !showThankYou && (
-        <div className="fixed inset-0 z-[55] flex flex-col justify-end" dir="rtl">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setSelectedDonation(null)} />
-          <div className="relative bg-white rounded-t-2xl max-h-[88vh] overflow-y-auto shadow-2xl">
-            {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-[#EDE6D6] sticky top-0 bg-white z-10">
-              <h2 className="font-['Frank_Ruhl_Libre'] font-bold text-[#0D1B2A] text-lg">פרטי תרומה</h2>
-              <button onClick={() => setSelectedDonation(null)} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-500">
-                <X size={16} />
-              </button>
-            </div>
-
+        <FullScreenView
+          eyebrow={selectedDonation.name || 'תרומה'}
+          title={`₪${(selectedDonation.amount || 0).toLocaleString()} · ${selectedDonation.date || ''}`}
+          backLabel="תרומות"
+          onClose={() => { setSelectedDonation(null); setIsEditing(false); setEditError(''); }}
+          actions={!isEditing ? (
+            <button
+              onClick={() => { setIsEditing(true); setEditFields({ ...selectedDonation }); }}
+              className="flex items-center gap-1.5 h-9 px-3 rounded-full text-white/70 hover:bg-white/10 text-xs font-bold transition-colors"
+            >
+              <Pencil size={14} /> <span className="hidden md:inline">עריכה</span>
+            </button>
+          ) : undefined}
+        >
+          <>
             {!isEditing ? (
-              <div className="p-4 space-y-3">
+              <div className="space-y-3">
                 {/* Donor name + profile link */}
                 <div className="flex items-center justify-between bg-[#FAF6EE] rounded-xl p-3.5">
                   <div>
@@ -422,28 +427,19 @@ export function DonationsTab() {
                   </div>
                 )}
 
-                {/* Actions */}
-                <div className="flex gap-2 pt-1 pb-2">
-                  <button
-                    onClick={() => setShowThankYou(true)}
-                    className="flex-1 flex items-center justify-center gap-2 bg-[#0D1B2A] text-[#C9A84C] font-bold py-3 rounded-xl text-sm"
-                  >
-                    <Mail size={16} /> מכתב תודה
-                  </button>
-                  <button
-                    onClick={() => { setIsEditing(true); setEditFields({ ...selectedDonation }); }}
-                    className="flex items-center justify-center gap-2 bg-gray-100 text-gray-600 font-bold py-3 px-4 rounded-xl"
-                    title="עריכה"
-                  >
-                    <Pencil size={16} />
-                  </button>
-                </div>
+                <button
+                  onClick={() => setShowThankYou(true)}
+                  className="w-full flex items-center justify-center gap-2 bg-[#0D1B2A] text-[#C9A84C] font-bold py-3 rounded-xl text-sm"
+                >
+                  <Mail size={16} /> מכתב תודה
+                </button>
               </div>
             ) : (
               /* Edit mode */
-              <div className="p-4 space-y-3">
+              <div className="space-y-3">
+                {/* השגיאה יושבת ליד השדות, לא כפס רוחב-מסך מעל הכול */}
                 {editError && (
-                  <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-xl p-3">{editError}</div>
+                  <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-xl p-3 leading-relaxed">{editError}</div>
                 )}
 
                 <div className="grid grid-cols-2 gap-2">
@@ -509,7 +505,7 @@ export function DonationsTab() {
                   />
                 </div>
 
-                <div className="flex gap-2 pb-2">
+                <div className="flex gap-2">
                   <button
                     disabled={editBusy}
                     onClick={async () => {
@@ -523,7 +519,7 @@ export function DonationsTab() {
                         notes: editFields.notes,
                       });
                       setEditBusy(false);
-                      if (res?.error || res?.success === false) { setEditError(res.error || 'העדכון נכשל'); return; }
+                      if (res?.error || res?.success === false) { setEditError(explainApiError(res.error) || 'העדכון נכשל'); return; }
                       setSelectedDonation((prev: any) => ({ ...prev, ...editFields, amount: Number(editFields.amount) || 0 }));
                       setIsEditing(false);
                       refresh();
@@ -539,7 +535,7 @@ export function DonationsTab() {
                       setEditBusy(true); setEditError('');
                       const res = await apiPost('deleteDonation', { id: selectedDonation.id });
                       setEditBusy(false);
-                      if (res?.error || res?.success === false) { setEditError(res.error || 'המחיקה נכשלה'); return; }
+                      if (res?.error || res?.success === false) { setEditError(explainApiError(res.error) || 'המחיקה נכשלה'); return; }
                       setIsEditing(false); setSelectedDonation(null);
                       refresh();
                     }}
@@ -558,8 +554,8 @@ export function DonationsTab() {
                 </div>
               </div>
             )}
-          </div>
-        </div>
+          </>
+        </FullScreenView>
       )}
 
       {/* Thank You Letter — shown on top of donation detail */}

@@ -19,6 +19,7 @@ import { DonationsTab } from './components/DonationsTab';
 import { HistoryTab } from './components/HistoryTab';
 import { DonationModal } from './components/DonationModal';
 import { AllDatesModal } from './components/AllDatesModal';
+import { ScriptVersionBanner } from './components/ScriptVersionBanner';
 import { ProfileModal } from './components/ProfileModal';
 import { SetupWizard } from './components/SetupWizard';
 import { SignInScreen } from './components/SignInScreen';
@@ -73,6 +74,8 @@ function AppContent() {
           <div className="text-xs font-normal mt-1 opacity-90">האפליקציה פועלת במצב מידע הדגמה חלקי מקומי.</div>
         </div>
       )}
+
+      <ScriptVersionBanner />
 
       {/* md+: flex row — in RTL the sidebar (first child) appears on the RIGHT */}
       <div className="md:flex min-h-screen">

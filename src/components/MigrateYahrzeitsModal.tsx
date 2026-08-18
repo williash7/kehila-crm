@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { X, Wand2, AlertTriangle, Download } from 'lucide-react';
 import { useAppStore } from '../store/AppContext';
-import { apiPost } from '../lib/api';
+import { apiPost, explainApiError} from '../lib/api';
 import {
   FamilyMember, collectLegacyYahrzeits, legacyToFamilyMember, familyLabel,
 } from '../lib/family';
@@ -99,7 +99,7 @@ export function MigrateYahrzeitsModal({ onClose }: { onClose: () => void }) {
     try {
       const res = await apiPost('deleteContactColumns', { columns: allColumns });
       if (res?.error || res?.success === false) {
-        setError(`הרשומות נשמרו בהצלחה, אבל מחיקת העמודות נכשלה: ${res.error || ''} — אפשר למחוק אותן ידנית בגיליון. שום מידע לא אבד.`);
+        setError(`הרשומות נשמרו בהצלחה, אבל מחיקת העמודות נכשלה: ${explainApiError(res.error)} — אפשר למחוק אותן ידנית בגיליון. שום מידע לא אבד.`);
       } else {
         deleted = res?.deleted ?? 0;
       }
