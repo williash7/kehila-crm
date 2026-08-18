@@ -67,7 +67,7 @@
  *
  * **מעדכנים אותה בכל שינוי מהותי בקובץ.**
  */
-var CODE_VERSION = '2026-08-18b';
+var CODE_VERSION = '2026-08-18c';
 
 // ── שמות הלשוניות ────────────────────────────────────────────────────────────
 var SH = {
@@ -1740,8 +1740,8 @@ function debugMailRules() {
     // המספר השמאלי גדול והימני אפס, בלי שום סיבה נראית לעין.
     try { afterFilter = GmailApp.search(query + labelFilter_()).length; } catch (e) { afterFilter = -1; }
     lines.push((active ? '' : '(כבוי) ') + name + ':  ' +
-               (found < 0 ? 'שגיאה בחיפוש' : found + ' שיחות') +
-               ' · חדשות לסריקה: ' + (afterFilter < 0 ? 'שגיאה' : afterFilter));
+               (found < 0 ? 'שגיאה בחיפוש' : found + ' שיחות בסך הכל') +
+               ' · לסריקה היומית: ' + (afterFilter < 0 ? 'שגיאה' : afterFilter));
     lines.push('   ' + query);
   });
 
@@ -1756,7 +1756,12 @@ function debugMailRules() {
     th.slice(0, 5).forEach(function (x) { sample.push('   • ' + x.getFirstMessageSubject()); });
   } catch (e) { all = -1; }
 
-  lines.push('', 'סה"כ מיילים מנדרים פלוס בתיבה: ' + all);
+  lines.push('',
+    'הסריקה היומית מדלגת על מיילים שכבר נקלטו (תווית "' + LABEL_NAME + '").',
+    'המספר הימני הוא מה שנשאר לה — אפס פירושו שהכל כבר נסרק, ולא תקלה.',
+    'הסריקה ההיסטורית מהתפריט עוברת על הכל בלי קשר לתווית.',
+    '');
+  lines.push('סה"כ מיילים מנדרים פלוס בתיבה: ' + all);
   if (sample.length) lines.push('דוגמאות לשורות נושא:', sample.join('\n'));
   if (all === 0) {
     lines.push('', '⚠️ אין בתיבה הזו אף מייל מנדרים.',
@@ -1849,7 +1854,22 @@ function processedLabel_() {
   return GmailApp.getUserLabelByName(LABEL_NAME) || GmailApp.createLabel(LABEL_NAME);
 }
 
-/** @param {boolean} all — true סורק את כל ההיסטוריה, false רק יומיים אחרונים. */
+/**
+ * ── למה הסריקה ההיסטורית מתעלמת מהתווית ───────────────────────────────────
+ *
+ * התווית "נקלט" יושבת על **חשבון הג'ימייל**, והנתונים יושבים **בגיליון**.
+ * שני דברים נפרדים לגמרי, וזה מה שנשבר: מי שפתח גיליון חדש גילה שכל
+ * המיילים כבר נושאים את התווית מהריצות של הגיליון הקודם — ולכן הסריקה
+ * ההיסטורית מצאה אפס מיילים לסרוק, והגיליון החדש נשאר ריק לנצח. האבחון
+ * הראה "337 שיחות · חדשות לסריקה: 0", וזה נכון וחסר תועלת בו-זמנית.
+ *
+ * לכן: הסריקה **היומית** מדלגת על מה שכבר נקלט (זו כל מטרתה — מהירות),
+ * אבל הסריקה ההיסטורית, שמריצים ידנית ובכוונה, עוברת על **הכל**. אין בזה
+ * סיכון לכפילות: כל שורה נכתבת לפי מזהה ייחודי, וכתיבה חוזרת של אותו מייל
+ * פשוט לא עושה כלום.
+ *
+ * @param {boolean} all — true סורק את כל ההיסטוריה, false רק שלושה ימים אחרונים.
+ */
 function syncEmails(all) {
   var t = table_(SH.RULES);
   var added = 0, failures = 0, orders = 0;
@@ -1868,7 +1888,7 @@ function syncEmails(all) {
     // כך סריקה היסטורית של אלפי מיילים לא נופלת על מגבלת הזמן, וריצה
     // חוזרת לא עוברת שוב על מה שכבר נקלט.
     var label = processedLabel_();
-    var q = (all ? query : query + ' newer_than:3d') + labelFilter_();
+    var q = all ? query : query + ' newer_than:3d' + labelFilter_();
     var handled = [];
 
     for (var page = 0; page < 20; page++) {
@@ -1905,11 +1925,39 @@ function syncEmails(all) {
 function syncAllEmailHistory() {
   var res = syncEmails(true);
   var created = generateStandingOrderCharges();
+  var nothing = !res.added && !res.orders && !res.failures;
   alert_('הסריקה ההיסטורית הושלמה ✅\n\n' +
          'תרומות שנקלטו:  ' + res.added + '\n' +
          'הוראות קבע שנקלטו:  ' + res.orders + '\n' +
          'חיובים חודשיים שנוצרו:  ' + created + '\n' +
-         'כשלי חיוב:  ' + res.failures);
+         'כשלי חיוב:  ' + res.failures +
+         (nothing
+           ? '\n\nלא נוסף כלום — כלומר כל מה שבתיבה כבר נמצא בגיליון.\n' +
+             'אם הגיליון נראה ריק, בדקו ב"אבחון קליטת מיילים" שהסקריפט רץ\n' +
+             'בחשבון שאליו מגיעים המיילים.'
+           : ''));
+}
+
+/**
+ * מסיר את תווית "נקלט" מכל השרשורים.
+ *
+ * לשעת הצורך: אחרי מעבר לגיליון חדש, או כשרוצים לבנות הכל מאפס. הסריקה
+ * ההיסטורית ממילא מתעלמת מהתווית, ולכן זה נחוץ רק כדי שגם הסריקה היומית
+ * תעבור שוב על הכל.
+ */
+function clearProcessedLabel() {
+  var label = GmailApp.getUserLabelByName(LABEL_NAME);
+  if (!label) { alert_('התווית "' + LABEL_NAME + '" לא קיימת — אין מה לנקות.'); return; }
+  var total = 0;
+  for (var page = 0; page < 40; page++) {
+    var threads = label.getThreads(0, 100);
+    if (!threads.length) break;
+    label.removeFromThreads(threads);
+    total += threads.length;
+  }
+  alert_('התווית הוסרה מ-' + total + ' שיחות.\n\n' +
+         'הסריקה הבאה תעבור עליהן שוב. שום דבר לא יירשם פעמיים —\n' +
+         'כל שורה נכתבת לפי מזהה ייחודי.');
 }
 
 /**
@@ -2434,6 +2482,7 @@ function onOpen() {
     .addSeparator()
     .addItem('סנכרון עכשיו', 'dailySync')
     .addItem('סריקת כל היסטוריית המיילים', 'syncAllEmailHistory')
+    .addItem('ניקוי סימוני "נקלט" בגימייל', 'clearProcessedLabel')
     .addItem('השלמת חיובי הוראות קבע', 'generateStandingOrderCharges')
     .addItem('רענון תאריך הכתיבה לרבי', 'refreshRebbeDate')
     .addToUi();
