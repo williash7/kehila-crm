@@ -260,6 +260,20 @@ export async function saveCRMDataCloud(data: Record<string, any>): Promise<void>
   apiPost('saveCRM', { data }).catch(console.error); // fire and forget
 }
 
+/**
+ * שמירה שממתינים לה — לפעולות שאסור להמשיך לפניהן.
+ *
+ * הגרסה ה"שגר ושכח" למעלה מתאימה לעריכה רגילה: אם היא מאחרת בשנייה, לא קרה
+ * כלום. אבל פעולה שמוחקת מהגיליון אחריה, או שגורמת לרענון שמושך מהשרת, חייבת
+ * לדעת שהכתיבה **הגיעה** — אחרת הקריאה הבאה מחזירה את המצב הישן ודורסת את מה
+ * שנשמר, בזמן שהמקור כבר נמחק.
+ */
+export async function saveCRMDataCloudSync(data: Record<string, any>): Promise<boolean> {
+  saveCRMData(data);
+  const res = await apiPost('saveCRM', { data });
+  return !(res?.error || res?.success === false);
+}
+
 export async function getEventsDataCloud(): Promise<any[]> {
   try {
     const res = await apiGet('getEvents');

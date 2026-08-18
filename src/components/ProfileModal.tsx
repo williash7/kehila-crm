@@ -285,6 +285,7 @@ export function ProfileModal({ name, onClose, backLabel, siblings, onSelectSibli
       backLabel={backLabel || 'חזרה'}
       onClose={onClose}
       siblings={siblings}
+      layout="wide"
       siblingsTitle="אנשי קשר נוספים"
       activeSiblingId={name}
       onSelectSibling={onSelectSibling}
@@ -317,6 +318,11 @@ export function ProfileModal({ name, onClose, backLabel, siblings, onSelectSibli
             {donor.total > 5000 && <span className="bg-purple-100 text-purple-800 rounded-full px-3 py-1 text-xs border border-purple-200">💎 VIP</span>}
           </div>
         </div>
+
+        {/* במסך רחב הכרטיס נפרש לשתי עמודות: מימין מי הוא ומתי מציינים אותו,
+            משמאל מה עושים איתו ומה ההיסטוריה. בנייד זו נשארת עמודה אחת. */}
+        <div className="lg:grid lg:grid-cols-2 lg:gap-5 lg:items-start">
+        <div className="min-w-0">
 
         {/* Stats */}
         <div className="grid grid-cols-3 gap-2 bg-white rounded-2xl p-4 shadow-sm mb-5 divide-x-reverse divide-[#EDE6D6] divide-x">
@@ -373,6 +379,9 @@ export function ProfileModal({ name, onClose, backLabel, siblings, onSelectSibli
 
         {/* בני משפחה, ימי הולדת ויארצייטים — רשומות בכרטיס, לא עמודות בגיליון */}
         <FamilyDatesEditor name={name} />
+
+        </div>
+        <div className="min-w-0">
 
         {/* Circles */}
         <h3 className="font-['Frank_Ruhl_Libre'] text-lg font-bold text-[#0D1B2A] mb-3">מעגל קשר</h3>
@@ -770,6 +779,9 @@ export function ProfileModal({ name, onClose, backLabel, siblings, onSelectSibli
             </div>
           );
         })()}
+
+        </div>
+        </div>
 
         {/* WhatsApp Phone Modal */}
         {editingPhone && (

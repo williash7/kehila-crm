@@ -121,13 +121,21 @@ export interface FullScreenViewProps {
    */
   footer?: React.ReactNode;
 
+  /**
+   * 'reading' (ברירת מחדל) — עמודה אחת ברוחב קריאה, לטפסים ולתוכן רציף.
+   * 'wide' — הכרטיס פורש את עצמו על כל הרוחב הזמין, לתוכן שמסודר בעצמו
+   * לשתי עמודות. במסך של 27 אינץ' עמודה צרה במרכז היא בזבוז מקום אמיתי:
+   * צריך לגלול כדי לראות מה שהיה נכנס בלי גלילה בכלל.
+   */
+  layout?: 'reading' | 'wide';
+
   children: React.ReactNode;
 }
 
 export function FullScreenView({
   eyebrow, title, backLabel = 'חזרה', onClose, actions,
   siblings, siblingsTitle = 'עוד ברשימה', activeSiblingId, onSelectSibling,
-  footer, children,
+  footer, layout = 'reading', children,
 }: FullScreenViewProps) {
   useCloseOnBack(onClose);
 
@@ -226,13 +234,13 @@ export function FullScreenView({
 
           {/* רוחב קריאה. בלי התקרה הזו, שורת טקסט על צג רחב נמתחת לרוחב
               שהעין מאבדת בו את תחילת השורה הבאה. */}
-          <main className="flex-1 min-w-0 mx-auto max-w-2xl">{children}</main>
+          <main className={`flex-1 min-w-0 mx-auto w-full ${layout === 'wide' ? 'max-w-4xl' : 'max-w-2xl'}`}>{children}</main>
         </div>
       </div>
 
       {footer && (
         <div className="shrink-0 border-t border-[#EDE6D6] bg-[#FAF6EE]/95 backdrop-blur-sm">
-          <div className="mx-auto w-full max-w-2xl px-3 md:px-6 py-3">{footer}</div>
+          <div className={`mx-auto w-full px-3 md:px-6 py-3 ${layout === 'wide' ? 'max-w-4xl' : 'max-w-2xl'}`}>{footer}</div>
         </div>
       )}
     </div>

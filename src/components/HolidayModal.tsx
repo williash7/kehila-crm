@@ -433,6 +433,7 @@ ${docs.length > 0 ? section('📄 מסמכים מקושרים',
       eyebrow={holiday.hebrew || 'אירוע'}
       title={holiday.name}
       backLabel={backLabel || 'חזרה'}
+      layout="wide"
       onClose={onClose}
       actions={
         <button
@@ -471,6 +472,11 @@ ${docs.length > 0 ? section('📄 מסמכים מקושרים',
           </div>
           <div className="absolute -left-2 -top-2 text-7xl opacity-5">✡</div>
         </div>
+
+        {/* במסך רחב: מימין מה שצריך לעשות לקראת החג, משמאל המספרים והחומר.
+            בנייד זו נשארת עמודה אחת בסדר הקיים. */}
+        <div className="lg:grid lg:grid-cols-2 lg:gap-5 lg:items-start">
+        <div className="min-w-0">
 
         {/* Reminders section */}
         <div className="mb-6">
@@ -819,6 +825,9 @@ ${docs.length > 0 ? section('📄 מסמכים מקושרים',
           </div>
         </div>
 
+        </div>
+        <div className="min-w-0">
+
         {/* Attendance Section */}
         <div className="mb-6">
           <div className="flex justify-between items-center mb-3">
@@ -1128,6 +1137,8 @@ ${docs.length > 0 ? section('📄 מסמכים מקושרים',
             </div>
           </div>
         )}
+        </div>
+        </div>
       </>
 
       {/* Attendance Modal */}

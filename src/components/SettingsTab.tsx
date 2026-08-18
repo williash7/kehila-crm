@@ -3,6 +3,7 @@ import { useAppStore } from '../store/AppContext';
 import { Settings as SettingsIcon, RotateCcw, History, Loader2, ChevronDown, Bot } from 'lucide-react';
 import { GlobalAIImportModal } from './GlobalAIImportModal';
 import { MigrateYahrzeitsModal } from './MigrateYahrzeitsModal';
+import { DatesRescueModal } from './DatesRescueModal';
 import { ALL_CIRCLES, CIRCLE_LABELS, DEFAULT_SETTINGS } from '../lib/settings';
 import { computeMissingAttendanceContacts } from '../lib/backfillContacts';
 import { apiPost } from '../lib/api';
@@ -21,6 +22,7 @@ export function SettingsTab() {
   const [wizardOpen, setWizardOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [migrateOpen, setMigrateOpen] = useState(false);
+  const [rescueOpen, setRescueOpen] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncProgress, setSyncProgress] = useState<{ done: number; total: number } | null>(null);
   const [syncResult, setSyncResult] = useState<string | null>(null);
@@ -297,12 +299,20 @@ export function SettingsTab() {
               של האדם הנכון ומנקה את העמודות. תראה בדיוק מה עומד לקרות לפני האישור.
             </p>
           </div>
-          <button
-            onClick={() => setMigrateOpen(true)}
-            className="w-full flex items-center justify-center gap-2 bg-[#0D1B2A] text-[#E8C97A] text-sm font-bold py-2.5 rounded-xl active:scale-95 transition-transform"
-          >
-            בדוק מה יש להעביר
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setMigrateOpen(true)}
+              className="flex-1 flex items-center justify-center gap-2 bg-[#0D1B2A] text-[#E8C97A] text-sm font-bold py-2.5 rounded-xl active:scale-95 transition-transform"
+            >
+              בדוק מה יש להעביר
+            </button>
+            <button
+              onClick={() => setRescueOpen(true)}
+              className="px-3 rounded-xl border border-[#EDE6D6] bg-white text-[#0D1B2A] text-sm font-bold hover:border-[#C9A84C] transition-colors whitespace-nowrap"
+            >
+              איפה התאריכים שלי?
+            </button>
+          </div>
         </div>
 
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6] space-y-3">
@@ -442,6 +452,7 @@ export function SettingsTab() {
 
       {importOpen && <GlobalAIImportModal onClose={() => setImportOpen(false)} />}
       {migrateOpen && <MigrateYahrzeitsModal onClose={() => setMigrateOpen(false)} />}
+      {rescueOpen && <DatesRescueModal onClose={() => setRescueOpen(false)} />}
     </div>
   );
 }

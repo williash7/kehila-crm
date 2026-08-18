@@ -18,6 +18,7 @@ import { ScoreTab } from './components/ScoreTab';
 import { DonationsTab } from './components/DonationsTab';
 import { HistoryTab } from './components/HistoryTab';
 import { DonationModal } from './components/DonationModal';
+import { AllDatesModal } from './components/AllDatesModal';
 import { ProfileModal } from './components/ProfileModal';
 import { SetupWizard } from './components/SetupWizard';
 import { SignInScreen } from './components/SignInScreen';
@@ -84,6 +85,8 @@ function AppContent() {
           {activeTab === 'donations' && <DonationsTab />}
           {activeTab === 'events' && <EventsTab addTrigger={addTrigger} />}
           {activeTab === 'calendar' && <CalendarTab addTrigger={addTrigger} />}
+          {/* "תאריכים" הוא מסך מלא בפני עצמו — נפתח כטאב, ונסגר חזרה לדשבורד */}
+          {activeTab === 'dates' && <AllDatesModal onClose={() => setActiveTab('home')} />}
           {activeTab === 'history' && <HistoryTab />}
           {activeTab === 'reports' && <ReportsTab />}
           {activeTab === 'poster' && <PosterTab onClose={() => setActiveTab('home')} />}

@@ -237,6 +237,7 @@ function ProjectDetail({ project, donations, donorNames, crm, pane, setPane, add
       title={project.name || 'פרויקט ללא שם'}
       backLabel="פרויקטים"
       onClose={onClose}
+      layout="wide"
     >
       <>
         <div>

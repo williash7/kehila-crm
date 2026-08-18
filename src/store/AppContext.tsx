@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import {
   apiGet, apiPost, getCRMData,
-  getCRMDataCloud, saveCRMDataCloud,
+  getCRMDataCloud, saveCRMDataCloud, saveCRMDataCloudSync,
   getEventsDataCloud, saveEventsDataCloud,
   getHolidayExtrasCloud, saveHolidayExtrasCloud,
   getManualDonations, saveManualDonations,
@@ -53,6 +53,7 @@ interface AppState {
   refresh: () => void;
   addManualDonation: (donation: any) => void;
   updateCrm: (name: string, data: any) => void;
+  updateCrmMany: (updates: Record<string, any>) => Promise<boolean>;
   updateHolidayExtras: (id: string, data: any) => void;
   updateEventsData: (data: any[]) => void;
   updateProjects: (data: Project[]) => void;
@@ -343,6 +344,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       });
       logAction('task_create');
     }
+  };
+
+  /**
+   * עדכון של כמה אנשי קשר בבת אחת, שממתינים לסיומו.
+   *
+   * לולאה של updateCrm הייתה מייצרת שמירה נפרדת לכל איש קשר, כולן "שגר ושכח",
+   * ואז כל refresh שיגיע לפני שהאחרונה נחתה היה מחזיר מהשרת עותק ישן ודורס
+   * את הכול. כאן נבנה מצב אחד, נשמר פעם אחת, וממתינים לתשובה.
+   */
+  const updateCrmMany = async (updates: Record<string, any>): Promise<boolean> => {
+    let snapshot: Record<string, any> = {};
+    setCrm(prev => {
+      const next = { ...prev };
+      Object.keys(updates).forEach(n => { next[n] = { ...(prev[n] || {}), ...updates[n] }; });
+      snapshot = next;
+      return next;
+    });
+    // setCrm הסינכרוני כבר מילא את snapshot, ולכן אפשר לשמור אותו כאן
+    await new Promise(r => setTimeout(r, 0));
+    return saveCRMDataCloudSync(snapshot);
   };
 
   const updateCrm = (name: string, data: any) => {
@@ -740,7 +761,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       loading, loadingText, apiError, crm, holidayExtras, eventsData, history, nameMerges,
       refresh: () => loadAll({ silent: true }),
       projects, updateProjects,
-      addManualDonation, updateCrm, updateHolidayExtras, updateEventsData, updateRebbeDate,
+      addManualDonation, updateCrm, updateCrmMany, updateHolidayExtras, updateEventsData, updateRebbeDate,
       mergeContacts, unmergeContact, settings, updateSettings,
       archiveOccurrence, importTasksFromHistory, updateHistoryEntry, deleteHistoryEntry,
       homeVisits, startHomeVisitRound, markHomeVisitDone, unmarkHomeVisitDone, createHomeVisitTaskForEntry,

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Home, Users, CalendarDays, PieChart, CalendarCheck, Settings, ClipboardList, TrendingUp, HandCoins, History, DoorOpen, Target, Image as ImageIcon, BookOpen } from 'lucide-react';
+import { Home, Users, CalendarDays, PieChart, CalendarCheck, Settings, ClipboardList, TrendingUp, HandCoins, History, DoorOpen, Target, Image as ImageIcon, BookOpen, CalendarHeart} from 'lucide-react';
 
 interface BottomNavProps {
   currentTab: string;
@@ -20,6 +20,7 @@ export function BottomNav({ currentTab, setTab }: BottomNavProps) {
     { id: 'events', icon: CalendarCheck, label: 'אירועים' },
     { id: 'projects', icon: Target, label: 'פרויקטים' },
     { id: 'calendar', icon: CalendarDays, label: 'חגים' },
+    { id: 'dates', icon: CalendarHeart, label: 'תאריכים' },
     { id: 'history', icon: History, label: 'היסטוריה' },
     { id: 'reports', icon: PieChart, label: 'דוחות' },
     { id: 'poster', icon: ImageIcon, label: 'פוסטר' },
