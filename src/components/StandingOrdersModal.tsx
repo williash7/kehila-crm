@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { X, Search, RefreshCw, AlertTriangle, ChevronDown, ChevronLeft, Plus } from 'lucide-react';
 import { useAppStore } from '../store/AppContext';
 import { getHkStatus, sortHkList, countHkByStatus, openFailureFor, indexFailures, HK_STATUS_LABEL, HK_STATUS_COLOR, HkStatus } from '../lib/standingOrders';
-import { CancelHkDialog, ChangeHkAmountDialog, CancelHkButton } from './CancelHkDialog';
+import { CancelHkDialog, ChangeHkAmountDialog, RenewHkDialog, CancelHkButton } from './CancelHkDialog';
 import { AddHkDialog } from './AddHkDialog';
 import { ProfileModal } from './ProfileModal';
 
@@ -12,6 +12,9 @@ import { ProfileModal } from './ProfileModal';
 const RECENT_MONTHS = 3;
 function isRecentlyRelevant(h: any, threshold: number): boolean {
   const status = getHkStatus(h, threshold);
+  // הוראה שחודשה כבר לא דורשת התייחסות: מה שקורה עכשיו קורה בהוראה שירשה
+  // אותה. משאירים אותה זמינה מתחת ל"הצג גם ישנות" ולא ברשימה הראשית.
+  if (status === 'renewed') return false;
   if (status !== 'expired' && status !== 'cancelled') return true;
   // הוראה שבוטלה נמדדת לפי תאריך הביטול, לא לפי החיוב האחרון
   const ref = status === 'cancelled' ? h.cancelDate : h.lastBilled;
@@ -34,6 +37,7 @@ export function StandingOrdersModal({ onClose }: { onClose: () => void }) {
   // לספר לגיליון שההוראה נפסקה.
   const [cancelTarget, setCancelTarget] = useState<any | null>(null);
   const [amountTarget, setAmountTarget] = useState<any | null>(null);
+  const [renewTarget, setRenewTarget] = useState<any | null>(null);
   const [addOpen, setAddOpen] = useState(false);
 
   const threshold = settings.hkExpiringThreshold ?? 2;
@@ -200,6 +204,13 @@ export function StandingOrdersModal({ onClose }: { onClose: () => void }) {
                           #{h.id}{h.startDate ? ` · ${h.startDate}` : ''}
                         </div>
                       )}
+                      {(h.renewalOf || h.renewedBy) && (
+                      <div className="text-[10px] text-indigo-600 mt-0.5" dir="rtl">
+                      {h.renewalOf ? <span>חידוש של <span dir="ltr">#{h.renewalOf}</span></span> : null}
+                      {h.renewalOf && h.renewedBy ? ' · ' : ''}
+                      {h.renewedBy ? <span>חודשה בהוראה <span dir="ltr">#{h.renewedBy}</span></span> : null}
+                      </div>
+                      )}
                     </div>
                     <div className="text-left shrink-0">
                       <div className="font-['Frank_Ruhl_Libre'] text-base font-bold text-[#9B7A2F]">₪{(Number(h.amount) || 0).toLocaleString()}</div>
@@ -220,7 +231,7 @@ export function StandingOrdersModal({ onClose }: { onClose: () => void }) {
                     )}
                   </div>
 
-                  <CancelHkButton hk={h} onOpen={setCancelTarget} onChangeAmount={setAmountTarget} />
+                  <CancelHkButton hk={h} onOpen={setCancelTarget} onChangeAmount={setAmountTarget} onRenew={setRenewTarget} />
                 </div>
               );
             })}
@@ -230,6 +241,7 @@ export function StandingOrdersModal({ onClose }: { onClose: () => void }) {
 
       {cancelTarget && <CancelHkDialog target={cancelTarget} onClose={() => setCancelTarget(null)} />}
       {amountTarget && <ChangeHkAmountDialog target={amountTarget} onClose={() => setAmountTarget(null)} />}
+      {renewTarget && <RenewHkDialog target={renewTarget} onClose={() => setRenewTarget(null)} />}
       {addOpen && <AddHkDialog onClose={() => setAddOpen(false)} />}
 
       {selectedDonor && <ProfileModal name={selectedDonor} onClose={() => setSelectedDonor(null)} />}

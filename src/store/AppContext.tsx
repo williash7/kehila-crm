@@ -11,6 +11,7 @@ import {
   getCustomHols,
 } from '../lib/api';
 import { Donor, Donation, ReportSummary } from '../types';
+import { annotateRenewals } from '../lib/standingOrders';
 import { extractMerges, applyMergesToCrm, coalesceDonorsByMerges, resolveCanonicalName, MERGES_KEY } from '../lib/nameMerges';
 import { AppSettings, loadSettings, saveSettings, filterDonorsBySettings } from '../lib/settings';
 import { logAction } from '../lib/score';
@@ -295,7 +296,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setDonors(coalesceDonorsByMerges(map, resolvedMerges));
 
       if (failRes.failures) setFailures(failRes.failures);
-      if (hkRes.hk) setHk(hkRes.hk);
+      // מסמנים כאן ולא בכל מסך בנפרד: "מי חידש את מי" הוא מאפיין של
+      // הרשימה כולה, ומסך שיקבל שורה בלי הסימון יציג אותה כהוראה שנפלה.
+      if (hkRes.hk) setHk(annotateRenewals(hkRes.hk));
 
     } catch (e) {
       console.error('Error fetching data:', e);

@@ -4,7 +4,7 @@ import { RefreshCw, Search, HandCoins, AlertTriangle, ChevronDown, X, Mail, Mess
 import { getHkStatus, sortHkList, countHkByStatus, openFailureFor, indexFailures, HK_STATUS_LABEL, HK_STATUS_COLOR, HkStatus } from '../lib/standingOrders';
 import { parseDdMmYyyy } from '../lib/dateUtils';
 import { ProfileModal } from './ProfileModal';
-import { CancelHkDialog, ChangeHkAmountDialog, CancelHkButton } from './CancelHkDialog';
+import { CancelHkDialog, ChangeHkAmountDialog, RenewHkDialog, CancelHkButton } from './CancelHkDialog';
 import { AddHkDialog } from './AddHkDialog';
 import { apiPost } from '../lib/api';
 import { activeProjects } from '../lib/projects';
@@ -27,6 +27,7 @@ export function DonationsTab() {
   const [editError, setEditError] = useState('');
   const [cancelTarget, setCancelTarget] = useState<any | null>(null);
   const [amountTarget, setAmountTarget] = useState<any | null>(null);
+  const [renewTarget, setRenewTarget] = useState<any | null>(null);
   const [addHkOpen, setAddHkOpen] = useState(false);
 
   // ── תרומות ──────────────────────────────────────────────────────────────
@@ -273,6 +274,7 @@ export function DonationsTab() {
                 { id: 'expired', label: 'הסתיימו', count: hkCounts.expired },
                 { id: 'active', label: 'פעילות', count: hkCounts.active },
                 { id: 'cancelled', label: 'בוטלו', count: hkCounts.cancelled },
+                { id: 'renewed', label: 'חודשו', count: hkCounts.renewed },
                 { id: 'errors', label: 'כשלי חיוב', count: failures.length },
               ] as { id: 'all' | HkStatus | 'errors'; label: string; count: number }[]).map(t => (
                 <button key={t.id} onClick={() => setHkFilter(t.id)} className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-bold border transition-colors whitespace-nowrap ${hkFilter === t.id ? 'bg-[#0D1B2A] text-[#C9A84C] border-[#0D1B2A]' : 'bg-white text-gray-500 border-[#EDE6D6]'}`}>
@@ -303,6 +305,13 @@ export function DonationsTab() {
                             #{h.id}{h.startDate ? ` · ${h.startDate}` : ''}
                           </div>
                         )}
+                        {(h.renewalOf || h.renewedBy) && (
+                        <div className="text-[10px] text-indigo-600 mt-0.5" dir="rtl">
+                        {h.renewalOf ? <span>חידוש של <span dir="ltr">#{h.renewalOf}</span></span> : null}
+                        {h.renewalOf && h.renewedBy ? ' · ' : ''}
+                        {h.renewedBy ? <span>חודשה בהוראה <span dir="ltr">#{h.renewedBy}</span></span> : null}
+                        </div>
+                        )}
                       </div>
                       <div className="text-left shrink-0">
                         <div className="font-['Frank_Ruhl_Libre'] text-base font-bold text-[#9B7A2F]">₪{(Number(h.amount) || 0).toLocaleString()}</div>
@@ -322,7 +331,7 @@ export function DonationsTab() {
                         </span>
                       )}
                     </div>
-                    <CancelHkButton hk={h} onOpen={setCancelTarget} onChangeAmount={setAmountTarget} />
+                    <CancelHkButton hk={h} onOpen={setCancelTarget} onChangeAmount={setAmountTarget} onRenew={setRenewTarget} />
                   </div>
                 );
               })}
@@ -567,6 +576,7 @@ export function DonationsTab() {
 
       {cancelTarget && <CancelHkDialog target={cancelTarget} onClose={() => setCancelTarget(null)} />}
       {amountTarget && <ChangeHkAmountDialog target={amountTarget} onClose={() => setAmountTarget(null)} />}
+      {renewTarget && <RenewHkDialog target={renewTarget} onClose={() => setRenewTarget(null)} />}
       {addHkOpen && <AddHkDialog onClose={() => setAddHkOpen(false)} />}
     </div>
   );

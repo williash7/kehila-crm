@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useAppStore } from '../store/AppContext';
 import { Settings as SettingsIcon, RotateCcw, History, Loader2, ChevronDown, Bot } from 'lucide-react';
 import { GlobalAIImportModal } from './GlobalAIImportModal';
+import { MigrateYahrzeitsModal } from './MigrateYahrzeitsModal';
 import { ALL_CIRCLES, CIRCLE_LABELS, DEFAULT_SETTINGS } from '../lib/settings';
 import { computeMissingAttendanceContacts } from '../lib/backfillContacts';
 import { apiPost } from '../lib/api';
@@ -19,6 +20,7 @@ export function SettingsTab() {
   const holidayNames = React.useMemo(() => groupHolidayNames(holidays), [holidays]);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [migrateOpen, setMigrateOpen] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncProgress, setSyncProgress] = useState<{ done: number; total: number } | null>(null);
   const [syncResult, setSyncResult] = useState<string | null>(null);
@@ -285,6 +287,24 @@ export function SettingsTab() {
           </button>
         </div>
 
+        {/* פעולה חד-פעמית — רלוונטית רק למי שיש לו יארצייטים מהמבנה הישן */}
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6] space-y-3">
+          <div>
+            <h3 className="font-['Frank_Ruhl_Libre'] text-lg font-bold text-[#0D1B2A]">העברת יארצייטים למבנה החדש</h3>
+            <p className="text-[11px] text-gray-400 mt-0.5 leading-relaxed">
+              עד היום שם הנפטר נשמר כשם של <b>עמודה</b> בגיליון — ולכן כל יארצייט
+              שהוספת הופיע אצל כל אנשי הקשר. הפעולה הזו מעבירה אותם לרשומות בכרטיס
+              של האדם הנכון ומנקה את העמודות. תראה בדיוק מה עומד לקרות לפני האישור.
+            </p>
+          </div>
+          <button
+            onClick={() => setMigrateOpen(true)}
+            className="w-full flex items-center justify-center gap-2 bg-[#0D1B2A] text-[#E8C97A] text-sm font-bold py-2.5 rounded-xl active:scale-95 transition-transform"
+          >
+            בדוק מה יש להעביר
+          </button>
+        </div>
+
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6] space-y-3">
           <div>
             <h3 className="font-['Frank_Ruhl_Libre'] text-lg font-bold text-[#0D1B2A]">טווח תאריכים לסכומי תרומות</h3>
@@ -421,6 +441,7 @@ export function SettingsTab() {
       </div>
 
       {importOpen && <GlobalAIImportModal onClose={() => setImportOpen(false)} />}
+      {migrateOpen && <MigrateYahrzeitsModal onClose={() => setMigrateOpen(false)} />}
     </div>
   );
 }

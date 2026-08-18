@@ -18,14 +18,23 @@ export interface HkEntry {
   paid?: number;
   lastBilled: string;
   cancelDate?: string;
+  startDate?: string;
+  /** מספר ההוראה הקודמת בשרשרת — קיים רק בהוראה שנוצרה כחידוש */
+  renewalOf?: string;
+  /** מספר ההוראה שחידשה את זו. מחושב באפליקציה, לא מגיע מהגיליון. */
+  renewedBy?: string;
   [key: string]: any;
 }
 
-export type HkStatus = 'cancelled' | 'expired' | 'expiring' | 'active';
+export type HkStatus = 'renewed' | 'cancelled' | 'expired' | 'expiring' | 'active';
 
 // "בוטלה" קודם ל"הסתיימה": הוראה שבוטלה באמצע הדרך היא לא הוראה שמיצתה
 // את עצמה. ההבחנה חשובה — "הסתיימה" זה סיפור מוצלח, "בוטלה" זה תורם שירד.
 export function getHkStatus(hk: HkEntry, threshold: number): HkStatus {
+  // הוראה שחודשה אינה "בוטלה" ואינה "הסתיימה" — היא נמשכת תחת מספר אחר.
+  // בלי ההבחנה הזו כל חידוש היה מוסיף לרשימה שורה כתומה מדאיגה, ומי שסורק
+  // את המסך היה רואה תורם שירד בדיוק כשהוא חידש.
+  if (hk.renewedBy) return 'renewed';
   if (hk.cancelDate) return 'cancelled';
   // הוראה ללא הגבלה לא מסתיימת ולא "מסתיימת בקרוב" — היא פשוט פעילה.
   if (hk.unlimited) return 'active';
@@ -36,6 +45,7 @@ export function getHkStatus(hk: HkEntry, threshold: number): HkStatus {
 }
 
 export const HK_STATUS_LABEL: Record<HkStatus, string> = {
+  renewed: 'חודשה',
   cancelled: 'בוטלה',
   expired: 'הסתיימה',
   expiring: 'מסתיימת בקרוב',
@@ -43,6 +53,7 @@ export const HK_STATUS_LABEL: Record<HkStatus, string> = {
 };
 
 export const HK_STATUS_COLOR: Record<HkStatus, string> = {
+  renewed: 'bg-indigo-50 text-indigo-700 border-indigo-200',
   cancelled: 'bg-orange-50 text-orange-700 border-orange-200',
   expired: 'bg-gray-100 text-gray-500 border-gray-200',
   expiring: 'bg-amber-50 text-amber-700 border-amber-200',
@@ -109,7 +120,7 @@ function parseDate(v?: string | null): Date | null {
 // מסדר: קודם מי שיש לו כשל חיוב פתוח, אחר כך לפי דחיפות סטטוס
 // (מסתיימת בקרוב > הסתיימה > פעילה), ולבסוף לפי כמה חיובים נותרו.
 export function sortHkList(hk: HkEntry[], failNames: Set<string>, threshold: number): HkEntry[] {
-  const statusOrder: Record<HkStatus, number> = { expiring: 0, expired: 1, active: 2, cancelled: 3 };
+  const statusOrder: Record<HkStatus, number> = { expiring: 0, expired: 1, active: 2, cancelled: 3, renewed: 4 };
   return [...hk].sort((a, b) => {
     const aFail = failNames.has(a.name) ? 0 : 1;
     const bFail = failNames.has(b.name) ? 0 : 1;
@@ -122,7 +133,7 @@ export function sortHkList(hk: HkEntry[], failNames: Set<string>, threshold: num
 }
 
 export function countHkByStatus(hk: HkEntry[], threshold: number): Record<HkStatus, number> {
-  const counts: Record<HkStatus, number> = { active: 0, expiring: 0, expired: 0, cancelled: 0 };
+  const counts: Record<HkStatus, number> = { active: 0, expiring: 0, expired: 0, cancelled: 0, renewed: 0 };
   hk.forEach(h => { counts[getHkStatus(h, threshold)]++; });
   return counts;
 }
@@ -152,4 +163,80 @@ export function markMonthlyReminderReviewed(): void {
   } catch {
     // localStorage לא זמין — לא קריטי
   }
+}
+
+// ── שרשרות חידוש ────────────────────────────────────────────────────────────
+//
+// תורם שמחדש הוראת קבע מקבל אצל הספק מספר הוראה **חדש**. אם מסתכלים על כל
+// מספר בנפרד, כל חידוש נראה כמו תורם חדש שנתן פעם אחת — ההיסטוריה נעלמת
+// בדיוק ברגע שהוא הוכיח את נאמנותו. השרשרת מחברת את המספרים חזרה לאדם.
+
+export interface ChainIndex {
+  byId: Record<string, HkEntry>;
+  nextOf: Record<string, HkEntry>;
+}
+
+export function buildChainIndex(list: HkEntry[]): ChainIndex {
+  const byId: Record<string, HkEntry> = {};
+  const nextOf: Record<string, HkEntry> = {};
+  (list || []).forEach(h => { if (h.id) byId[String(h.id)] = h; });
+  (list || []).forEach(h => {
+    const prev = String(h.renewalOf || '').trim();
+    if (prev) nextOf[prev] = h;
+  });
+  return { byId, nextOf };
+}
+
+/** מסמן על כל הוראה מי חידש אותה. פעולה טהורה — מחזירה עותקים. */
+export function annotateRenewals(list: HkEntry[]): HkEntry[] {
+  const idx = buildChainIndex(list);
+  return (list || []).map(h => {
+    const next = h.id ? idx.nextOf[String(h.id)] : undefined;
+    return next ? { ...h, renewedBy: String(next.id) } : h;
+  });
+}
+
+/** כל ההוראות של אותה שרשרת, מהראשונה לאחרונה. */
+export function chainFor(hk: HkEntry, idx: ChainIndex): HkEntry[] {
+  const guard = new Set<string>();
+  let first = hk;
+  while (true) {
+    const prev = String(first.renewalOf || '').trim();
+    if (!prev || guard.has(prev) || !idx.byId[prev]) break;
+    guard.add(prev);
+    first = idx.byId[prev];
+  }
+  const out: HkEntry[] = [first];
+  while (true) {
+    const last = out[out.length - 1];
+    const next = last.id ? idx.nextOf[String(last.id)] : undefined;
+    if (!next || out.some(o => o.id === next.id)) break;
+    out.push(next);
+  }
+  return out;
+}
+
+export interface ChainSummary {
+  orders: number;
+  paid: number;
+  totalGiven: number;
+  since: string;
+  isChain: boolean;
+}
+
+/** מה האדם הזה נתן לאורך **כל** ההוראות שלו, לא רק הנוכחית. */
+export function chainSummary(chain: HkEntry[]): ChainSummary {
+  let paid = 0, totalGiven = 0;
+  chain.forEach(h => {
+    const n = Number(h.paid) || 0;
+    paid += n;
+    totalGiven += n * (Number(h.amount) || 0);
+  });
+  return {
+    orders: chain.length,
+    paid,
+    totalGiven,
+    since: chain[0]?.startDate || '',
+    isChain: chain.length > 1,
+  };
 }

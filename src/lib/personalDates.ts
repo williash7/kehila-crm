@@ -3,6 +3,7 @@
 
 import { findGregorianBirthday, findHebrewBirthday, findHebrewYahrzeitEntries } from './donorDates';
 import { buildFuzzyHebrewTable, nextOccurrenceDays } from './hebrewDates';
+import { FamilyMember, familyDisplayName } from './family';
 
 export interface PersonalDateEvent {
   name: string;
@@ -65,15 +66,39 @@ export function computePersonalDateEvents(
       }
     });
 
-    // ימי הולדת של בני משפחה "רק שם" (בלי כרטיס משלהם) — מוצגים תחת שם
-    // איש הקשר שאצלו הם רשומים, כדי שאפשר יהיה ללחוץ ולהגיע לניהול שלהם
-    const family: any[] = crm[name]?.family || [];
+    // ── תאריכים של בני משפחה ────────────────────────────────────────────
+    //
+    // מוצגים תחת שם איש הקשר שאצלו הם רשומים — הוא זה שמתקשרים אליו.
+    // תאריך עברי מנצח לועזי כשיש שניהם: הוא המדויק לציון יארצייט ויום
+    // הולדת, והלועזי הוא רק העוגן שממנו הוא חושב.
+    const family: FamilyMember[] = crm[name]?.family || [];
     family.forEach(f => {
-      if (f.freeName && f.birthday) {
-        const dist = nextGregorianRecurrenceDays(f.birthday, today);
+      const who = familyDisplayName(f) || f.relation || '';
+      const suffix = f.relation && familyDisplayName(f) ? ` (${f.relation})` : '';
+
+      if (f.yahrzeitHebrew || f.yahrzeit) {
+        const dist = f.yahrzeitHebrew
+          ? nextOccurrenceDays(f.yahrzeitHebrew, 'yahrzeit', today, fallbackTable)
+          : nextGregorianRecurrenceDays(f.yahrzeit!, today);
         if (dist !== null) {
-          const label = `יום הולדת ${f.freeName}${f.relation ? ` (${f.relation})` : ''}`;
-          events.push({ name, msg: label + ' ' + (dist === 0 ? 'היום' : `בעוד ${dist} ימים`), icon: '🎂', dist, key: `${name}::family::${f.freeName}` });
+          events.push({
+            name, dist, icon: '🕯️',
+            msg: `יארצייט ${who}${suffix} ` + (dist === 0 ? 'היום' : `בעוד ${dist} ימים`),
+            key: `${name}::fam-yahrzeit::${f.id}`,
+          });
+        }
+      }
+
+      if (f.birthdayHebrew || f.birthday) {
+        const dist = f.birthdayHebrew
+          ? nextOccurrenceDays(f.birthdayHebrew, 'birthday', today, fallbackTable)
+          : nextGregorianRecurrenceDays(f.birthday!, today);
+        if (dist !== null) {
+          events.push({
+            name, dist, icon: '🎂',
+            msg: `יום הולדת ${who}${suffix} ` + (dist === 0 ? 'היום' : `בעוד ${dist} ימים`),
+            key: `${name}::fam-bday::${f.id}`,
+          });
         }
       }
     });
