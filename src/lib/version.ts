@@ -26,7 +26,7 @@ export const BUILD_COMMIT: string = typeof __BUILD_COMMIT__ === 'string' ? __BUI
  * הגרסה שהאפליקציה מצפה למצוא בגיליון.
  * **מעדכנים אותה יחד עם CODE_VERSION שב-Code.gs, ולא בנפרד.**
  */
-export const EXPECTED_CODE_VERSION = '2026-08-18d';
+export const EXPECTED_CODE_VERSION = '2026-08-19';
 
 export function formatBuildTime(iso: string): string {
   if (!iso) return 'הרצה מקומית';

@@ -3,7 +3,7 @@ import { Bot, X, Copy, Check, Sparkles, Trash2, Undo2, Download } from 'lucide-r
 import { useAppStore } from '../store/AppContext';
 import { buildHolidayList } from '../lib/holidayList';
 import { getCustomHols, saveCustomHols, apiPost } from '../lib/api';
-import { emptyProject } from '../lib/projects';
+import { emptyProject, SOLICITATION_ORDER, SOLICITATION_LABEL, normalizeStatus, Solicitation } from '../lib/projects';
 import { stampCreated, STANDALONE_TASKS_ID } from '../lib/tasks';
 import { getOrg } from '../lib/orgConfig';
 
@@ -73,6 +73,7 @@ const PREVIEW_FIELDS: Record<string, string[]> = {
   events: ['name', 'type', 'freq', 'date', 'time'],
   projects: ['name', 'kind', 'goal', 'deadline'],
   holidays: ['name', 'date', 'desc'],
+  solicitations: ['project', 'name', 'ask', 'status', 'notes'],
 };
 
 const SECTION_LABELS: Record<string, string> = {
@@ -82,11 +83,33 @@ const SECTION_LABELS: Record<string, string> = {
   events: '📌 אירועים',
   projects: '🎯 פרויקטים',
   holidays: '📅 חגים ותאריכים',
+  solicitations: '📊 רשימת התרמה לקמפיין',
+};
+
+/**
+ * ── בחירת נושאים ──────────────────────────────────────────────────────────
+ *
+ * ההנחיה שנבנתה קודם כללה תמיד את כל שבעת הנושאים ואת כל ההקשר — מאות
+ * שמות, כל החגים, כל האירועים. כשמעלים קובץ שהוא רשימת התרמה אחת, רוב
+ * ההנחיה היא רעש: היא מבזבזת את תשומת הלב של המודל, ומזמינה אותו להמציא
+ * אירועים ומשימות מתוך טבלה שאין בה כאלה.
+ *
+ * לכן בוחרים מראש במה הקובץ נוגע, וההנחיה נבנית סביב זה בלבד — כולל
+ * ההקשר שנשלח: אין טעם לשלוח רשימת חגים כשמייבאים אנשי קשר.
+ */
+const TOPIC_HINTS: Record<string, string> = {
+  contacts: 'רשימת שמות, טלפונים, כתובות',
+  donations: 'תרומות שכבר התקבלו',
+  standingOrders: 'הוראות קבע — סכום חודשי ומספר תשלומים',
+  events: 'מניינים, שיעורים, סעודות — עם שעה ומקום',
+  projects: 'קמפיינים ופרויקטי גיוס עם יעד',
+  holidays: 'תאריכים בלוח השנה',
+  solicitations: 'טבלת קמפיין: ממי לבקש, כמה, ומה הסטטוס',
 };
 
 /** מה נכתב לגיליון דרך השרת, ומה נשמר בענן האפליקציה */
 const SHEET_SECTIONS = ['contacts', 'donations', 'standingOrders'] as const;
-const APP_SECTIONS = ['events', 'projects', 'holidays'] as const;
+const APP_SECTIONS = ['events', 'projects', 'holidays', 'solicitations'] as const;
 const ALL_SECTIONS = [...SHEET_SECTIONS, ...APP_SECTIONS];
 
 export function GlobalAIImportModal({ onClose }: { onClose: () => void }) {
@@ -96,6 +119,9 @@ export function GlobalAIImportModal({ onClose }: { onClose: () => void }) {
   } = useAppStore();
   const [step, setStep] = useState<'prompt' | 'review' | 'done'>('prompt');
   const [prompt, setPrompt] = useState('');
+  // ברירת המחדל: הכול. מי שיודע מה יש לו בקובץ מכבה את השאר ומקבל
+  // הנחיה קצרה ומדויקת יותר.
+  const [topics, setTopics] = useState<string[]>([...ALL_SECTIONS, 'items']);
   const [copied, setCopied] = useState(false);
   const [pasteText, setPasteText] = useState('');
   const [parseError, setParseError] = useState('');
@@ -128,64 +154,90 @@ export function GlobalAIImportModal({ onClose }: { onClose: () => void }) {
   ], [projects, rows.projects]);
 
   const buildPrompt = () => {
+    const on = (t: string) => topics.includes(t);
     const parts: string[] = [];
+    const chosen = [...ALL_SECTIONS.filter(on), ...(on('items') ? ['items'] : [])];
+
     parts.push(`אני מנהל את ${getOrg().orgName.he || 'הארגון'} ומשתמש באפליקציית ניהול קהילה. יש לי מידע שאני צריך להכניס אליה — רשימה, קובץ אקסל, צילום של דף, או סתם טקסט חופשי. אני אצרף אותו בהודעה הבאה. תפקידך להמיר אותו למבנה JSON מדויק שהאפליקציה יודעת לקלוט.`);
 
-    parts.push('\nהאפליקציה קולטת שבעה סוגי מידע. כלול רק את הסוגים שבאמת קיימים במה שאצרף:');
-    parts.push('1. אנשי קשר · 2. תרומות · 3. הוראות קבע · 4. אירועים · 5. פרויקטים · 6. חגים ותאריכים · 7. משימות');
-    parts.push('\nההבחנה בין השלושה שמתבלבלים הכי הרבה:');
-    parts.push('· **אירוע** = התכנסות עם שעה ומקום, שחוזרת או חד-פעמית. השאלה שהוא עונה עליה: "מי הגיע?"');
-    parts.push('· **חג** = תאריך בלוח השנה. אף אחד לא "מגיע לחנוכה" — מגיעים למסיבה שבחנוכה. חג יכול להחזיק כמה אירועים.');
-    parts.push('· **פרויקט** = גיוס כסף מאנשים מול יעד בשקלים, עם תאריך יעד. השאלה: "כמה גויס?"');
-    parts.push('אם משהו הוא רק דבר לעשות ולא אחד מאלה — הוא **משימה**, ולא צריך ליצור בשבילו אירוע.');
+    // ── רק מה שנבחר ───────────────────────────────────────────────────────
+    const names: string[] = [
+      ...ALL_SECTIONS.filter(on).map(t => SECTION_LABELS[t].replace(/^\S+\s/, '')),
+      ...(on('items') ? ['משימות'] : []),
+    ];
+    parts.push(`\nהפעם אני מייבא **רק** את הסוגים האלה: ${names.join(' · ')}.`);
+    parts.push('אל תייצר שום סוג אחר, גם אם נראה לך שהוא מסתתר בקובץ. אם משהו בקובץ אינו שייך לסוגים האלה — התעלם ממנו.');
 
-    parts.push('\nהקשר קיים אצלי, כדי שתשייך אליו במקום להמציא שמות חדשים:');
-    if (contactNames.length) parts.push(`אנשי קשר קיימים (אם שם במידע שלי הוא אחד מהם — כתוב אותו בדיוק כך): ${contactNames.slice(0, 150).join(', ')}`);
-    if (holidayOptions.length) parts.push(`חגים קרובים: ${holidayOptions.map(h => h.label).join(', ')}`);
-    if (eventsData.length) parts.push(`אירועים קיימים: ${(eventsData as any[]).map(e => e.name).join(', ')}`);
-    if (projects.length) parts.push(`פרויקטים קיימים: ${(projects as any[]).map(p => p.name).join(', ')}`);
-    if (roundOptions.length) parts.push(`מערכי ביקורי בית פעילים: ${roundOptions.map(r => r.label).join(', ')}`);
-    parts.push('אל תיצור מחדש משהו שכבר קיים ברשימות האלה — שייך אליו.');
+    // ההבחנה נחוצה רק כשיותר מאחד מהמבלבלים נבחר
+    const confusing = ['events', 'holidays', 'projects', 'items'].filter(on);
+    if (confusing.length > 1) {
+      parts.push('\nההבחנה בין אלה שמתבלבלים הכי הרבה:');
+      if (on('events')) parts.push('· **אירוע** = התכנסות עם שעה ומקום, שחוזרת או חד-פעמית. השאלה שהוא עונה עליה: "מי הגיע?"');
+      if (on('holidays')) parts.push('· **חג** = תאריך בלוח השנה. אף אחד לא "מגיע לחנוכה" — מגיעים למסיבה שבחנוכה.');
+      if (on('projects')) parts.push('· **פרויקט** = גיוס כסף מאנשים מול יעד בשקלים. השאלה: "כמה גויס?"');
+      if (on('items')) parts.push('· אם משהו הוא רק דבר לעשות ולא אחד מאלה — הוא **משימה**.');
+    }
 
+    // ── הקשר, גם הוא לפי הנבחר ────────────────────────────────────────────
+    const ctx: string[] = [];
+    const needsNames = ['contacts', 'donations', 'standingOrders', 'solicitations'].some(on);
+    if (needsNames && contactNames.length) {
+      ctx.push(`אנשי קשר קיימים (אם שם במידע שלי הוא אחד מהם — כתוב אותו בדיוק כך): ${contactNames.slice(0, 150).join(', ')}`);
+    }
+    if (on('holidays') && holidayOptions.length) ctx.push(`חגים קרובים: ${holidayOptions.map(h => h.label).join(', ')}`);
+    if ((on('events') || on('items')) && eventsData.length) ctx.push(`אירועים קיימים: ${(eventsData as any[]).map(e => e.name).join(', ')}`);
+    if ((on('projects') || on('items') || on('solicitations') || on('donations')) && projects.length) {
+      ctx.push(`פרויקטים קיימים: ${(projects as any[]).map(p => p.name).join(', ')}`);
+    }
+    if (on('items') && roundOptions.length) ctx.push(`מערכי ביקורי בית פעילים: ${roundOptions.map(r => r.label).join(', ')}`);
+    if (ctx.length) {
+      parts.push('\nהקשר קיים אצלי, כדי שתשייך אליו במקום להמציא שמות חדשים:');
+      ctx.forEach(c => parts.push(c));
+      parts.push('אל תיצור מחדש משהו שכבר קיים ברשימות האלה — שייך אליו.');
+    }
+
+    // ── כללים, גם הם לפי הנבחר ────────────────────────────────────────────
     parts.push('\nכללים שחשוב לשמור עליהם:');
     parts.push('· תאריכים בפורמט dd/MM/yyyy בלבד. אם התאריך במקור חלקי או לא ברור — השאר את השדה ריק, אל תנחש.');
     parts.push('· סכומים כמספר בלבד, בלי ₪ ובלי פסיקים.');
-    parts.push('· "אפיק גבייה" (method) הוא אחד מ: מזומן, ביט/פייבוקס, העברה בנקאית, קישור ישיר, הוראת קבע, צ\'ק.');
     parts.push('· אל תמציא נתונים שלא כתובים אצלי. שדה שאין לו מקור — פשוט אל תכלול אותו.');
-    parts.push(`· באירוע: type אחד מתוך ${EVENT_TYPES.join('/')} (שבת/מניין/שיעור/אחר), freq אחד מתוך ${EVENT_FREQS.join('/')} (שבועי/דו-שבועי/חודשי/חד-פעמי). date בפורמט yyyy-MM-dd, time בפורמט HH:mm.`);
-    parts.push('· בפרויקט: kind הוא "project" או "campaign", goal הוא היעד בשקלים כמספר, deadline בפורמט yyyy-MM-dd.');
-    parts.push('· בחג מותאם: date בפורמט yyyy-MM-dd (לועזי).');
-    parts.push('· לכל משימה כתוב שיוך (targetKind) אחד מתוך: "holiday", "event", "project", "homeVisit", "contact" (עם שם האדם ב-targetLabel), "standalone". ב-targetLabel כתוב את שם החג/האירוע/הפרויקט — **גם אם הוא כזה שאתה יוצר עכשיו באותה תשובה**.');
+    if (on('donations')) parts.push('· "אפיק גבייה" (method) הוא אחד מ: מזומן, ביט/פייבוקס, העברה בנקאית, קישור ישיר, הוראת קבע, צ\'ק.');
+    if (on('standingOrders')) parts.push('· בהוראת קבע: amount הוא הסכום **החודשי**, payments מספר החיובים. אם כתוב "ללא הגבלה" — כתוב payments: "ללא הגבלה".');
+    if (on('events')) parts.push(`· באירוע: type אחד מתוך ${EVENT_TYPES.join('/')} (שבת/מניין/שיעור/אחר), freq אחד מתוך ${EVENT_FREQS.join('/')} (שבועי/דו-שבועי/חודשי/חד-פעמי). date בפורמט yyyy-MM-dd, time בפורמט HH:mm.`);
+    if (on('projects')) parts.push('· בפרויקט: kind הוא "project" או "campaign", goal הוא היעד בשקלים כמספר, deadline בפורמט yyyy-MM-dd.');
+    if (on('holidays')) parts.push('· בחג מותאם: date בפורמט yyyy-MM-dd (לועזי).');
+    if (on('solicitations')) {
+      parts.push(`· ברשימת ההתרמה: project הוא שם הקמפיין שהשורה שייכת אליו. ask = כמה מתכוונים לבקש. status הוא **אחד מהערכים האלה בדיוק**: ${SOLICITATION_ORDER.map(o => SOLICITATION_LABEL[o]).join(' / ')}.`);
+      parts.push('· אם בטבלה שלי יש עמודה כמו "פוטנציאל תרומה" או "צפי" — זה ה-ask. עמודה כמו "כסף ביד" היא תרומה שכבר נכנסה, ואותה כתוב תחת donations ולא כאן.');
+      parts.push('· אל תכתוב ב-ask סכום שכבר נתרם. ask הוא מה שעוד מתכוונים לבקש.');
+    }
+    if (on('items')) parts.push('· לכל משימה כתוב שיוך (targetKind) אחד מתוך: "holiday", "event", "project", "homeVisit", "contact" (עם שם האדם ב-targetLabel), "standalone". ב-targetLabel כתוב את שם החג/האירוע/הפרויקט — **גם אם הוא כזה שאתה יוצר עכשיו באותה תשובה**.');
+
+    // ── הסכימה, רק לנבחרים ────────────────────────────────────────────────
+    const schema: Record<string, any> = {};
+    if (on('contacts')) schema.contacts = [{ 'שם מלא': 'ישראל ישראלי', 'טלפון': '050-1234567', 'כתובת': 'הרצל 5', 'בן/בת זוג': 'שרה', 'הערות': '' }];
+    if (on('donations')) schema.donations = [{ name: 'ישראל ישראלי', amount: 500, date: '15/05/2026', method: 'מזומן', purpose: 'תרומה כללית', notes: '' }];
+    if (on('standingOrders')) schema.standingOrders = [{ name: 'דוד כהן', amount: 100, startDate: '01/09/2025', payments: 12, phone: '', campaign: '' }];
+    if (on('events')) schema.events = [{ name: 'סעודת שבת', type: 'shabbat', freq: 'weekly', date: '2026-08-14', time: '19:30' }];
+    if (on('projects')) schema.projects = [{ name: 'הדפסת לוח שנה', kind: 'project', goal: 12000, deadline: '2026-09-01', notes: '' }];
+    if (on('holidays')) schema.holidays = [{ name: 'יום השנה לסבא', date: '2026-10-05', desc: '' }];
+    if (on('solicitations')) schema.solicitations = [
+      { project: 'הדפסת לוח שנה', name: 'ישראל ישראלי', ask: 1200, status: 'לחזור אליו', notes: 'לחזור בחודש 9' },
+      { project: 'הדפסת לוח שנה', name: 'דוד כהן', ask: 3600, status: 'תורם', notes: '' },
+    ];
+    if (on('items')) schema.items = [
+      ...(on('holidays') ? [{ text: 'משימה הקשורה לחג', targetKind: 'holiday', targetLabel: 'שם החג' }] : []),
+      ...(on('events') ? [{ text: 'לארגן כיבוד', targetKind: 'event', targetLabel: 'סעודת שבת' }] : []),
+      ...(on('projects') ? [{ text: 'לאשר עיצוב', targetKind: 'project', targetLabel: 'הדפסת לוח שנה' }] : []),
+      { text: 'משימה כללית', targetKind: 'standalone' },
+    ];
 
     parts.push('\nכשסיימנו, החזר בלוק קוד JSON יחיד במבנה הזה בדיוק, בלי טקסט נוסף בתוך הבלוק:');
     parts.push('```json');
-    parts.push(JSON.stringify({
-      contacts: [
-        { 'שם מלא': 'ישראל ישראלי', 'טלפון': '050-1234567', 'כתובת': 'הרצל 5', 'בן/בת זוג': 'שרה', 'הערות': '' },
-      ],
-      donations: [
-        { name: 'ישראל ישראלי', amount: 500, date: '15/05/2026', method: 'מזומן', purpose: 'תרומה כללית', notes: '' },
-      ],
-      standingOrders: [
-        { name: 'דוד כהן', amount: 100, startDate: '01/09/2025', payments: 12, phone: '', campaign: '' },
-      ],
-      events: [
-        { name: 'סעודת שבת', type: 'shabbat', freq: 'weekly', date: '2026-08-14', time: '19:30' },
-      ],
-      projects: [
-        { name: 'הדפסת לוח שנה', kind: 'project', goal: 12000, deadline: '2026-09-01', notes: '' },
-      ],
-      holidays: [
-        { name: 'יום השנה לסבא', date: '2026-10-05', desc: '' },
-      ],
-      items: [
-        { text: 'משימה לדוגמה הקשורה לחג', targetKind: 'holiday', targetLabel: 'שם החג' },
-        { text: 'לארגן כיבוד', targetKind: 'event', targetLabel: 'סעודת שבת' },
-        { text: 'לאשר עיצוב', targetKind: 'project', targetLabel: 'הדפסת לוח שנה' },
-        { text: 'משימה כללית', targetKind: 'standalone' },
-      ],
-    }, null, 2));
+    parts.push(JSON.stringify(schema, null, 2));
     parts.push('```');
+    parts.push(`\nהמפתחות המותרים בתשובה: ${chosen.join(', ')}. מפתח שאין לו נתונים — פשוט אל תכלול אותו.`);
+
     setPrompt(parts.join('\n'));
   };
 
@@ -270,6 +322,7 @@ export function GlobalAIImportModal({ onClose }: { onClose: () => void }) {
       events: pick(parsed.events, 'name', 'newev'),
       projects: pick(parsed.projects, 'name', 'newproj'),
       holidays: pick(parsed.holidays, 'name', 'newhol'),
+      solicitations: pick(parsed.solicitations, 'name', 'sol'),
     };
 
     // ── משימות ──────────────────────────────────────────────────────────
@@ -364,6 +417,49 @@ export function GlobalAIImportModal({ onClose }: { onClose: () => void }) {
 
     if (newEvents.length) updateEventsData([...(eventsData as any[]), ...newEvents]);
     if (newProjects.length) updateProjects([...(projects as any[]), ...newProjects] as any);
+
+    // ── רשימת התרמה ──────────────────────────────────────────────────────
+    //
+    // רצה **אחרי** יצירת הפרויקטים החדשים, כי שורה יכולה להצביע על קמפיין
+    // שנוצר באותו ייבוא. השיוך לפי שם, עם אותה התאמה מקורבת שמשמשת את
+    // המשימות — "לוחות שנה תשפ״ז" ו"הדפסת לוחות שנה תשפ״ז" הם אותו דבר.
+    const solRows = rows.solicitations || [];
+    if (solRows.length) {
+      const allProjects = [...(projects as any[]), ...newProjects];
+      const projOpts = allProjects.map(p => ({ id: p.id, label: p.name }));
+      const byProj = new Map<string, Solicitation[]>();
+
+      solRows.forEach(r => {
+        const d = r.data;
+        const name = String(d.name || '').trim();
+        if (!name) return;
+        const pid = bestMatch(String(d.project || '').trim(), projOpts);
+        if (!pid) return;
+        const list = byProj.get(pid) || [];
+        list.push({
+          name,
+          status: normalizeStatus(d.status),
+          ask: d.ask === undefined || d.ask === '' ? undefined : Number(d.ask) || undefined,
+          notes: d.notes ? String(d.notes) : undefined,
+        });
+        byProj.set(pid, list);
+      });
+
+      if (byProj.size) {
+        updateProjects(allProjects.map((p: any) => {
+          const incoming = byProj.get(p.id);
+          if (!incoming) return p;
+          // שם שכבר ברשימה מתעדכן ולא משוכפל
+          const existing: Solicitation[] = p.solicitations || [];
+          const byName = new Map(existing.map(x => [x.name.trim(), x]));
+          incoming.forEach(x => {
+            const prev = byName.get(x.name.trim());
+            byName.set(x.name.trim(), prev ? { ...prev, ...x } : x);
+          });
+          return { ...p, solicitations: Array.from(byName.values()) };
+        }) as any);
+      }
+    }
 
     if (rows.holidays.length) {
       const existing = getCustomHols();
@@ -474,14 +570,57 @@ export function GlobalAIImportModal({ onClose }: { onClose: () => void }) {
           <div className="flex-1 overflow-y-auto pr-1 custom-scrollbar space-y-3">
             <p className="text-[11px] text-gray-500 leading-relaxed">
               יש לך רשימה, אקסל, או צילום של דף? צור פרומפט, הדבק אותו בצ'אט AI יחד עם הקובץ,
-              והחזר הנה את ה-JSON שקיבלת. אפשר לייבא אנשי קשר, תרומות, הוראות קבע,
-              אירועים, פרויקטים, חגים ומשימות — יחד או בנפרד. לפני השמירה תראה
-              בדיוק מה עומד להיכנס, ולאן.
+              והחזר הנה את ה-JSON שקיבלת. בחר קודם במה הקובץ נוגע — ההנחיה תיבנה
+              סביב זה בלבד, ותצא קצרה ומדויקת יותר. לפני השמירה תראה בדיוק
+              מה עומד להיכנס, ולאן.
             </p>
             {!prompt ? (
               <>
-                <button onClick={buildPrompt} className="w-full flex items-center justify-center gap-2 bg-purple-600 text-white text-sm font-bold py-2.5 rounded-xl active:scale-95 transition-transform">
-                  <Sparkles size={15} /> צור פרומפט
+                {/* ── במה הקובץ נוגע ──────────────────────────────────
+                    ההנחיה נבנית סביב הבחירה הזו בלבד. פחות נושאים =
+                    הנחיה קצרה יותר, ופחות הזמנה למודל להמציא דברים
+                    שאין בקובץ. */}
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-[11px] font-bold text-gray-600">במה הקובץ שלך נוגע?</label>
+                    <div className="flex gap-2">
+                      <button onClick={() => setTopics([...ALL_SECTIONS, 'items'])}
+                              className="text-[10px] font-bold text-purple-700 hover:underline">הכל</button>
+                      <button onClick={() => setTopics([])}
+                              className="text-[10px] font-bold text-gray-400 hover:underline">נקה</button>
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    {[...ALL_SECTIONS, 'items'].map(t => {
+                      const on = topics.includes(t);
+                      const label = t === 'items' ? '📋 משימות' : SECTION_LABELS[t];
+                      const hint = t === 'items' ? 'דברים לעשות' : TOPIC_HINTS[t];
+                      return (
+                        <button
+                          key={t}
+                          onClick={() => setTopics(prev => on ? prev.filter(x => x !== t) : [...prev, t])}
+                          className={`w-full text-right px-3 py-2 rounded-xl border transition-colors flex items-center gap-2.5 ${
+                            on ? 'bg-purple-50 border-purple-300' : 'bg-white border-[#EDE6D6]'
+                          }`}
+                        >
+                          <span className={`w-4 h-4 rounded border-2 shrink-0 flex items-center justify-center ${
+                            on ? 'bg-purple-600 border-purple-600 text-white' : 'border-gray-300'
+                          }`}>
+                            {on && <Check size={11} />}
+                          </span>
+                          <span className="min-w-0">
+                            <span className="block text-sm font-bold text-[#0D1B2A] truncate">{label}</span>
+                            <span className="block text-[10px] text-gray-400 truncate">{hint}</span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <button onClick={buildPrompt} disabled={!topics.length}
+                        className="w-full flex items-center justify-center gap-2 bg-purple-600 text-white text-sm font-bold py-2.5 rounded-xl active:scale-95 transition-transform disabled:opacity-40">
+                  <Sparkles size={15} /> צור פרומפט ל-{topics.length} נושאים
                 </button>
                 <button onClick={downloadBackup} className="w-full flex items-center justify-center gap-2 border border-[#EDE6D6] text-gray-600 text-xs font-bold py-2 rounded-xl hover:bg-gray-50">
                   <Download size={14} /> הורד גיבוי מלא (JSON)
@@ -493,6 +632,9 @@ export function GlobalAIImportModal({ onClose }: { onClose: () => void }) {
               </>
             ) : (
               <>
+                <button onClick={() => setPrompt('')} className="text-[11px] text-gray-400 hover:text-[#9B7A2F] font-bold">
+                  ← שנה את הנושאים ובנה מחדש
+                </button>
                 <div className="relative">
                   <textarea readOnly value={prompt} rows={7} className="w-full bg-white border border-purple-200 rounded-lg px-3 py-2 text-[11px] leading-relaxed outline-none resize-none" dir="rtl" />
                   <button onClick={copyPrompt} className="absolute top-2 left-2 bg-purple-600 text-white text-[10px] font-bold px-2.5 py-1.5 rounded-md flex items-center gap-1">

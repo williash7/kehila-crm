@@ -1,12 +1,13 @@
 import React, { useState, useMemo } from 'react';
 import { useAppStore } from '../store/AppContext';
-import { Plus, X, Target, Wallet, Users, Trash2, Search, CheckCircle2 } from 'lucide-react';
+import { Plus, X, Target, Wallet, Users, Trash2, Search, CheckCircle2, MessageSquare} from 'lucide-react';
 import { FullScreenView } from './FullScreenView';
 import { BudgetEditor, emptyBudget } from './BudgetEditor';
 import {
   Project, Solicitation, SolicitationStatus, emptyProject, projectProgress,
   projectDonations, syncSolicitationsWithDonations, buildGivingIndex, suggestedAsk, totalAsk,
-  SOLICITATION_LABEL, SOLICITATION_COLOR, SOLICITATION_ORDER,
+  SOLICITATION_LABEL, SOLICITATION_COLOR, SOLICITATION_ORDER, normalizeStatus,
+  buildSolicitationRows, sumSolicitationRows, unlinkedHkFor, SolicitationRow,
 } from '../lib/projects';
 import { logAction } from '../lib/score';
 
@@ -21,7 +22,7 @@ import { logAction } from '../lib/score';
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function ProjectsTab({ addTrigger }: { addTrigger?: { tab: string; count: number } } = {}) {
-  const { projects, updateProjects, donations, visibleDonors, crm } = useAppStore();
+  const { projects, updateProjects, donations, hk, visibleDonors, crm } = useAppStore();
 
   const [openId, setOpenId] = useState<string | null>(null);
   const [isAdding, setIsAdding] = useState(false);
@@ -99,7 +100,7 @@ export function ProjectsTab({ addTrigger }: { addTrigger?: { tab: string; count:
         )}
 
         {visible.map(p => {
-          const prog = projectProgress(p, donations);
+          const prog = projectProgress(p, donations, hk);
           return (
             <button
               key={p.id}
@@ -131,8 +132,8 @@ export function ProjectsTab({ addTrigger }: { addTrigger?: { tab: string; count:
 
               <div className="flex gap-3 mt-2 text-[11px] text-gray-500">
                 <span>{prog.donorCount} תורמים</span>
-                {prog.pledged > 0 && <span className="text-amber-700">הובטח ₪{prog.pledged.toLocaleString()}</span>}
-                {prog.counts.todo > 0 && <span>{prog.counts.todo} עוד לא פנית</span>}
+                {prog.pledged > 0 && <span className="text-amber-700">צפוי ₪{prog.pledged.toLocaleString()}</span>}
+                {prog.counts.toSend > 0 && <span>{prog.counts.toSend} עוד לא פנית</span>}
               </div>
             </button>
           );
@@ -147,6 +148,7 @@ export function ProjectsTab({ addTrigger }: { addTrigger?: { tab: string; count:
 
       {current && (
         <ProjectDetail
+          hk={hk}
           project={current}
           donations={donations}
           donorNames={Object.keys(visibleDonors)}
@@ -168,9 +170,10 @@ export function ProjectsTab({ addTrigger }: { addTrigger?: { tab: string; count:
   );
 }
 
-function ProjectDetail({ project, donations, donorNames, crm, pane, setPane, addPersonSearch, setAddPersonSearch, onPatch, onDelete, onClose }: {
+function ProjectDetail({ project, donations, hk, donorNames, crm, pane, setPane, addPersonSearch, setAddPersonSearch, onPatch, onDelete, onClose }: {
   project: Project;
   donations: any[];
+  hk: any[];
   donorNames: string[];
   crm: Record<string, any>;
   pane: 'raise' | 'budget';
@@ -181,7 +184,7 @@ function ProjectDetail({ project, donations, donorNames, crm, pane, setPane, add
   onDelete: () => void;
   onClose: () => void;
 }) {
-  const prog = useMemo(() => projectProgress(project, donations), [project, donations]);
+  const prog = useMemo(() => projectProgress(project, donations, hk), [project, donations, hk]);
   const linked = useMemo(() => projectDonations(project, donations), [project, donations]);
 
   // מי שכבר תרם מסומן "נתן" אוטומטית — אין טעם לבקש מהמשתמש לעדכן
@@ -204,7 +207,7 @@ function ProjectDetail({ project, donations, donorNames, crm, pane, setPane, add
 
   const addPerson = (name: string) => {
     if (sols.some(s => s.name === name)) return;
-    onPatch({ solicitations: [...sols, { name, status: 'todo', ask: suggestedAsk(giving[name]) || '' }] });
+    onPatch({ solicitations: [...sols, { name, status: 'toSend' as SolicitationStatus, ask: suggestedAsk(giving[name]) || '' }] });
     setAddPersonSearch('');
   };
 
@@ -218,13 +221,24 @@ function ProjectDetail({ project, donations, donorNames, crm, pane, setPane, add
     onPatch({
       solicitations: [
         ...sols,
-        ...fresh.map(name => ({ name, status: 'todo' as SolicitationStatus, ask: suggestedAsk(giving[name]) || '' })),
+        ...fresh.map(name => ({ name, status: 'toSend' as SolicitationStatus, ask: suggestedAsk(giving[name]) || '' })),
       ],
     });
   };
 
   const gaveLastYear = donorNames.filter(n => (giving[n]?.lastYear || 0) > 0);
   const askSum = totalAsk(sols);
+
+  // כל החישוב לכל השורות במקום אחד: מה נכנס, מה מובטח דרך הוראת קבע, ומה
+  // עוד צפוי. כך אין שורה שמחשבת אחרת מהסיכום שמעליה.
+  const rows = React.useMemo(
+    () => buildSolicitationRows(project, donations, hk, giving),
+    [project, donations, hk, giving]
+  );
+  const totals = React.useMemo(() => sumSolicitationRows(rows), [rows]);
+  const [statusFilter, setStatusFilter] = React.useState<SolicitationStatus | 'all'>('all');
+  const [openNotes, setOpenNotes] = React.useState<number | null>(null);
+  const shownRows = statusFilter === 'all' ? rows : rows.filter(r => r.status === statusFilter);
 
   const candidates = donorNames
     .filter(n => !sols.some(s => s.name === n))
@@ -367,70 +381,170 @@ function ProjectDetail({ project, donations, donorNames, crm, pane, setPane, add
                 </div>
               )}
 
-              {sols.length === 0 ? (
+              {/* ── סיכום הרשימה ────────────────────────────────────
+                  ארבעה מספרים שעונים על ארבע שאלות שונות. "נכנס" הוא מה
+                  שבקופה; "צפוי" הוא יתרת הוראות הקבע וההבטחות; "סה״כ" הוא
+                  מה שנמדד מול היעד. */}
+              {rows.length > 0 && (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {[
+                    { label: 'מבקשים', value: totals.ask, tone: 'text-[#0D1B2A]' },
+                    { label: 'נכנס בפועל', value: totals.raised, tone: 'text-emerald-700' },
+                    { label: 'צפוי מהו״ק והבטחות', value: totals.outstanding, tone: 'text-amber-700' },
+                    { label: 'סה״כ מובטח', value: totals.committed, tone: 'text-[#9B7A2F]' },
+                  ].map(x => (
+                    <div key={x.label} className="bg-white rounded-xl border border-[#EDE6D6] px-3 py-2">
+                      <div className="text-[10px] text-gray-400 font-bold truncate">{x.label}</div>
+                      <div className={`font-['Frank_Ruhl_Libre'] text-lg font-bold ${x.tone}`}>₪{x.value.toLocaleString()}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* מסנן לפי סטטוס — עבודה אמיתית היא "מי נשאר לחזור אליו" */}
+              {rows.length > 0 && (
+                <div className="flex gap-1.5 flex-wrap">
+                  <button
+                    onClick={() => setStatusFilter('all')}
+                    className={`px-2.5 py-1 rounded-full text-[11px] font-bold border transition-colors ${
+                      statusFilter === 'all' ? 'bg-[#0D1B2A] text-[#C9A84C] border-[#0D1B2A]' : 'bg-white text-gray-500 border-[#EDE6D6]'
+                    }`}
+                  >
+                    הכל ({rows.length})
+                  </button>
+                  {SOLICITATION_ORDER.filter(st => totals.counts[st] > 0).map(st => (
+                    <button
+                      key={st}
+                      onClick={() => setStatusFilter(st)}
+                      className={`px-2.5 py-1 rounded-full text-[11px] font-bold border transition-colors ${
+                        statusFilter === st ? 'bg-[#0D1B2A] text-[#C9A84C] border-[#0D1B2A]' : SOLICITATION_COLOR[st]
+                      }`}
+                    >
+                      {SOLICITATION_LABEL[st]} ({totals.counts[st]})
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {rows.length === 0 ? (
                 <p className="text-sm text-gray-400 text-center py-6 leading-relaxed">
                   רשימת ההתרמה ריקה.<br />הוסף את מי שאתה מתכוון לפנות אליו, ועקוב אחרי מי הבטיח ומי כבר נתן.
                 </p>
               ) : (
-                SOLICITATION_ORDER.filter(st => sols.some(s => (s.status || 'todo') === st)).map(st => (
-                  <div key={st}>
-                    <h4 className="text-xs font-bold text-gray-500 mb-1.5">
-                      {SOLICITATION_LABEL[st]} · {sols.filter(s => (s.status || 'todo') === st).length}
-                    </h4>
-                    <div className="bg-white rounded-xl border border-[#EDE6D6] divide-y divide-[#EDE6D6]">
-                      {sols.map((s, i) => (s.status || 'todo') !== st ? null : (
-                        <div key={s.name + i} className="px-3 py-2.5">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-sm font-medium text-[#0D1B2A] truncate">{s.name}</span>
-                            <div className="flex items-center gap-1.5 shrink-0">
-                              {s.status === 'pledged' && (
-                                <input
-                                  type="number" value={s.pledged ?? ''} placeholder="הבטיח"
-                                  onChange={e => setSol(i, { pledged: e.target.value })}
-                                  className="w-[68px] border border-amber-200 bg-amber-50 rounded-lg px-2 py-1 text-xs outline-none focus:border-[#C9A84C]"
-                                />
-                              )}
-                              <select
-                                value={s.status || 'todo'}
-                                onChange={e => setSol(i, { status: e.target.value as SolicitationStatus })}
-                                className={`text-xs font-bold rounded-lg px-2 py-1 outline-none border-0 ${SOLICITATION_COLOR[s.status || 'todo']}`}
-                              >
-                                {SOLICITATION_ORDER.map(o => <option key={o} value={o}>{SOLICITATION_LABEL[o]}</option>)}
-                              </select>
-                              <button onClick={() => onPatch({ solicitations: sols.filter((_, x) => x !== i) })}
-                                      className="text-gray-300 hover:text-red-500"><Trash2 size={13} /></button>
-                            </div>
+                <div className="bg-white rounded-xl border border-[#EDE6D6] divide-y divide-[#EDE6D6]">
+                  {shownRows.map(row => {
+                    const i = rows.indexOf(row);
+                    const s = row.sol;
+                    const g = row.history;
+                    const unlinked = unlinkedHkFor(s, project, hk);
+                    return (
+                      <div key={s.name + i} className="px-3 py-2.5">
+                        {/* שורה ראשונה: שם, סטטוס, מחיקה */}
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-sm font-bold text-[#0D1B2A] truncate">{s.name}</span>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <select
+                              value={row.status}
+                              onChange={e => setSol(i, { status: e.target.value as SolicitationStatus })}
+                              className={`text-xs font-bold rounded-lg px-2 py-1 outline-none border ${SOLICITATION_COLOR[row.status]}`}
+                            >
+                              {SOLICITATION_ORDER.map(o => <option key={o} value={o}>{SOLICITATION_LABEL[o]}</option>)}
+                            </select>
+                            <button onClick={() => setOpenNotes(openNotes === i ? null : i)}
+                                    title="הערות"
+                                    className={`p-1 ${s.notes ? 'text-[#9B7A2F]' : 'text-gray-300 hover:text-gray-500'}`}>
+                              <MessageSquare size={13} />
+                            </button>
+                            <button onClick={() => onPatch({ solicitations: sols.filter((_, x) => x !== i) })}
+                                    className="text-gray-300 hover:text-red-500"><Trash2 size={13} /></button>
                           </div>
+                        </div>
 
-                          {/* כמה לבקש, ומול מה — בלי זה השורה היא שם ותו לא */}
-                          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                        {/* שורה שנייה: הכסף */}
+                        <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                          <label className="flex items-center gap-1 text-[11px] text-gray-500">
+                            לבקש
+                            <input
+                              type="number" value={s.ask ?? ''} placeholder="₪"
+                              onChange={e => setSol(i, { ask: e.target.value })}
+                              className="w-[72px] border border-[#EDE6D6] rounded-lg px-2 py-1 text-xs outline-none focus:border-[#C9A84C]"
+                            />
+                          </label>
+
+                          {row.raised > 0 && (
+                            <span className="text-[11px] bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg px-2 py-1 font-bold">
+                              נכנס ₪{row.raised.toLocaleString()}
+                            </span>
+                          )}
+
+                          {/* הוראת קבע = התחייבות מלאה, ולא רק מה שנגבה עד היום */}
+                          {row.commitments.map(c => (
+                            <span key={c.id}
+                              title={`${c.paid} מתוך ${c.payments} חיובים נגבו`}
+                              className="text-[11px] bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg px-2 py-1">
+                              🔄 ₪{c.monthly.toLocaleString()}×{c.unlimited ? `${c.payments} (ללא הגבלה)` : c.payments}
+                              {' = '}<b>₪{c.total.toLocaleString()}</b>
+                              {c.outstanding > 0 && <span className="opacity-70"> · נותרו ₪{c.outstanding.toLocaleString()}</span>}
+                            </span>
+                          ))}
+
+                          {/* הבטחה ידנית — רק כשאין הוראת קבע שכבר מכסה אותה */}
+                          {row.commitments.length === 0 && (
                             <label className="flex items-center gap-1 text-[11px] text-gray-500">
-                              לבקש
+                              הבטיח
                               <input
-                                type="number" value={s.ask ?? ''} placeholder="₪"
-                                onChange={e => setSol(i, { ask: e.target.value })}
-                                className="w-[68px] border border-[#EDE6D6] rounded-lg px-2 py-1 text-xs outline-none focus:border-[#C9A84C]"
+                                type="number" value={s.pledged ?? ''} placeholder="₪"
+                                onChange={e => setSol(i, { pledged: e.target.value })}
+                                className="w-[72px] border border-amber-200 bg-amber-50/50 rounded-lg px-2 py-1 text-xs outline-none focus:border-[#C9A84C]"
                               />
                             </label>
-                            {(() => {
-                              const g = giving[s.name];
-                              if (!g) return <span className="text-[11px] text-gray-400">לא תרם מעולם</span>;
-                              return (
-                                <span className="text-[11px] text-gray-500">
-                                  שנה אחרונה <b className="text-[#0D1B2A]">₪{g.lastYear.toLocaleString()}</b>
-                                  {' · '}מאז ומעולם <b className="text-[#0D1B2A]">₪{g.allTime.toLocaleString()}</b>
-                                  {g.toProject > 0 && <> · <b className="text-emerald-700">₪{g.toProject.toLocaleString()} לפרויקט</b></>}
-                                </span>
-                              );
-                            })()}
-                          </div>
-
-                          {crm[s.name]?.phone && <div className="text-[11px] text-gray-400 mt-0.5">{crm[s.name].phone}</div>}
+                          )}
                         </div>
-                      ))}
-                    </div>
-                  </div>
-                ))
+
+                        {/* הוראת קבע קיימת שאינה משויכת — הצעה לשייך */}
+                        {unlinked.length > 0 && row.commitments.length === 0 && (
+                          <div className="mt-1.5 flex items-center gap-2 flex-wrap">
+                            {unlinked.map(h => (
+                              <button
+                                key={h.id}
+                                onClick={() => setSol(i, { hkId: String(h.id) })}
+                                className="text-[10px] bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg px-2 py-1 hover:bg-indigo-100"
+                              >
+                                יש לו הו״ק על ₪{Number(h.amount).toLocaleString()} — שייך לקמפיין
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        {s.hkId && (
+                          <button onClick={() => setSol(i, { hkId: undefined })}
+                                  className="text-[10px] text-gray-400 hover:text-red-500 mt-1">
+                            בטל שיוך הוראת קבע
+                          </button>
+                        )}
+
+                        {/* היסטוריית נתינה — כדי לדעת אם הבקשה סבירה */}
+                        <div className="text-[11px] text-gray-500 mt-1">
+                          {!g ? 'לא תרם מעולם' : (
+                            <>
+                              שנה אחרונה <b className="text-[#0D1B2A]">₪{g.lastYear.toLocaleString()}</b>
+                              {' · '}מאז ומעולם <b className="text-[#0D1B2A]">₪{g.allTime.toLocaleString()}</b>
+                            </>
+                          )}
+                          {crm[s.name]?.phone && <span className="text-gray-400"> · {crm[s.name].phone}</span>}
+                        </div>
+
+                        {(openNotes === i || s.notes) && (
+                          <input
+                            value={s.notes ?? ''}
+                            onChange={e => setSol(i, { notes: e.target.value })}
+                            placeholder="הערה — למשל: לחזור בחודש 9, מעדיף שהרב יתקשר"
+                            className="w-full mt-1.5 border border-[#EDE6D6] rounded-lg px-2 py-1.5 text-xs outline-none focus:border-[#C9A84C]"
+                          />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               )}
 
               {/* התרומות שנכנסו */}
