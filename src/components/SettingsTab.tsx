@@ -4,6 +4,7 @@ import { Settings as SettingsIcon, RotateCcw, History, Loader2, ChevronDown, Bot
 import { GlobalAIImportModal } from './GlobalAIImportModal';
 import { MigrateYahrzeitsModal } from './MigrateYahrzeitsModal';
 import { DatesRescueModal } from './DatesRescueModal';
+import { SystemStatusCard } from './SystemStatusCard';
 import { ALL_CIRCLES, CIRCLE_LABELS, DEFAULT_SETTINGS } from '../lib/settings';
 import { computeMissingAttendanceContacts } from '../lib/backfillContacts';
 import { apiPost } from '../lib/api';
@@ -114,6 +115,10 @@ export function SettingsTab() {
       </div>
 
       <div className="p-4 md:p-6 max-w-2xl space-y-5">
+        {/* התשובה ל"האם הכול מעודכן?" — ראשונה, כי זו השאלה הראשונה
+            שנשאלת כשמשהו לא מתנהג כמצופה */}
+        <SystemStatusCard />
+
         {/* פרטי הארגון — נקבעים באשף ההגדרה, וניתנים לעריכה כאן בכל עת */}
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6]">
           <h3 className="font-['Frank_Ruhl_Libre'] text-lg font-bold text-[#0D1B2A] mb-1">הארגון שלי</h3>

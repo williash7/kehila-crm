@@ -24,6 +24,7 @@ jobs:
       - run: npm run build
         env:
           VITE_BASE_PATH: /${{ github.event.repository.name }}/
+          GITHUB_SHA: ${{ github.sha }}
           # מזהה OAuth לכניסה עם גוגל. אינו סוד — מזהה כזה נועד להיות גלוי
           # בקוד צד-לקוח. מוגדר ב-Settings ← Secrets and variables ← Actions
           # ← Variables בשם GOOGLE_CLIENT_ID. אם לא הוגדר, כפתור הכניסה

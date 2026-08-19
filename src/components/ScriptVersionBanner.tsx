@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { AlertTriangle, X } from 'lucide-react';
 import { useAppStore } from '../store/AppContext';
+import { EXPECTED_CODE_VERSION } from '../lib/version';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // "הגיליון מריץ גרסה ישנה".
@@ -12,8 +13,9 @@ import { useAppStore } from '../store/AppContext';
 // עדיף לומר את זה מראש, פעם אחת, במקום להיתקל בזה באמצע עבודה.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** הגרסה שהאפליקציה הזו מצפה למצוא בגיליון. שווה ל-CODE_VERSION שב-Code.gs. */
-export const EXPECTED_CODE_VERSION = '2026-08-18d';
+// הגרסה יושבת ב-lib/version.ts — מקור אחד, כדי שהבאנר וכרטיס מצב המערכת
+// לא יוכלו לחלוק על השאלה מה מעודכן.
+export { EXPECTED_CODE_VERSION } from '../lib/version';
 
 const DISMISS_KEY = 'script_version_notice_dismissed';
 

@@ -10,6 +10,10 @@ export default defineConfig(({mode}) => {
     plugins: [react(), tailwindcss()],
     define: {
       'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
+      // חותמת הבנייה. בלעדיה אי אפשר לדעת אם הדפדפן מציג את הגרסה החדשה
+      // או עותק שמור מלפני שבוע — והשאלה הזו חוזרת בכל עדכון.
+      __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
+      __BUILD_COMMIT__: JSON.stringify((process.env.GITHUB_SHA || '').slice(0, 7)),
     },
     resolve: {
       alias: {
