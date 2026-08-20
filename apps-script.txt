@@ -67,7 +67,7 @@
  *
  * **מעדכנים אותה בכל שינוי מהותי בקובץ.**
  */
-var CODE_VERSION = '2026-08-19d';
+var CODE_VERSION = '2026-08-19e';
 
 // ── שמות הלשוניות ────────────────────────────────────────────────────────────
 var SH = {
@@ -2755,18 +2755,33 @@ function refreshRebbeDate() {
   }
 }
 
+/**
+ * ── התפריט ────────────────────────────────────────────────────────────────
+ *
+ * עשרה פריטים ברשימה אחת, שרובם נועדו לשעת תקלה, הופכים את התפריט לרשימה
+ * שאי אפשר לבחור ממנה. מי שנכנס לכאן בפעם הראשונה צריך לראות שלושה דברים
+ * שהוא באמת יעשה — ולא שיקול בין "אבחון קליטת מיילים" ל"הגירה מגיליון ישן".
+ *
+ * לכן: מה שמשתמשים בו בפועל למעלה, וכל השאר תחת "כלים מתקדמים". שום פעולה
+ * לא הוסרה.
+ */
 function onOpen() {
-  SpreadsheetApp.getUi().createMenu('לוח בקרה')
-    .addItem('התקנה ראשונית', 'setupSheet')
-    .addItem('הגירה מגיליון ישן', 'migrateFromLegacy')
-    .addItem('בדיקת נתונים', 'showSummary')
-    .addItem('רענון כללי מייל', 'refreshMailRules')
-    .addItem('אבחון קליטת מיילים', 'debugMailRules')
-    .addSeparator()
+  var ui = SpreadsheetApp.getUi();
+  ui.createMenu('לוח בקרה')
     .addItem('סנכרון עכשיו', 'dailySync')
     .addItem('סריקת כל היסטוריית המיילים', 'syncAllEmailHistory')
-    .addItem('ניקוי סימוני "נקלט" בגימייל', 'clearProcessedLabel')
-    .addItem('השלמת חיובי הוראות קבע', 'generateStandingOrderCharges')
-    .addItem('רענון תאריך הכתיבה לרבי', 'refreshRebbeDate')
+    .addItem('בדיקת נתונים', 'showSummary')
+    .addSeparator()
+    .addSubMenu(ui.createMenu('כלים מתקדמים')
+      .addItem('התקנה ראשונית', 'setupSheet')
+      .addItem('הגירה מגיליון ישן', 'migrateFromLegacy')
+      .addSeparator()
+      .addItem('אבחון קליטת מיילים', 'debugMailRules')
+      .addItem('רענון כללי מייל', 'refreshMailRules')
+      .addItem('ניקוי סימוני "נקלט" בגימייל', 'clearProcessedLabel')
+      .addSeparator()
+      .addItem('השלמת חיובי הוראות קבע', 'generateStandingOrderCharges')
+      .addItem('רענון תאריך הכתיבה לרבי', 'refreshRebbeDate'))
     .addToUi();
 }
+
