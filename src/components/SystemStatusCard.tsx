@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Explain } from './Explain';
 import { CheckCircle2, AlertTriangle, HelpCircle, RefreshCw } from 'lucide-react';
 import { useAppStore } from '../store/AppContext';
 import {
@@ -124,11 +125,13 @@ export function SystemStatusCard() {
         </button>
       </div>
 
-      <p className="text-[10px] text-gray-400 leading-relaxed">
-        "בדוק שוב" מרענן את הנתונים מהגיליון. "טען מחדש נקי" מוחק את העותק
-        ששמור בדפדפן וטוען את האפליקציה מאפס — זה מה שעושים כשעדכון לא נראה
-        על המסך למרות שהוא עלה.
-      </p>
+      <div className="flex justify-end">
+        <Explain label="מה ההבדל בין שני הכפתורים">
+          "בדוק שוב" מרענן את הנתונים מהגיליון. "טען מחדש נקי" מוחק את העותק
+          ששמור בדפדפן וטוען את האפליקציה מאפס — זה מה שעושים כשעדכון לא נראה
+          על המסך למרות שהוא עלה.
+        </Explain>
+      </div>
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Explain } from './Explain';
 import { useAppStore } from '../store/AppContext';
 import { apiPost, explainApiError} from '../lib/api';
 import { buildChainIndex, chainFor, chainSummary, HkEntry } from '../lib/standingOrders';
@@ -331,10 +332,12 @@ export function RenewHkDialog({ target, onClose }: { target: any; onClose: () =>
               placeholder={`ברירת מחדל: ${String(target.startDate || '').slice(0, 2) || '—'}`}
               className={field + ' mb-1'}
             />
-            <p className="text-[10px] text-gray-400 mb-3 leading-relaxed">
-              זה מה שקובע מתי ייגבה החיוב הראשון — לא היום שבו אתה מחדש. אם היום
-              כבר עבר החודש, החיוב ייצא רק בחודש הבא.
-            </p>
+            <div className="flex justify-end mb-2">
+              <Explain label="למה זה משנה">
+                יום החיוב הוא מה שקובע מתי ייגבה החיוב הראשון — לא היום שבו אתה
+                מחדש. אם היום כבר עבר החודש, החיוב ייצא רק בחודש הבא.
+              </Explain>
+            </div>
 
             {/* התשובה לשאלה "אז מתי זה ייגבה?", לפני האישור */}
             {!startDate && (
@@ -359,10 +362,12 @@ export function RenewHkDialog({ target, onClose }: { target: any; onClose: () =>
               value={newId} onChange={e => setNewId(e.target.value)} dir="ltr" placeholder="1911716"
               className={field + ' mb-1'}
             />
-            <p className="text-[10px] text-gray-400 mb-3 leading-relaxed">
-              מיילי הסירוב נושאים את מספר ההוראה. אם תמלא אותו כאן, כשל חיוב יוצמד
-              להוראה הנכונה במקום להישאר בלי שיוך.
-            </p>
+            <div className="flex justify-end mb-2">
+              <Explain label="למה כדאי למלא">
+                מיילי הסירוב נושאים את מספר ההוראה. אם תמלא אותו כאן, כשל חיוב
+                יוצמד להוראה הנכונה במקום להישאר בלי שיוך.
+              </Explain>
+            </div>
 
             {error && <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg p-2 mb-3">{error}</p>}
 
@@ -476,9 +481,9 @@ export function EditHkDialog({ target, onClose }: { target: any; onClose: () => 
 
             <label className={label}>תאריך החיוב הראשון</label>
             <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className={field + ' mb-1'} />
-            <p className="text-[10px] text-gray-400 mb-3">
-              היום בחודש שנקבע כאן הוא יום החיוב של כל שאר התשלומים.
-            </p>
+            <div className="flex justify-end mb-2">
+              <Explain>היום בחודש שנקבע כאן הוא יום החיוב של כל שאר התשלומים.</Explain>
+            </div>
 
             <label className={label}>מספר תשלומים</label>
             <input type="number" min={1} value={payments} disabled={unlimited}

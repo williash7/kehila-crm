@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { EmptyState } from './EmptyState';
 import { X, Search, RefreshCw, AlertTriangle, ChevronDown, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import { useAppStore } from '../store/AppContext';
 import { getHkStatus, sortHkList, countHkByStatus, openFailureFor, indexFailures, HK_STATUS_LABEL, HK_STATUS_COLOR, HkStatus } from '../lib/standingOrders';
@@ -180,7 +181,7 @@ export function StandingOrdersModal({ onClose }: { onClose: () => void }) {
       {/* List */}
       <div className="flex-1 overflow-y-auto px-4 pb-24 md:pb-6">
         {list.length === 0 ? (
-          <div className="text-center py-10 text-gray-400 text-sm">אין הוראות קבע להצגה</div>
+          <EmptyState icon="🔄" title="אין הוראות קבע להצגה" hint="נסה מסנן אחר, או הצג גם הוראות ישנות שהסתיימו." />
         ) : (
           <div className="space-y-2">
             {list.map((h, i) => {

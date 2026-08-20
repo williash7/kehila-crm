@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { EmptyState } from './EmptyState';
 import { useAppStore } from '../store/AppContext';
 import { RefreshCw, Search, HandCoins, AlertTriangle, ChevronDown, X, Mail, MessageSquare, Pencil, Check, User, Trash2 } from 'lucide-react';
 import { getHkStatus, sortHkList, countHkByStatus, openFailureFor, indexFailures, HK_STATUS_LABEL, HK_STATUS_COLOR, HkStatus } from '../lib/standingOrders';
@@ -211,7 +212,7 @@ export function DonationsTab() {
               </div>
               <div className="divide-y divide-[#EDE6D6]">
                 {pagedDonations.length === 0 ? (
-                  <div className="text-center py-8 text-gray-400 text-sm">לא נמצאו תרומות התואמות לסינון</div>
+                  <EmptyState icon="🔍" title="אין תרומות שתואמות לסינון" hint="נסה להרחיב את טווח התאריכים או לנקות את המסננים." />
                 ) : pagedDonations.map((d: any, i: number) => (
                   <div key={i} onClick={() => { setSelectedDonation(d); setIsEditing(false); }} className="px-4 py-2.5 hover:bg-[#FAF6EE] transition-colors cursor-pointer md:grid md:grid-cols-[1fr_6rem_6rem_9rem_1fr] md:items-center">
                     <div className="flex justify-between items-center md:contents">
@@ -292,7 +293,7 @@ export function DonationsTab() {
             </div>
             <div className="space-y-2">
               {hkList.length === 0 ? (
-                <div className="text-center py-8 text-gray-400 text-sm">אין הוראות קבע להצגה</div>
+                <EmptyState icon="🔄" title="אין הוראות קבע להצגה" hint="הוראות נקלטות לבד ממיילי הספק. אפשר גם להוסיף אחת ידנית." />
               ) : hkList.map((h, i) => {
                 const status = getHkStatus(h, threshold);
                 const fail = openFailureFor(h, failIdx);
@@ -352,7 +353,7 @@ export function DonationsTab() {
         {mainTab === 'errors' && (
           <div className="space-y-2">
             {failures.length === 0 ? (
-              <div className="text-center py-8 text-gray-400 text-sm">אין שגיאות חיוב כרגע — עבודה מצוינת!</div>
+              <EmptyState icon="✓" tone="good" title="אין שגיאות חיוב" hint="כל החיובים בחודש האחרון עברו בהצלחה." />
             ) : failures.map((f: any, i: number) => (
               <div key={i} onClick={() => setSelectedDonor(f.name)} className="bg-red-50 rounded-xl p-3 shadow-sm border border-red-100 flex items-center justify-between cursor-pointer">
                 <div>

@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { EmptyState } from './EmptyState';
 import { useAppStore } from '../store/AppContext';
 import { Plus, X, Target, Wallet, Users, Trash2, Search, CheckCircle2, MessageSquare} from 'lucide-react';
 import { FullScreenView } from './FullScreenView';
@@ -484,13 +485,17 @@ function ProjectDetail({ project, donations, hk, donorNames, crm, pane, setPane,
               )}
 
               {rows.length === 0 ? (
-                <p className="text-sm text-gray-400 text-center py-6 leading-relaxed">
-                  רשימת ההתרמה ריקה.<br />הוסף את מי שאתה מתכוון לפנות אליו, ועקוב אחרי מי הבטיח ומי כבר נתן.
-                </p>
+                <EmptyState
+                  icon="🎯"
+                  title="רשימת ההתרמה ריקה"
+                  hint="הוסף את מי שאתה מתכוון לפנות אליו. לכל אחד תוכל לקבוע כמה לבקש, ולעקוב אחרי מי הבטיח ומי כבר נתן."
+                />
               ) : shownRows.length === 0 ? (
-                <p className="text-sm text-gray-400 text-center py-6">
-                  אין תוצאות ל"{rowSearch}"{statusFilter !== 'all' ? ` בסטטוס "${SOLICITATION_LABEL[statusFilter]}"` : ''}.
-                </p>
+                <EmptyState
+                  icon="🔍"
+                  title={`אין תוצאות ל"${rowSearch}"`}
+                  hint={statusFilter !== 'all' ? `בסטטוס "${SOLICITATION_LABEL[statusFilter]}". נסה "הכל".` : undefined}
+                />
               ) : (
                 <div className="bg-white rounded-xl border border-[#EDE6D6] divide-y divide-[#EDE6D6]">
                   {shownRows.map(row => {
@@ -784,7 +789,7 @@ function BreakdownModal({ metric, rows, onClose }: {
         )}
 
         {shown.length === 0 ? (
-          <p className="text-sm text-gray-400 text-center py-8">אין כאן כלום עדיין.</p>
+          <EmptyState icon="📭" title="אין כאן כלום עדיין" />
         ) : (
           <div className="flex-1 overflow-y-auto space-y-1.5">
             {shown.map((x, i) => (

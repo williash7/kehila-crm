@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { EmptyState } from './EmptyState';
 import { useAppStore } from '../store/AppContext';
 import { History, Users, Wallet, ChevronDown, Lightbulb, X, Plus, Trash2, CheckCircle2, RotateCcw } from 'lucide-react';
 import { countAttendance, sumBudget, HistoryEntry } from '../lib/history';
@@ -226,9 +227,11 @@ export function HistoryTab() {
         </div>
 
         {list.length === 0 ? (
-          <div className="text-center py-12 text-gray-400 text-sm">
-            עדיין אין רשומות היסטוריה. סמנו חג או אירוע שהסתיים כדי לראות אותו כאן.
-          </div>
+          <EmptyState
+            icon="📚"
+            title="עדיין אין היסטוריה"
+            hint="בסיום חג או אירוע יש כפתור 'העבר להיסטוריה' — הוא שומר תמונת מצב של המשימות, הנוכחות והתקציב לשנה הבאה."
+          />
         ) : (
           <div className="space-y-3">
             {list.map(h => {

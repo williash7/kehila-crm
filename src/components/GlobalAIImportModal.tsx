@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { Explain } from './Explain';
 import { Bot, X, Copy, Check, Sparkles, Trash2, Undo2, Download } from 'lucide-react';
 import { useAppStore } from '../store/AppContext';
 import { buildHolidayList } from '../lib/holidayList';
@@ -625,10 +626,12 @@ export function GlobalAIImportModal({ onClose }: { onClose: () => void }) {
                 <button onClick={downloadBackup} className="w-full flex items-center justify-center gap-2 border border-[#EDE6D6] text-gray-600 text-xs font-bold py-2 rounded-xl hover:bg-gray-50">
                   <Download size={14} /> הורד גיבוי מלא (JSON)
                 </button>
-                <p className="text-[10px] text-gray-400 leading-relaxed">
-                  הגיבוי יוצא בדיוק באותה תבנית שהמסך הזה קולט — אפשר להדביק אותו כאן
-                  בחזרה בלי AI, או לתת אותו ל-AI יחד עם מידע נוסף ולבקש שימזג.
-                </p>
+                <div className="flex justify-end">
+                  <Explain label="מה זה הגיבוי">
+                    הגיבוי יוצא בדיוק באותה תבנית שהמסך הזה קולט — אפשר להדביק אותו
+                    כאן בחזרה בלי AI, או לתת אותו ל-AI יחד עם מידע נוסף ולבקש שימזג.
+                  </Explain>
+                </div>
               </>
             ) : (
               <>

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { EmptyState } from './EmptyState';
 import { PlusCircle, X, Pencil, RefreshCw } from 'lucide-react';
 import { useAppStore } from '../store/AppContext';
 import { HDate } from '@hebcal/core';
@@ -73,10 +74,11 @@ export function FamilyDatesEditor({ name }: { name: string }) {
       </div>
 
       {list.length === 0 ? (
-        <p className="text-xs text-gray-400 text-center py-2 leading-relaxed">
-          אין עדיין בני משפחה רשומים.<br />
-          כאן נרשמים ימי הולדת ויארצייטים — עם שם מלא ובשני הלוחות.
-        </p>
+        <EmptyState
+          icon="👪"
+          title="עוד לא נרשמו בני משפחה"
+          hint="כאן נרשמים ימי הולדת ויארצייטים — עם שם מלא, ובשני הלוחות."
+        />
       ) : (
         <div className="space-y-2">
           {list.map(f => (

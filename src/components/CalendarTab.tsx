@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { EmptyState } from './EmptyState';
 import { useAppStore } from '../store/AppContext';
 import { getCustomHols, saveCustomHols } from '../lib/api';
 import { logAction } from '../lib/score';
@@ -126,7 +127,7 @@ export function CalendarTab({ addTrigger }: { addTrigger?: { tab: string; count:
             </div>
           </>
         ) : (
-          <div className="text-center py-10 text-gray-400">אין אירועים קרובים</div>
+          <EmptyState icon="✡️" title="אין חגים קרובים" hint="החגים נטענים מלוח השנה העברי. אפשר להוסיף תאריך משלך בכפתור למעלה." />
         )}
 
         {past.length > 0 && (

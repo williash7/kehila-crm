@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { EmptyState } from './EmptyState';
 import { useAppStore } from '../store/AppContext';
 import { Search, RefreshCw, Plus, Users, Map, Navigation, MapPin, X, Link2, PhoneCall } from 'lucide-react';
 import { Donor } from '../types';
@@ -298,10 +299,11 @@ export function DonorsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
       </div>
 
       {list.length === 0 ? (
-        <div className="text-center py-10 text-gray-400">
-          <Search size={32} className="mx-auto mb-3 opacity-20" />
-          <p className="text-sm">לא נמצאו אנשי קשר מתאימים</p>
-        </div>
+        <EmptyState
+          icon="🔍"
+          title="לא נמצאו אנשי קשר מתאימים"
+          hint="החיפוש והמסננים מצטברים. נסה לנקות את החיפוש, או להדליק עוד מעגלי קרבה בהגדרות."
+        />
       ) : (
         <>
           {/* Mobile card list */}

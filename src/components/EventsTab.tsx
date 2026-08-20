@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { EmptyState } from './EmptyState';
 import { useAppStore } from '../store/AppContext';
 import { Plus, Check, X, ClipboardList, Trash2, Pencil, Clock, Archive, ChevronDown, Mic2, Star, Wallet } from 'lucide-react';
 import { FullScreenView } from './FullScreenView';
@@ -477,10 +478,19 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
             );
           })}
           {activeEvents.length === 0 && (
-            <div className="text-center py-12 text-gray-400">
-               <div className="text-4xl mb-3 opacity-50">📅</div>
-               <div className="text-sm">אין אירועים, לחץ על + להוסיף.</div>
-            </div>
+            <EmptyState
+              icon="📌"
+              title="עוד אין אירועים קבועים"
+              hint="מניין, שיעור או סעודת שבת — כל התכנסות עם שעה ומקום, שחוזרת או חד-פעמית."
+              action={
+                <button
+                  onClick={() => setIsAddingMode(true)}
+                  className="bg-[#0D1B2A] text-[#E8C97A] text-sm font-bold px-4 py-2 rounded-xl"
+                >
+                  + הוסף אירוע ראשון
+                </button>
+              }
+            />
           )}
         </div>
       </div>

@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { EmptyState } from './EmptyState';
 import { CalendarDays, List, ChevronLeft } from 'lucide-react';
 import { useAppStore } from '../store/AppContext';
 import { FullScreenView } from './FullScreenView';
@@ -156,9 +157,7 @@ export function AllDatesModal({ onClose }: { onClose: () => void }) {
         </div>
 
         {shown.length === 0 ? (
-          <div className="text-center py-12 text-gray-400 text-sm">
-            אין תאריכים בטווח ובסינון שנבחרו.
-          </div>
+<EmptyState icon="📅" title="אין תאריכים בטווח שנבחר" hint="נסה להרחיב את הטווח למעלה, או להדליק עוד סוגי תאריכים." />
         ) : view === 'list' ? (
           // ── רשימה רצופה, מקובצת ל"היום / השבוע / החודש / אחר כך" ──────
           <div className="space-y-4">

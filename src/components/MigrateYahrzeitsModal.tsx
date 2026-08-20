@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { Explain } from './Explain';
 import { X, Wand2, AlertTriangle, Download } from 'lucide-react';
 import { useAppStore } from '../store/AppContext';
 import { apiPost, explainApiError} from '../lib/api';
@@ -138,10 +139,12 @@ export function MigrateYahrzeitsModal({ onClose }: { onClose: () => void }) {
             <p className="text-sm text-gray-500 leading-relaxed">
               לא נמצאו יארצייטים במבנה הישן — אין מה להעביר.
             </p>
-            <p className="text-[11px] text-gray-400 leading-relaxed">
-              אם היו לך יארצייטים ואינם מופיעים בכרטיסים, אפשר לשחזר אותם מהגיליון:
-              קובץ ← היסטוריית גרסאות ← הצג היסטוריית גרסאות, ולבחור גרסה מלפני ההעברה.
-            </p>
+            <div className="flex">
+              <Explain label="היו לי יארצייטים ואינם מופיעים">
+                אפשר לשחזר אותם מהגיליון: קובץ ← היסטוריית גרסאות ← הצג היסטוריית
+                גרסאות, ולבחור גרסה מלפני ההעברה.
+              </Explain>
+            </div>
             <button onClick={onClose} className="w-full bg-[#0D1B2A] text-[#E8C97A] py-2.5 rounded-xl font-bold text-sm">סגור</button>
           </div>
         ) : (
