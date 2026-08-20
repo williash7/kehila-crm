@@ -8,7 +8,7 @@ import {
   Project, Solicitation, SolicitationStatus, emptyProject, projectProgress,
   projectDonations, syncSolicitationsWithDonations, buildGivingIndex, suggestedAsk, totalAsk,
   SOLICITATION_LABEL, SOLICITATION_COLOR, SOLICITATION_ORDER, normalizeStatus,
-  buildSolicitationRows, sumSolicitationRows, unlinkedHkFor, SolicitationRow,
+  buildSolicitationRows, sumSolicitationRows, unlinkedHkFor, explicitHkIds, SolicitationRow,
 } from '../lib/projects';
 import { logAction } from '../lib/score';
 
@@ -561,6 +561,7 @@ function ProjectDetail({ project, donations, hk, donorNames, crm, pane, setPane,
                                 title="ההוראה הזו אינה שייכת לקמפיין"
                                 onClick={() => setSol(i, {
                                   excludedHkIds: [...(s.excludedHkIds || []), c.id],
+                                  hkIds: explicitHkIds(s).filter(x => x !== c.id),
                                   hkId: s.hkId === c.id ? undefined : s.hkId,
                                 })}
                                 className="text-indigo-400 hover:text-red-500"
@@ -621,16 +622,25 @@ function ProjectDetail({ project, donations, hk, donorNames, crm, pane, setPane,
                           </button>
                         )}
 
-                        {/* הוראת קבע קיימת שאינה משויכת — הצעה לשייך */}
-                        {unlinked.length > 0 && row.commitments.length === 0 && (
-                          <div className="mt-1.5 flex items-center gap-2 flex-wrap">
+                        {/* ── הוראות קבע שקיימות בגיליון ואינן משויכות ────
+                            רוב ההוראות מגיעות במייל בלי קטגוריה שתואמת את
+                            שם הקמפיין, ולכן צריך לצרף אותן בלחיצה. מוצג גם
+                            כשכבר יש הוראה משויכת — לתורם יכולות להיות כמה. */}
+                        {unlinked.length > 0 && (
+                          <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
                             {unlinked.map(h => (
                               <button
                                 key={h.id}
-                                onClick={() => setSol(i, { hkId: String(h.id) })}
-                                className="text-[10px] bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg px-2 py-1 hover:bg-indigo-100"
+                                title={`מהגיליון · ${h.startDate || ''}${h.campaign ? ` · ${h.campaign}` : ''}`}
+                                onClick={() => setSol(i, {
+                                  hkIds: [...explicitHkIds(s), String(h.id)],
+                                  excludedHkIds: (s.excludedHkIds || []).filter(x => x !== String(h.id)),
+                                })}
+                                className="text-[10px] bg-white text-indigo-700 border border-dashed border-indigo-300 rounded-lg px-2 py-1 hover:bg-indigo-50"
                               >
-                                יש לו הו״ק על ₪{Number(h.amount).toLocaleString()} — שייך לקמפיין
+                                + צרף הו״ק ₪{Number(h.amount).toLocaleString()}
+                                {h.unlimited ? ' (ללא הגבלה)' : `×${h.payments}`}
+                                {!h.active && ' · הסתיימה'}
                               </button>
                             ))}
                           </div>
@@ -701,7 +711,7 @@ function ProjectDetail({ project, donations, hk, donorNames, crm, pane, setPane,
           <AddHkDialog
             presetName={sols[hkForRow].name}
             presetCampaign={project.purposeTag || project.name}
-            onCreated={id => setSol(hkForRow, { hkId: id })}
+            onCreated={id => setSol(hkForRow, { hkIds: [...explicitHkIds(sols[hkForRow]), id] })}
             onClose={() => setHkForRow(null)}
           />
         )}

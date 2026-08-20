@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { X, Search, RefreshCw, AlertTriangle, ChevronDown, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import { useAppStore } from '../store/AppContext';
 import { getHkStatus, sortHkList, countHkByStatus, openFailureFor, indexFailures, HK_STATUS_LABEL, HK_STATUS_COLOR, HkStatus } from '../lib/standingOrders';
-import { CancelHkDialog, ChangeHkAmountDialog, RenewHkDialog, CancelHkButton } from './CancelHkDialog';
+import { CancelHkDialog, ChangeHkAmountDialog, RenewHkDialog, EditHkDialog, CancelHkButton } from './CancelHkDialog';
 import { AddHkDialog } from './AddHkDialog';
 import { ProfileModal } from './ProfileModal';
 import { useCloseOnBack } from './FullScreenView';
@@ -39,6 +39,7 @@ export function StandingOrdersModal({ onClose }: { onClose: () => void }) {
   const [cancelTarget, setCancelTarget] = useState<any | null>(null);
   const [amountTarget, setAmountTarget] = useState<any | null>(null);
   const [renewTarget, setRenewTarget] = useState<any | null>(null);
+  const [editTarget, setEditTarget] = useState<any | null>(null);
   const [addOpen, setAddOpen] = useState(false);
 
   // גם כאן כפתור "אחורה" של הטלפון סוגר את המסך במקום לצאת מהאפליקציה
@@ -237,7 +238,7 @@ export function StandingOrdersModal({ onClose }: { onClose: () => void }) {
                     )}
                   </div>
 
-                  <CancelHkButton hk={h} onOpen={setCancelTarget} onChangeAmount={setAmountTarget} onRenew={setRenewTarget} />
+                  <CancelHkButton hk={h} onOpen={setCancelTarget} onChangeAmount={setAmountTarget} onRenew={setRenewTarget} onEdit={setEditTarget} />
                 </div>
               );
             })}
@@ -248,6 +249,7 @@ export function StandingOrdersModal({ onClose }: { onClose: () => void }) {
       {cancelTarget && <CancelHkDialog target={cancelTarget} onClose={() => setCancelTarget(null)} />}
       {amountTarget && <ChangeHkAmountDialog target={amountTarget} onClose={() => setAmountTarget(null)} />}
       {renewTarget && <RenewHkDialog target={renewTarget} onClose={() => setRenewTarget(null)} />}
+      {editTarget && <EditHkDialog target={editTarget} onClose={() => setEditTarget(null)} />}
       {addOpen && <AddHkDialog onClose={() => setAddOpen(false)} />}
 
       {selectedDonor && <ProfileModal name={selectedDonor} onClose={() => setSelectedDonor(null)} backLabel="הוראות קבע" />}

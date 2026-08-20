@@ -4,7 +4,7 @@ import { RefreshCw, Search, HandCoins, AlertTriangle, ChevronDown, X, Mail, Mess
 import { getHkStatus, sortHkList, countHkByStatus, openFailureFor, indexFailures, HK_STATUS_LABEL, HK_STATUS_COLOR, HkStatus } from '../lib/standingOrders';
 import { parseDdMmYyyy } from '../lib/dateUtils';
 import { ProfileModal } from './ProfileModal';
-import { CancelHkDialog, ChangeHkAmountDialog, RenewHkDialog, CancelHkButton } from './CancelHkDialog';
+import { CancelHkDialog, ChangeHkAmountDialog, RenewHkDialog, EditHkDialog, CancelHkButton } from './CancelHkDialog';
 import { AddHkDialog } from './AddHkDialog';
 import { FullScreenView } from './FullScreenView';
 import { apiPost, explainApiError} from '../lib/api';
@@ -29,6 +29,7 @@ export function DonationsTab() {
   const [cancelTarget, setCancelTarget] = useState<any | null>(null);
   const [amountTarget, setAmountTarget] = useState<any | null>(null);
   const [renewTarget, setRenewTarget] = useState<any | null>(null);
+  const [editTarget, setEditTarget] = useState<any | null>(null);
   const [addHkOpen, setAddHkOpen] = useState(false);
 
   // ── תרומות ──────────────────────────────────────────────────────────────
@@ -333,7 +334,7 @@ export function DonationsTab() {
                         </span>
                       )}
                     </div>
-                    <CancelHkButton hk={h} onOpen={setCancelTarget} onChangeAmount={setAmountTarget} onRenew={setRenewTarget} />
+                    <CancelHkButton hk={h} onOpen={setCancelTarget} onChangeAmount={setAmountTarget} onRenew={setRenewTarget} onEdit={setEditTarget} />
                   </div>
                 );
               })}
@@ -574,6 +575,7 @@ export function DonationsTab() {
       {cancelTarget && <CancelHkDialog target={cancelTarget} onClose={() => setCancelTarget(null)} />}
       {amountTarget && <ChangeHkAmountDialog target={amountTarget} onClose={() => setAmountTarget(null)} />}
       {renewTarget && <RenewHkDialog target={renewTarget} onClose={() => setRenewTarget(null)} />}
+      {editTarget && <EditHkDialog target={editTarget} onClose={() => setEditTarget(null)} />}
       {addHkOpen && <AddHkDialog onClose={() => setAddHkOpen(false)} />}
     </div>
   );

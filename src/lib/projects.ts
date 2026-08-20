@@ -112,6 +112,8 @@ export interface Solicitation {
    * עבור הקמפיין, אבל אצל הספק היא נרשמה תחת קטגוריה אחרת.
    */
   hkId?: string;
+  /** קישור מפורש לכמה הוראות. גובר על שיוך לפי קטגוריה. */
+  hkIds?: string[];
   /**
    * ── מה שהאפליקציה טעתה לגביו ──────────────────────────────────────────
    *
@@ -409,27 +411,49 @@ export function hkCommitment(order: any): HkCommitment | null {
 }
 
 /** ההוראות ששייכות לקמפיין הזה עבור האדם הזה. */
+/** כל המזהים שקושרו במפורש לשורה. */
+export function explicitHkIds(sol: Solicitation): string[] {
+  const out = [...(sol?.hkIds || [])];
+  if (sol?.hkId && out.indexOf(sol.hkId) < 0) out.push(sol.hkId);
+  return out.map(String).filter(Boolean);
+}
+
+/**
+ * ההוראות ששייכות לקמפיין הזה עבור האדם הזה.
+ *
+ * שני מסלולים, ושניהם נחוצים: הוראה שהגיעה במייל עם קטגוריה ששווה לשם
+ * הקמפיין משויכת לבד, והוראה שנרשמה תחת קטגוריה אחרת — או בלי קטגוריה
+ * בכלל, כפי שקורה ברוב המיילים — מקושרת ידנית בלחיצה.
+ */
 export function hkForSolicitation(sol: Solicitation, project: Project, hk: any[]): HkCommitment[] {
   const name = String(sol?.name || '').trim();
   if (!name) return [];
   const tag = (project.purposeTag || project.name || '').trim();
+  const explicit = explicitHkIds(sol);
 
   const mine = (hk || []).filter(h => String(h?.name || '').trim() === name);
   const chosen = mine.filter(h => {
-    if (sol.hkId) return String(h.id) === String(sol.hkId);        // קישור מפורש גובר
+    if (explicit.length) return explicit.indexOf(String(h.id)) >= 0;   // קישור מפורש גובר
     return !!tag && String(h.campaign || h.purpose || '').trim() === tag;
   });
 
   return chosen.map(hkCommitment).filter(Boolean) as HkCommitment[];
 }
 
-/** הוראות פעילות של אותו אדם שאינן משויכות לקמפיין — להצעה בממשק. */
+/**
+ * הוראות הקבע של אותו אדם שאינן משויכות עדיין — להצעה בממשק.
+ * הפעילות ראשונות, אבל גם הוראה שהסתיימה מוצעת: מה שנגבה ממנה בתקופת
+ * הקמפיין הוא כסף אמיתי שהגיע.
+ */
 export function unlinkedHkFor(sol: Solicitation, project: Project, hk: any[]): any[] {
   const name = String(sol?.name || '').trim();
   if (!name) return [];
   const linked = new Set(hkForSolicitation(sol, project, hk).map(c => c.id));
-  return (hk || []).filter(h =>
-    String(h?.name || '').trim() === name && h.active && !linked.has(String(h.id)));
+  const excluded = new Set(sol.excludedHkIds || []);
+  return (hk || [])
+    .filter(h => String(h?.name || '').trim() === name)
+    .filter(h => !linked.has(String(h.id)) && !excluded.has(String(h.id)))
+    .sort((a, b) => (b.active ? 1 : 0) - (a.active ? 1 : 0));
 }
 
 export interface AttachedDonation {

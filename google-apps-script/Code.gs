@@ -67,7 +67,7 @@
  *
  * **מעדכנים אותה בכל שינוי מהותי בקובץ.**
  */
-var CODE_VERSION = '2026-08-19b';
+var CODE_VERSION = '2026-08-19c';
 
 // ── שמות הלשוניות ────────────────────────────────────────────────────────────
 var SH = {
@@ -670,6 +670,8 @@ function route_(action, body) {
     case 'cancelStandingOrder': return cancelStandingOrder_(body);
     case 'updateStandingOrderAmount': return updateStandingOrderAmount_(body);
     case 'renewStandingOrder': return renewStandingOrder_(body);
+    case 'updateStandingOrder': return updateStandingOrder_(body);
+    case 'previewStandingOrderUpdate': return previewStandingOrderUpdate_(body);
     case 'previewRenewalDate': return previewRenewalDate_(body);
     case 'updateDonorField':   return updateDonorField_(body);
     case 'deleteContactColumns': return deleteContactColumns_(body);
@@ -1209,6 +1211,126 @@ function renewStandingOrder_(body) {
     billingDay: start.getDate(),
     closedOld: closedOld, created: created,
   };
+}
+
+/**
+ * ── עריכת הוראת קבע קיימת ─────────────────────────────────────────────────
+ *
+ * עד כאן אפשר היה רק **לשנות סכום** או **לבטל**. כל השאר — תאריך התחלה
+ * שגוי, מספר תשלומים לא נכון, קמפיין שלא שויך, שם שהוקלד עם שגיאת כתיב —
+ * חייב לרדת לגיליון ולתקן ביד, ואז לזכור שהחיובים שכבר נוצרו לא מתעדכנים
+ * מעצמם.
+ *
+ * המקרה שהוליד את זה: חידוש נפתח בתאריך שכבר עבר, המנוע ייצר עבורו חיוב
+ * מתוארך לאחור, והאפליקציה הציגה **"שולמו 1 מתוך 12" על הוראה שטרם חויבה
+ * ולו פעם אחת**. תיקון התאריך לבדו לא היה מספיק — היה צריך גם לנקות את
+ * החיוב הרפאים.
+ *
+ * לכן: שינוי בלוח הזמנים (תאריך התחלה או מספר תשלומים) **בונה מחדש את
+ * החיובים**. חיוב שסומן "נכשל" נשאר — הוא אירוע אמיתי עם סיבה רשומה, ולא
+ * משהו שהמנוע ייצר.
+ */
+function updateStandingOrder_(body) {
+  var id = String(body.id || '').trim();
+  if (!id) return { success: false, error: 'חסר מזהה הוראה' };
+
+  var t = table_(SH.HK);
+  if (!t.sheet) return { success: false, error: 'לשונית הוראות הקבע לא נמצאה' };
+
+  var row = -1, r = null;
+  for (var i = 0; i < t.rows.length; i++) {
+    if (String(get_(t.rows[i], t, 'מזהה') || '').trim() === id) { row = i + 2; r = t.rows[i]; break; }
+  }
+  if (row < 0) return { success: false, error: 'הוראת קבע ' + id + ' לא נמצאה' };
+
+  var oldStart = toDate_(get_(r, t, 'תאריך פתיחה'));
+  var oldRawPay = get_(r, t, 'מספר תשלומים');
+
+  // מה מותר לערוך. שדה שלא נשלח — לא נוגעים בו.
+  var updates = {};
+  if (body.name !== undefined)     updates['שם'] = standardName(body.name);
+  if (body.amount !== undefined)   updates['סכום'] = asNumber_(body.amount);
+  if (body.campaign !== undefined) updates['קמפיין'] = String(body.campaign || '');
+  if (body.phone !== undefined)    updates['טלפון'] = String(body.phone || '');
+  if (body.email !== undefined)    updates['אימייל'] = String(body.email || '');
+  if (body.notes !== undefined)    updates['הערות'] = String(body.notes || '');
+
+  var scheduleChanged = false;
+  if (body.startDate !== undefined && String(body.startDate).trim()) {
+    var d = toDate_(body.startDate);
+    if (!d) return { success: false, error: 'תאריך התחלה לא תקין' };
+    updates['תאריך פתיחה'] = d;
+    scheduleChanged = scheduleChanged || !oldStart || d.getTime() !== oldStart.getTime();
+  }
+  if (body.payments !== undefined || body.unlimited !== undefined) {
+    var unlimited = body.unlimited === undefined ? isUnlimited_(body.payments) : !!body.unlimited;
+    var payments = asNumber_(body.payments);
+    if (!unlimited && !payments) return { success: false, error: 'חסר מספר תשלומים' };
+    var value = unlimited ? UNLIMITED_TEXT : payments;
+    updates['מספר תשלומים'] = value;
+    scheduleChanged = scheduleChanged || String(value) !== String(oldRawPay).trim();
+  }
+
+  var changed = [];
+  Object.keys(updates).forEach(function (col) {
+    var c = t.col(col);
+    if (c < 0) return;
+    t.sheet.getRange(row, c + 1).setValue(updates[col]);
+    changed.push(col);
+  });
+  if (!changed.length) return { success: false, error: 'לא נשלח שום שינוי' };
+
+  // ── בניית החיובים מחדש ────────────────────────────────────────────────
+  var removed = 0;
+  if (scheduleChanged) removed = clearOrderCharges_(id);
+
+  _hkIndex = null;
+  _logIds = null;
+  _contactIndex = null;
+  var created = generateStandingOrderCharges();
+
+  Logger.log('הוראה ' + id + ' עודכנה: ' + changed.join(', ') +
+             (scheduleChanged ? ' · לוח הזמנים נבנה מחדש' : ''));
+  return { success: true, id: id, changed: changed, rebuilt: scheduleChanged,
+           removed: removed, created: created };
+}
+
+/**
+ * מוחק את חיובי ההוראה מהיומן — חוץ מאלה שסומנו "נכשל".
+ * מוחקים מלמטה למעלה, אחרת כל מחיקה מזיזה את השורות שאחריה.
+ */
+function clearOrderCharges_(orderId) {
+  var t = table_(SH.LOG);
+  var cId = t.col('מזהה'), cStatus = t.col('סטטוס');
+  if (!t.sheet || cId < 0) return 0;
+
+  var deleted = 0;
+  for (var i = t.rows.length - 1; i >= 0; i--) {
+    if (orderIdFromChargeId_(t.rows[i][cId]) !== orderId) continue;
+    if (cStatus >= 0 && String(t.rows[i][cStatus] || '').trim() === STATUS_FAILED) continue;
+    t.sheet.deleteRow(i + 2);
+    deleted++;
+  }
+  _logIds = null;
+  return deleted;
+}
+
+/** כמה חיובים ייבנו מחדש אם ישונה לוח הזמנים — בלי לשנות כלום. */
+function previewStandingOrderUpdate_(body) {
+  var id = String(body.id || '').trim();
+  var t = table_(SH.LOG);
+  var cId = t.col('מזהה'), cStatus = t.col('סטטוס');
+  if (!id || !t.sheet || cId < 0) return { success: false, error: 'חסר מזהה' };
+
+  var existing = 0, failed = 0, collected = 0;
+  t.rows.forEach(function (rr) {
+    if (orderIdFromChargeId_(rr[cId]) !== id) return;
+    var st = cStatus >= 0 ? String(rr[cStatus] || '').trim() : '';
+    existing++;
+    if (st === STATUS_FAILED) failed++;
+    else if (st === '') collected++;
+  });
+  return { success: true, existing: existing, failed: failed, collected: collected };
 }
 
 function cancelStandingOrder_(body) {

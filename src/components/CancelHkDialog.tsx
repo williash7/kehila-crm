@@ -382,12 +382,148 @@ export function RenewHkDialog({ target, onClose }: { target: any; onClose: () =>
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// עריכת הוראת קבע.
+//
+// עד כאן אפשר היה רק לשנות סכום או לבטל, וכל תיקון אחר חייב לרדת לגיליון.
+// הבעיה שזה יצר: הוראה שנפתחה בתאריך שגוי הציגה חיוב שלא היה — ותיקון
+// התאריך ביד לא ניקה אותו, כי החיובים כבר נכתבו.
+//
+// כאן שינוי בלוח הזמנים **בונה את החיובים מחדש**, ואומרים לך מראש כמה
+// ייגעו. חיוב שסומן "נכשל" נשאר — הוא אירוע אמיתי, לא תוצר של המנוע.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function EditHkDialog({ target, onClose }: { target: any; onClose: () => void }) {
+  const { refresh } = useAppStore();
+  const [name, setName] = useState(String(target.name || ''));
+  const [amount, setAmount] = useState(String(Number(target.amount) || ''));
+  const [unlimited, setUnlimited] = useState(!!target.unlimited);
+  const [payments, setPayments] = useState(target.unlimited ? '' : String(Number(target.payments) || ''));
+  const [campaign, setCampaign] = useState(String(target.campaign || ''));
+  const [startDate, setStartDate] = useState(() => {
+    const m = String(target.startDate || '').match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    return m ? `${m[3]}-${m[2]}-${m[1]}` : '';
+  });
+
+  const [stats, setStats] = useState<any | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [done, setDone] = useState<any | null>(null);
+
+  React.useEffect(() => {
+    apiPost('previewStandingOrderUpdate', { id: target.id })
+      .then(res => setStats(res?.success ? res : null))
+      .catch(() => setStats(null));
+  }, [target.id]);
+
+  const origStart = String(target.startDate || '');
+  const newStart = startDate ? startDate.split('-').reverse().join('/') : origStart;
+  const scheduleChanged =
+    newStart !== origStart ||
+    (unlimited !== !!target.unlimited) ||
+    (!unlimited && Number(payments) !== Number(target.payments));
+
+  async function submit() {
+    if (!unlimited && !(Number(payments) > 0)) { setError('צריך מספר תשלומים, או לסמן "ללא הגבלה"'); return; }
+    if (scheduleChanged && !window.confirm(
+      'שינוי תאריך ההתחלה או מספר התשלומים בונה את החיובים מחדש.\n\n' +
+      'חיובים שיוצאים מהלוח החדש יימחקו מהיומן, כולל כאלה שנספרו ככסף שנכנס. ' +
+      'חיובים שסומנו "נכשל" יישארו.\n\nלהמשיך?')) return;
+
+    setBusy(true);
+    setError('');
+    const res = await apiPost('updateStandingOrder', {
+      id: target.id,
+      name: name.trim(),
+      amount: Number(amount) || 0,
+      unlimited,
+      payments: unlimited ? '' : Number(payments),
+      campaign: campaign.trim(),
+      startDate: startDate || '',
+    });
+    setBusy(false);
+    if (res?.error || res?.success === false) { setError(explainApiError(res.error) || 'העדכון נכשל'); return; }
+    setDone(res);
+    refresh();
+  }
+
+  const field = 'w-full border border-[#EDE6D6] rounded-lg px-2 py-2 text-sm outline-none focus:border-[#C9A84C]';
+  const label = 'block text-[11px] font-bold text-gray-600 mb-1';
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-[210] flex items-center justify-center p-4" dir="rtl">
+      <div className="bg-white rounded-2xl w-full max-w-sm p-4 shadow-xl border border-[#EDE6D6] max-h-[90vh] overflow-y-auto">
+        <h3 className="font-['Frank_Ruhl_Libre'] text-base font-bold text-[#0D1B2A] mb-1">עריכת הוראת קבע</h3>
+        <p className="text-xs text-gray-500 mb-3">הוראה <span dir="ltr">#{target.id}</span></p>
+
+        {done ? (
+          <>
+            <div className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg p-2.5 mb-3 leading-relaxed">
+              ההוראה עודכנה: {done.changed?.join(', ')}.
+              {done.rebuilt && ` לוח החיובים נבנה מחדש — ${done.removed} נמחקו, ${done.created} נוצרו.`}
+            </div>
+            <button onClick={onClose} className="w-full py-2 rounded-lg text-sm font-bold text-white bg-[#0D1B2A]">סגור</button>
+          </>
+        ) : (
+          <>
+            <label className={label}>שם התורם</label>
+            <input value={name} onChange={e => setName(e.target.value)} className={field + ' mb-3'} />
+
+            <label className={label}>סכום חודשי</label>
+            <input type="number" min={1} value={amount} onChange={e => setAmount(e.target.value)} className={field + ' mb-3'} />
+
+            <label className={label}>תאריך החיוב הראשון</label>
+            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className={field + ' mb-1'} />
+            <p className="text-[10px] text-gray-400 mb-3">
+              היום בחודש שנקבע כאן הוא יום החיוב של כל שאר התשלומים.
+            </p>
+
+            <label className={label}>מספר תשלומים</label>
+            <input type="number" min={1} value={payments} disabled={unlimited}
+                   onChange={e => setPayments(e.target.value)}
+                   className={field + ' mb-2 disabled:bg-gray-50 disabled:text-gray-400'} />
+            <label className="flex items-center gap-2 text-xs text-gray-600 mb-3">
+              <input type="checkbox" checked={unlimited} onChange={e => setUnlimited(e.target.checked)} />
+              ללא הגבלת זמן
+            </label>
+
+            <label className={label}>
+              קמפיין <span className="font-normal text-gray-400">(מה שמשייך אותה לפרויקט)</span>
+            </label>
+            <input value={campaign} onChange={e => setCampaign(e.target.value)} className={field + ' mb-3'} />
+
+            {scheduleChanged && (
+              <div className="text-[11px] bg-amber-50 border border-amber-200 rounded-lg p-2.5 mb-3 text-amber-900 leading-relaxed">
+                <b>לוח החיובים ייבנה מחדש.</b>
+                {stats && ` היום יש ${stats.existing} חיובים, מתוכם ${stats.collected} נספרים ככסף שנכנס ו-${stats.failed} מסומנים כנכשלו.`}
+                {' '}מה שיוצא מהלוח החדש יימחק; מה שסומן "נכשל" יישאר.
+              </div>
+            )}
+
+            {error && <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg p-2 mb-3 leading-relaxed">{error}</p>}
+
+            <div className="flex gap-2">
+              <button onClick={onClose} disabled={busy}
+                className="flex-1 py-2 rounded-lg text-sm font-bold text-gray-600 border border-[#EDE6D6] disabled:opacity-50">חזרה</button>
+              <button onClick={submit} disabled={busy}
+                className="flex-1 py-2 rounded-lg text-sm font-bold text-white bg-[#0D1B2A] disabled:opacity-50">
+                {busy ? 'שומר...' : 'שמור שינויים'}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /** כפתורי הפעולה של שורת הוראת קבע. עוצרים את ה-click כדי שלא ייפתח כרטיס התורם. */
-export function CancelHkButton({ hk, onOpen, onChangeAmount, onRenew }: {
+export function CancelHkButton({ hk, onOpen, onChangeAmount, onRenew, onEdit }: {
   hk: any;
   onOpen: (hk: any) => void;
   onChangeAmount?: (hk: any) => void;
   onRenew?: (hk: any) => void;
+  onEdit?: (hk: any) => void;
 }) {
   if (!hk.id) return null;
   const cancelled = !!hk.cancelDate;
@@ -402,6 +538,14 @@ export function CancelHkButton({ hk, onOpen, onChangeAmount, onRenew }: {
           className="flex-1 text-[11px] font-bold py-1.5 rounded-lg border text-indigo-700 border-indigo-200 hover:bg-indigo-50 transition-colors"
         >
           ↻ חידוש
+        </button>
+      )}
+      {onEdit && (
+        <button
+          onClick={e => { e.stopPropagation(); onEdit(hk); }}
+          className="flex-1 text-[11px] font-bold py-1.5 rounded-lg border text-[#0D1B2A] border-[#EDE6D6] hover:bg-gray-50 transition-colors"
+        >
+          ✎ עריכה
         </button>
       )}
       {onChangeAmount && !cancelled && (
