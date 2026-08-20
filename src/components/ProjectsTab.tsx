@@ -270,11 +270,27 @@ function ProjectDetail({ project, donations, hk, donorNames, crm, pane, setPane,
             </div>
             {prog.goal > 0 && (
               <>
-                <div className="h-2 bg-white/10 rounded-full overflow-hidden mb-2">
-                  <div className="h-full bg-[#C9A84C] rounded-full" style={{ width: `${prog.percent}%` }} />
+                {/* שלושה מקטעים, לפי דרגת הוודאות: מה שבקופה, מה שמגובה
+                    בהוראת קבע חתומה, ומה שנשען על הבטחה בעל פה בלבד. */}
+                <div className="h-2.5 bg-white/10 rounded-full overflow-hidden mb-2 flex">
+                  <div className="h-full bg-emerald-400" title="נכנס בפועל"
+                       style={{ width: `${Math.min(100, (prog.raised / prog.goal) * 100)}%` }} />
+                  <div className="h-full bg-[#C9A84C]" title="מגובה בהוראת קבע"
+                       style={{ width: `${Math.min(100, (prog.hkOutstanding / prog.goal) * 100)}%` }} />
+                  <div className="h-full bg-amber-300/40" title="הבטחה בעל פה"
+                       style={{ width: `${Math.min(100, (prog.pledgeOutstanding / prog.goal) * 100)}%` }} />
                 </div>
-                <div className="flex justify-between text-[11px] text-white/50">
-                  <span>{prog.percent}% מהיעד</span>
+                <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-white/55">
+                  <span className="flex items-center gap-1"><i className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />נכנס ₪{prog.raised.toLocaleString()}</span>
+                  {prog.hkOutstanding > 0 && (
+                    <span className="flex items-center gap-1"><i className="w-1.5 h-1.5 rounded-full bg-[#C9A84C] inline-block" />הו״ק ₪{prog.hkOutstanding.toLocaleString()}</span>
+                  )}
+                  {prog.pledgeOutstanding > 0 && (
+                    <span className="flex items-center gap-1"><i className="w-1.5 h-1.5 rounded-full bg-amber-300/60 inline-block" />הבטחות ₪{prog.pledgeOutstanding.toLocaleString()}</span>
+                  )}
+                </div>
+                <div className="flex justify-between text-[11px] text-white/50 mt-1.5 pt-1.5 border-t border-white/10">
+                  <span><b className="text-white/80">{prog.percent}%</b> מהיעד · מתוכם {Math.round((prog.secured / prog.goal) * 100)}% מובטחים</span>
                   <span>חסר ₪{prog.gap.toLocaleString()}</span>
                 </div>
               </>
@@ -386,12 +402,13 @@ function ProjectDetail({ project, donations, hk, donorNames, crm, pane, setPane,
                   שבקופה; "צפוי" הוא יתרת הוראות הקבע וההבטחות; "סה״כ" הוא
                   מה שנמדד מול היעד. */}
               {rows.length > 0 && (
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
                   {[
                     { label: 'מבקשים', value: totals.ask, tone: 'text-[#0D1B2A]' },
                     { label: 'התחייבויות שנאספו', value: totals.pledged, tone: 'text-indigo-700' },
                     { label: 'נכנס בפועל', value: totals.raised, tone: 'text-emerald-700' },
-                    { label: 'עוד צפוי', value: totals.outstanding, tone: 'text-amber-700' },
+                    { label: 'צפוי מהו״ק', value: totals.hkOutstanding, tone: 'text-[#9B7A2F]' },
+                    { label: 'הבטחות בעל פה', value: totals.pledgeOutstanding, tone: 'text-amber-700' },
                     { label: 'סה״כ מובטח', value: totals.committed, tone: 'text-[#9B7A2F]' },
                   ].map(x => (
                     <div key={x.label} className="bg-white rounded-xl border border-[#EDE6D6] px-3 py-2">

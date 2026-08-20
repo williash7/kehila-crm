@@ -257,7 +257,13 @@ export function projectDonations(project: Project, donations: any[]): any[] {
 export interface ProjectProgress {
   goal: number;
   raised: number;       // נכנס בפועל — כסף בקופה
-  pledged: number;      // צפוי: יתרת הוראות קבע + הבטחות ידניות
+  pledged: number;      // צפוי: יתרת הוראות קבע + הבטחות בעל פה
+  /** מתוך הצפוי — מה שמגובה בהוראת קבע חתומה */
+  hkOutstanding: number;
+  /** מתוך הצפוי — מה שנשען על הבטחה בעל פה בלבד */
+  pledgeOutstanding: number;
+  /** נכנס + הוראות קבע. מה שאפשר לעמוד מולו. */
+  secured: number;
   committed: number;    // נכנס + צפוי — זה מה שנמדד מול היעד
   gap: number;          // כמה חסר ליעד אחרי שסופרים את ההתחייבויות
   gapCash: number;      // כמה חסר במזומן, בלי להסתמך על העתיד
@@ -288,12 +294,24 @@ export function projectProgress(project: Project, donations: any[], hk: any[] = 
   // התחייבות עתידית. לכן הצפי נלקח מהשורות בלבד.
   const pledged = totals.outstanding;
   const committed = raised + pledged;
+  // ── שלוש דרגות ודאות, ולא שתיים ──────────────────────────────────────
+  //
+  // הבטחה בעל פה והוראת קבע אינן אותו דבר, גם אם שתיהן "התחייבות".
+  // מי שפתח הוראת קבע — פרוצדורלית נתן: יש הרשאה חתומה אצל הספק, ואם
+  // היא תבוטל תדע על כך ותוכל לעמוד מולו. מי שאמר בטלפון "אתן לך 3,000"
+  // עוד לא עשה כלום, ואתה עצמך אמרת שאינך יודע אם ייתן.
+  //
+  // ערבוב של שניהם למספר אחד מציג קמפיין בטוח יותר ממה שהוא.
+  const secured = raised + totals.hkOutstanding;
 
   const goal = num(project.goal);
   return {
     goal,
     raised,
     pledged,
+    hkOutstanding: totals.hkOutstanding,
+    pledgeOutstanding: totals.pledgeOutstanding,
+    secured,
     committed,
     gap: Math.max(0, goal - committed),
     gapCash: Math.max(0, goal - raised),
@@ -439,7 +457,11 @@ export interface SolicitationRow {
   commitments: HkCommitment[];
   /** נכנס בפועל: תשלומים משויכים + חיובי הו״ק שכבר נגבו */
   raised: number;
-  /** עוד צפוי: יתרת הו״ק + יתרת ההבטחה */
+  /** עוד צפוי מהוראת קבע — התחייבות חתומה אצל הספק */
+  hkOutstanding: number;
+  /** עוד צפוי מהבטחה בעל פה — אמירה, לא מסמך */
+  pledgeOutstanding: number;
+  /** עוד צפוי, שניהם יחד */
   outstanding: number;
   /** נכנס + צפוי — המספר שנספר מול היעד */
   committed: number;
@@ -544,6 +566,8 @@ export function buildSolicitationRows(
       candidates: candidates.sort((a, b) => (b.date || '').localeCompare(a.date || '')).slice(0, 6),
       commitments,
       raised,
+      hkOutstanding,
+      pledgeOutstanding: pledgeRemaining,
       outstanding,
       committed: raised + outstanding,
       history: giving ? giving[name] : undefined,
@@ -556,6 +580,8 @@ export interface SolicitationTotals {
   /** סך ההתחייבויות שנאספו — הבטחות בעל פה והוראות קבע */
   pledged: number;
   raised: number;
+  hkOutstanding: number;
+  pledgeOutstanding: number;
   outstanding: number;
   committed: number;
   counts: Record<SolicitationStatus, number>;
@@ -566,14 +592,18 @@ export function sumSolicitationRows(rows: SolicitationRow[]): SolicitationTotals
     toSend: 0, sent: 0, retry: 0, callBack: 0, giver: 0, giverNoAmount: 0, notGiver: 0,
   };
   let ask = 0, raised = 0, outstanding = 0, pledged = 0;
+  let hkOutstanding = 0, pledgeOutstanding = 0;
   (rows || []).forEach(r => {
     counts[r.status]++;
     ask += r.ask;
     raised += r.raised;
     outstanding += r.outstanding;
+    hkOutstanding += r.hkOutstanding;
+    pledgeOutstanding += r.pledgeOutstanding;
     // "כמה התחייבויות אספתי": ההבטחה בעל פה, או ההוראה שנפתחה במקומה —
     // הגדולה מביניהן, כדי שאותה התחייבות לא תיספר פעמיים.
     pledged += Math.max(r.pledge, r.commitments.reduce((t, c) => t + c.total, 0));
   });
-  return { ask, pledged, raised, outstanding, committed: raised + outstanding, counts };
+  return { ask, pledged, raised, hkOutstanding, pledgeOutstanding, outstanding,
+           committed: raised + outstanding, counts };
 }
