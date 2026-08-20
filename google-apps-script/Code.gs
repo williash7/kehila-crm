@@ -67,7 +67,7 @@
  *
  * **מעדכנים אותה בכל שינוי מהותי בקובץ.**
  */
-var CODE_VERSION = '2026-08-19';
+var CODE_VERSION = '2026-08-19b';
 
 // ── שמות הלשוניות ────────────────────────────────────────────────────────────
 var SH = {
@@ -777,6 +777,10 @@ function getHK_() {
       paid:       done.count,
       remaining:  remaining,
       lastBilled: done.last ? asDate_(done.last) : '',
+      nextCharge: (function () {
+        var d = nextChargeDate_(start, payments, unlimited, today, cancelDate);
+        return d ? asDate_(d) : '';
+      })(),
       cancelDate: asDate_(get_(r, t, 'תאריך ביטול')),
       renewalOf:  String(get_(r, t, 'חידוש של') || '').trim(),
       active:     !cancelDate && (unlimited || remaining > 0),
@@ -789,6 +793,29 @@ function getHK_() {
  * אותו לוח זמנים בדיוק שמייצר generateStandingOrderCharges — יום החיוב
  * הוא יום הפתיחה, ובחודש קצר מדי נופל ליום האחרון בו.
  */
+/**
+ * מועד החיוב הבא שעוד לא הגיע.
+ *
+ * "חיוב אחרון" לבדו עונה על השאלה הלא נכונה. מי שמתקשר לתורם צריך לדעת
+ * **מתי ייגבה הבא** — זה מה שנאמר בשיחה, וזה מה שקובע אם כדאי לחכות או
+ * לבקש עכשיו.
+ */
+function nextChargeDate_(start, payments, unlimited, today, cancelDate) {
+  if (!start) return null;
+  if (cancelDate) return null;                 // הוראה מבוטלת לא תיגבה שוב
+  var billingDay = start.getDate();
+  var cursor = new Date(start.getFullYear(), start.getMonth(), 1);
+  var rounds = unlimited ? 600 : (payments || 0);
+
+  for (var i = 0; i < rounds; i++) {
+    var y = cursor.getFullYear(), m = cursor.getMonth();
+    var d = new Date(y, m, Math.min(billingDay, daysInMonth_(y, m)));
+    if (d > today) return d;
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+  return null;
+}
+
 function futureCharges_(start, payments, today, cancelDate) {
   if (!start || !payments) return 0;
   var billingDay = start.getDate();
@@ -817,8 +844,11 @@ function chargesByOrder_() {
     if (!orderId) return;
     if (!map[orderId]) map[orderId] = { count: 0, last: null };
     map[orderId].count++;
-    var d = get_(r, t, 'תאריך תרומה');
-    if (d instanceof Date && (!map[orderId].last || d > map[orderId].last)) map[orderId].last = d;
+    // toDate_ ולא instanceof: התא יכול לחזור גם כטקסט, וגם אובייקט תאריך
+    // שנוצר בהקשר אחר אינו עובר את instanceof. הבדיקה הזו החזירה "חיוב
+    // אחרון: —" על הוראות שהיו להן חיובים לרוב.
+    var d = toDate_(get_(r, t, 'תאריך תרומה'));
+    if (d && (!map[orderId].last || d > map[orderId].last)) map[orderId].last = d;
   });
   return map;
 }

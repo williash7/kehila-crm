@@ -378,6 +378,8 @@ export interface HkCommitment {
   collected: number;
   /** מה שעוד צפוי להיגבות */
   outstanding: number;
+  /** מתי ייגבה החיוב הבא — מגיע מהגיליון */
+  nextCharge?: string;
 }
 
 /** אופק ההתחייבות של הוראה ללא הגבלת זמן — שנה קדימה. */
@@ -402,6 +404,7 @@ export function hkCommitment(order: any): HkCommitment | null {
     id: String(order.id || ''),
     monthly, payments, unlimited, paid, total, collected,
     outstanding: cancelled ? 0 : Math.max(0, total - collected),
+    nextCharge: cancelled ? '' : String(order.nextCharge || ''),
   };
 }
 

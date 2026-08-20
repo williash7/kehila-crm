@@ -14,18 +14,25 @@ import { todayISO } from './CancelHkDialog';
 // שיגיעו עליה בעתיד. בלעדיו נוצר מזהה פנימי, וכשל שיגיע לא יידע לאן הוא שייך.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function AddHkDialog({ onClose }: { onClose: () => void }) {
+export function AddHkDialog({ onClose, presetName, presetCampaign, onCreated }: {
+  onClose: () => void;
+  /** שם מוכן מראש — כשפותחים מתוך שורה בתוכנית גיוס */
+  presetName?: string;
+  /** הקמפיין שאליו ההוראה משויכת. זה מה שגורם לה להיספר מול היעד. */
+  presetCampaign?: string;
+  onCreated?: (id: string) => void;
+}) {
   const { donors, refresh } = useAppStore();
   const contactNames = useMemo(() => Object.keys(donors || {}).sort(), [donors]);
 
-  const [name, setName] = useState('');
+  const [name, setName] = useState(presetName || '');
   const [amount, setAmount] = useState('');
   const [startDate, setStartDate] = useState(todayISO());
   const [unlimited, setUnlimited] = useState(false);
   const [payments, setPayments] = useState('12');
   const [orderId, setOrderId] = useState('');
   const [phone, setPhone] = useState('');
-  const [campaign, setCampaign] = useState('');
+  const [campaign, setCampaign] = useState(presetCampaign || '');
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -52,6 +59,9 @@ export function AddHkDialog({ onClose }: { onClose: () => void }) {
     setBusy(false);
     if (res?.error || res?.success === false) { setError(explainApiError(res.error) || 'ההוספה נכשלה'); return; }
     setDone(res);
+    // מדווחים את המזהה למי שפתח אותנו — כך שורה בתוכנית גיוס יכולה לשייך
+    // אליה את ההוראה מיד, בלי שתצטרך לחפש אותה ידנית אחר כך.
+    if (onCreated && res?.id) onCreated(String(res.id));
     refresh();
   }
 

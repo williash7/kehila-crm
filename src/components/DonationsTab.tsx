@@ -294,7 +294,8 @@ export function DonationsTab() {
                     <div className="flex justify-between items-start gap-2">
                       <div className="min-w-0">
                         <div className="text-sm font-bold text-[#0D1B2A] truncate">{h.name}</div>
-                        <div className="text-[11px] text-gray-500 mt-0.5">חיוב אחרון: {h.lastBilled || '—'}</div>
+                        <div className="text-[11px] text-gray-500 mt-0.5">חיוב אחרון: {h.lastBilled || '—'}
+                          {h.nextCharge && <span className="text-[#9B7A2F] font-semibold"> · הבא: {h.nextCharge}</span>}</div>
                         {/* כמה כסף באמת נכנס — שאלה נפרדת מ"כמה חיובים עוד לפנינו" */}
                         {(!!h.payments || h.unlimited) && (
                           <div className="text-[11px] text-gray-500">שולמו {h.paid ?? 0}{h.unlimited ? ' חיובים · ללא הגבלת זמן' : ` מתוך ${h.payments}`}</div>

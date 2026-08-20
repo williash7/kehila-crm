@@ -17,6 +17,8 @@ export interface HkEntry {
   /** כמה חיובים נגבו בפועל */
   paid?: number;
   lastBilled: string;
+  /** מתי ייגבה החיוב הבא — ריק להוראה שהסתיימה או בוטלה */
+  nextCharge?: string;
   cancelDate?: string;
   startDate?: string;
   /** מספר ההוראה הקודמת בשרשרת — קיים רק בהוראה שנוצרה כחידוש */
@@ -94,6 +96,12 @@ export function indexFailures(failures: any[]): FailureIndex {
 
 export function openFailureFor(hk: HkEntry, idx: FailureIndex): any | null {
   if (hk.cancelDate) return null;
+  // ── הוראה שחודשה: הסירובים שלה הם היסטוריה ──────────────────────────────
+  //
+  // תורם שנכשל לו כרטיס, ובעקבות זה פתחתם הוראה חדשה — הבעיה **טופלה**,
+  // וזה בדיוק מה שהחידוש אומר. השארת הסימון האדום עליו אחריו הופכת אותו
+  // לאזהרה שמופיעה תמיד, ואזהרה כזו מפסיקים לראות.
+  if (hk.renewedBy) return null;
 
   const id = String(hk.id || '').trim();
   // אם להוראה יש מזהה, מסתמכים **רק** על התאמה לפיו. היעדר כשל למזהה הזה

@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useAppStore } from '../store/AppContext';
 import { Plus, X, Target, Wallet, Users, Trash2, Search, CheckCircle2, MessageSquare} from 'lucide-react';
 import { FullScreenView } from './FullScreenView';
+import { AddHkDialog } from './AddHkDialog';
 import { BudgetEditor, emptyBudget } from './BudgetEditor';
 import {
   Project, Solicitation, SolicitationStatus, emptyProject, projectProgress,
@@ -237,8 +238,17 @@ function ProjectDetail({ project, donations, hk, donorNames, crm, pane, setPane,
   );
   const totals = React.useMemo(() => sumSolicitationRows(rows), [rows]);
   const [statusFilter, setStatusFilter] = React.useState<SolicitationStatus | 'all'>('all');
+  const [rowSearch, setRowSearch] = React.useState('');
+  // שורה שממנה נפתח חלון פתיחת הוראת קבע — כדי לשייך אותה חזרה לשורה
+  const [hkForRow, setHkForRow] = React.useState<number | null>(null);
   const [openNotes, setOpenNotes] = React.useState<number | null>(null);
-  const shownRows = statusFilter === 'all' ? rows : rows.filter(r => r.status === statusFilter);
+  const shownRows = React.useMemo(() => {
+    const q = rowSearch.trim().toLowerCase();
+    return rows.filter(r =>
+      (statusFilter === 'all' || r.status === statusFilter) &&
+      (!q || r.sol.name.toLowerCase().includes(q) || (r.sol.notes || '').toLowerCase().includes(q))
+    );
+  }, [rows, statusFilter, rowSearch]);
 
   const candidates = donorNames
     .filter(n => !sols.some(s => s.name === n))
@@ -419,6 +429,25 @@ function ProjectDetail({ project, donations, hk, donorNames, crm, pane, setPane,
                 </div>
               )}
 
+              {/* ברשימה של מאתיים שמות, גלילה אינה חיפוש */}
+              {rows.length > 8 && (
+                <div className="relative">
+                  <Search size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    value={rowSearch}
+                    onChange={e => setRowSearch(e.target.value)}
+                    placeholder={`חיפוש בין ${rows.length} השמות ברשימה...`}
+                    className="w-full bg-white border border-[#EDE6D6] rounded-xl py-2 pr-9 pl-3 text-sm outline-none focus:border-[#C9A84C]"
+                  />
+                  {rowSearch && (
+                    <button onClick={() => setRowSearch('')}
+                            className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1">
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+              )}
+
               {/* מסנן לפי סטטוס — עבודה אמיתית היא "מי נשאר לחזור אליו" */}
               {rows.length > 0 && (
                 <div className="flex gap-1.5 flex-wrap">
@@ -447,6 +476,10 @@ function ProjectDetail({ project, donations, hk, donorNames, crm, pane, setPane,
               {rows.length === 0 ? (
                 <p className="text-sm text-gray-400 text-center py-6 leading-relaxed">
                   רשימת ההתרמה ריקה.<br />הוסף את מי שאתה מתכוון לפנות אליו, ועקוב אחרי מי הבטיח ומי כבר נתן.
+                </p>
+              ) : shownRows.length === 0 ? (
+                <p className="text-sm text-gray-400 text-center py-6">
+                  אין תוצאות ל"{rowSearch}"{statusFilter !== 'all' ? ` בסטטוס "${SOLICITATION_LABEL[statusFilter]}"` : ''}.
                 </p>
               ) : (
                 <div className="bg-white rounded-xl border border-[#EDE6D6] divide-y divide-[#EDE6D6]">
@@ -523,6 +556,7 @@ function ProjectDetail({ project, donations, hk, donorNames, crm, pane, setPane,
                               🔄 ₪{c.monthly.toLocaleString()}×{c.unlimited ? `${c.payments} (ללא הגבלה)` : c.payments}
                               {' = '}<b>₪{c.total.toLocaleString()}</b>
                               {c.outstanding > 0 && <span className="opacity-70"> · נותרו ₪{c.outstanding.toLocaleString()}</span>}
+                              {c.nextCharge && <span className="opacity-70"> · הבא {c.nextCharge}</span>}
                               <button
                                 title="ההוראה הזו אינה שייכת לקמפיין"
                                 onClick={() => setSol(i, {
@@ -574,6 +608,17 @@ function ProjectDetail({ project, donations, hk, donorNames, crm, pane, setPane,
                               </button>
                             ))}
                           </div>
+                        )}
+
+                        {/* אין הו״ק לקמפיין — פתיחת אחת בלחיצה, עם השם
+                            והקמפיין כבר ממולאים */}
+                        {row.commitments.length === 0 && (
+                          <button
+                            onClick={() => setHkForRow(i)}
+                            className="mt-1.5 text-[11px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg px-2.5 py-1 hover:bg-indigo-100"
+                          >
+                            🔄 + פתח הוראת קבע לקמפיין
+                          </button>
                         )}
 
                         {/* הוראת קבע קיימת שאינה משויכת — הצעה לשייך */}
@@ -651,6 +696,15 @@ function ProjectDetail({ project, donations, hk, donorNames, crm, pane, setPane,
           </button>
           <button onClick={onDelete} className="px-4 py-2.5 rounded-xl bg-red-50 text-red-600 text-sm font-bold">מחק</button>
         </div>
+
+        {hkForRow !== null && sols[hkForRow] && (
+          <AddHkDialog
+            presetName={sols[hkForRow].name}
+            presetCampaign={project.purposeTag || project.name}
+            onCreated={id => setSol(hkForRow, { hkId: id })}
+            onClose={() => setHkForRow(null)}
+          />
+        )}
       </>
     </FullScreenView>
   );

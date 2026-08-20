@@ -195,6 +195,7 @@ export function StandingOrdersModal({ onClose }: { onClose: () => void }) {
                       <div className="text-sm font-bold text-[#0D1B2A] truncate flex items-center gap-1">{h.name} <ChevronLeft size={12} className="text-gray-300" /></div>
                       <div className="text-[11px] text-gray-500 mt-0.5">
                         חיוב אחרון: {h.lastBilled || '—'}
+                          {h.nextCharge && <span className="text-[#9B7A2F] font-semibold"> · הבא: {h.nextCharge}</span>}
                       </div>
                       {/* כמה כסף באמת נכנס — שאלה נפרדת מ"כמה חיובים עוד לפנינו" */}
                       {(!!h.payments || h.unlimited) && (
