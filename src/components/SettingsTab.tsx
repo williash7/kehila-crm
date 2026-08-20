@@ -17,7 +17,33 @@ import { HolidayCategory, CATEGORY_LABEL, CATEGORY_HINT, groupHolidayNames } fro
 import { isSignedIn, signOut, currentAccount, isGoogleLoginAvailable } from '../lib/googleAuth';
 import { deleteConfigFromDrive } from '../lib/driveConfig';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// קבוצות ההגדרות.
+//
+// הקבוצה הנבחרת נשמרת בזיכרון של הדפדפן: מי שנכנס להגדרות בדרך כלל חוזר
+// לאותו מקום, ואין סיבה שיגלול אליו כל פעם מחדש.
+// ─────────────────────────────────────────────────────────────────────────────
+
+type SettingsGroup = 'general' | 'look' | 'who' | 'advanced';
+
+const SETTINGS_GROUPS: { id: SettingsGroup; label: string; icon: string }[] = [
+  { id: 'general',  label: 'כללי',    icon: '⚙️' },
+  { id: 'look',     label: 'מראה',    icon: '🎨' },
+  { id: 'who',      label: 'מי מוצג', icon: '👥' },
+  { id: 'advanced', label: 'מתקדם',   icon: '🔧' },
+];
+
+const GROUP_KEY = 'settings_group';
+
 export function SettingsTab() {
+  const [group, setGroup] = useState<SettingsGroup>(() => {
+    try {
+      const saved = localStorage.getItem(GROUP_KEY) as SettingsGroup | null;
+      return SETTINGS_GROUPS.some(g => g.id === saved) ? saved! : 'general';
+    } catch { return 'general'; }
+  });
+  React.useEffect(() => { try { localStorage.setItem(GROUP_KEY, group); } catch {} }, [group]);
+
   const { settings, updateSettings, donors, visibleDonors, eventsData, holidayExtras, donations, crm, refresh, holidays, summary } = useAppStore();
   const org = getOrg();
   const vis = settings.holidayVisibility;
@@ -141,13 +167,31 @@ export function SettingsTab() {
         </button>
       </div>
 
+      {/* ── קבוצות ─────────────────────────────────────────────────────────
+          שלושה-עשר כרטיסים בטור אחד הפכו את ההגדרות למסך שגוללים בו ומקווים.
+          החלוקה כאן היא לפי **השאלה שהביאה אותך הנה**: להגדיר את הארגון,
+          לשנות איך זה נראה, לקבוע מי מופיע ברשימות, או לעשות משהו נדיר. */}
+      <div className="px-4 md:px-6 pt-4 flex gap-1.5 overflow-x-auto">
+        {SETTINGS_GROUPS.map(g => (
+          <button
+            key={g.id}
+            onClick={() => setGroup(g.id)}
+            className={`shrink-0 px-3.5 py-2 rounded-full text-xs font-bold border transition-colors ${
+              group === g.id
+                ? 'bg-[#0D1B2A] text-[#C9A84C] border-[#0D1B2A]'
+                : 'bg-white text-gray-500 border-[#EDE6D6] hover:border-[#C9A84C]'
+            }`}
+          >
+            {g.icon} {g.label}
+          </button>
+        ))}
+      </div>
+
       <div className="p-4 md:p-6 max-w-2xl space-y-5">
+        {group === 'general' && (<>
         {/* התשובה ל"האם הכול מעודכן?" — ראשונה, כי זו השאלה הראשונה
             שנשאלת כשמשהו לא מתנהג כמצופה */}
         <SystemStatusCard />
-
-        <AppearanceCard />
-
         {/* פרטי הארגון — נקבעים באשף ההגדרה, וניתנים לעריכה כאן בכל עת */}
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6]">
           <h3 className="font-['Frank_Ruhl_Libre'] text-lg font-bold text-[#0D1B2A] mb-1">הארגון שלי</h3>
@@ -196,27 +240,41 @@ export function SettingsTab() {
             </button>
           </div>
         </div>
-
-        {wizardOpen && (
-          <SetupWizard
-            onDone={() => window.location.reload()}
-            onCancel={() => setWizardOpen(false)}
-          />
-        )}
-
-        <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6]">
-          <div className="text-sm text-gray-600">
-            מציג <span className="font-bold text-[#0D1B2A]">{visible}</span> מתוך <span className="font-bold text-[#0D1B2A]">{total}</span> אנשי קשר
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6] space-y-3">
+          <CardTitle title="טווח תאריכים לסכומי תרומות">
+            קובע מאיזה תאריך סופרים תרומות בכל הסכומים באפליקציה — בדשבורד, אצל אנשי
+            הקשר ובדוחות. השארה ריקה = מתחילת השנה הנוכחית.
+          </CardTitle>
+          <div className="flex items-center gap-2">
+            <input
+              type="date"
+              value={settings.donationsSinceDate}
+              onChange={e => updateSettings({ donationsSinceDate: e.target.value })}
+              className="flex-1 bg-gray-50 border border-[#EDE6D6] rounded-xl px-3 py-2.5 text-sm outline-none focus:border-[#C9A84C]"
+            />
+            {settings.donationsSinceDate && (
+              <button
+                onClick={() => updateSettings({ donationsSinceDate: '' })}
+                className="shrink-0 px-3 py-2.5 bg-gray-100 text-gray-600 rounded-xl text-xs font-bold hover:bg-gray-200 transition-colors"
+              >
+                נקה (מתחילת השנה)
+              </button>
+            )}
           </div>
-          <div className="flex justify-end">
-            <Explain label="על מה ההגדרות האלה משפיעות">
-              קובעות אילו אנשי קשר מופיעים ברשימות ובהמלצות בכל האפליקציה. הן
-              <b> לא</b> משפיעות על סכומי הכסף בדוחות, ולא על מסכי הוספת תרומה
-              או מפגש — שם תמיד אפשר למצוא כל אחד.
-            </Explain>
-          </div>
+          {settings.donationsSinceDate ? (
+            <div className="text-[11px] text-[#9B7A2F] font-semibold">
+              ✓ כרגע מוצגות תרומות מ-{new Date(settings.donationsSinceDate).toLocaleDateString('he-IL')} ואילך בלבד
+            </div>
+          ) : (
+            <div className="text-[11px] text-[#9B7A2F] font-semibold">
+              ✓ כרגע מוצגות תרומות מתחילת {new Date().getFullYear()} ואילך (ברירת מחדל)
+            </div>
+          )}
         </div>
+        </>)}
 
+        {group === 'look' && (<>
+        <AppearanceCard />
         {/* אילו חגים מוצגים בלוח */}
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6]">
           <h3 className="font-['Frank_Ruhl_Libre'] text-lg font-bold text-[#0D1B2A] mb-1">חגים ותאריכים בלוח</h3>
@@ -290,74 +348,6 @@ export function SettingsTab() {
             })}
           </div>
         </div>
-
-        <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6]">
-          <h3 className="font-['Frank_Ruhl_Libre'] text-lg font-bold text-[#0D1B2A] mb-1">מעגל קרבה</h3>
-          <p className="text-[11px] text-gray-400 mb-3">אילו רמות קשר להציג</p>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-            {ALL_CIRCLES.map(circle => {
-              const active = settings.visibleCircles.includes(circle);
-              return (
-                <button
-                  key={circle}
-                  onClick={() => toggleCircle(circle)}
-                  className={`p-3 rounded-xl border-2 text-center text-sm font-semibold transition-colors ${
-                    active ? 'bg-[#D1FAE5] border-[#10B981] text-[#0D1B2A]' : 'bg-white border-[#EDE6D6] text-gray-400'
-                  }`}
-                >
-                  {CIRCLE_LABELS[circle]}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6] space-y-3">
-          <CardTitle title="ייבוא מידע קיים">
-            יש לך רשימת אנשים, קובץ אקסל של תרומות, או דף מודפס? האפליקציה תכין הנחיה
-            שתדביק בצ'אט AI יחד עם הקובץ, ותקלוט בחזרה את התוצאה. לפני השמירה תראה
-            בדיוק מה נכנס ולאן.
-          </CardTitle>
-          <button
-            onClick={() => setImportOpen(true)}
-            className="w-full flex items-center justify-center gap-2 bg-purple-600 text-white text-sm font-bold py-2.5 rounded-xl active:scale-95 transition-transform"
-          >
-            <Bot size={15} /> פתח ייבוא
-          </button>
-        </div>
-
-        <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6] space-y-3">
-          <CardTitle title="טווח תאריכים לסכומי תרומות">
-            קובע מאיזה תאריך סופרים תרומות בכל הסכומים באפליקציה — בדשבורד, אצל אנשי
-            הקשר ובדוחות. השארה ריקה = מתחילת השנה הנוכחית.
-          </CardTitle>
-          <div className="flex items-center gap-2">
-            <input
-              type="date"
-              value={settings.donationsSinceDate}
-              onChange={e => updateSettings({ donationsSinceDate: e.target.value })}
-              className="flex-1 bg-gray-50 border border-[#EDE6D6] rounded-xl px-3 py-2.5 text-sm outline-none focus:border-[#C9A84C]"
-            />
-            {settings.donationsSinceDate && (
-              <button
-                onClick={() => updateSettings({ donationsSinceDate: '' })}
-                className="shrink-0 px-3 py-2.5 bg-gray-100 text-gray-600 rounded-xl text-xs font-bold hover:bg-gray-200 transition-colors"
-              >
-                נקה (מתחילת השנה)
-              </button>
-            )}
-          </div>
-          {settings.donationsSinceDate ? (
-            <div className="text-[11px] text-[#9B7A2F] font-semibold">
-              ✓ כרגע מוצגות תרומות מ-{new Date(settings.donationsSinceDate).toLocaleDateString('he-IL')} ואילך בלבד
-            </div>
-          ) : (
-            <div className="text-[11px] text-[#9B7A2F] font-semibold">
-              ✓ כרגע מוצגות תרומות מתחילת {new Date().getFullYear()} ואילך (ברירת מחדל)
-            </div>
-          )}
-        </div>
-
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6] space-y-3">
           <div>
             <h3 className="font-['Frank_Ruhl_Libre'] text-lg font-bold text-[#0D1B2A]">תצוגת ברירת מחדל למשימות</h3>
@@ -381,7 +371,41 @@ export function SettingsTab() {
             ))}
           </div>
         </div>
+        </>)}
 
+        {group === 'who' && (<>
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6]">
+          <div className="text-sm text-gray-600">
+            מציג <span className="font-bold text-[#0D1B2A]">{visible}</span> מתוך <span className="font-bold text-[#0D1B2A]">{total}</span> אנשי קשר
+          </div>
+          <div className="flex justify-end">
+            <Explain label="על מה ההגדרות האלה משפיעות">
+              קובעות אילו אנשי קשר מופיעים ברשימות ובהמלצות בכל האפליקציה. הן
+              <b> לא</b> משפיעות על סכומי הכסף בדוחות, ולא על מסכי הוספת תרומה
+              או מפגש — שם תמיד אפשר למצוא כל אחד.
+            </Explain>
+          </div>
+        </div>
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6]">
+          <h3 className="font-['Frank_Ruhl_Libre'] text-lg font-bold text-[#0D1B2A] mb-1">מעגל קרבה</h3>
+          <p className="text-[11px] text-gray-400 mb-3">אילו רמות קשר להציג</p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {ALL_CIRCLES.map(circle => {
+              const active = settings.visibleCircles.includes(circle);
+              return (
+                <button
+                  key={circle}
+                  onClick={() => toggleCircle(circle)}
+                  className={`p-3 rounded-xl border-2 text-center text-sm font-semibold transition-colors ${
+                    active ? 'bg-[#D1FAE5] border-[#10B981] text-[#0D1B2A]' : 'bg-white border-[#EDE6D6] text-gray-400'
+                  }`}
+                >
+                  {CIRCLE_LABELS[circle]}
+                </button>
+              );
+            })}
+          </div>
+        </div>
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6] space-y-4">
           <div>
             <h3 className="font-['Frank_Ruhl_Libre'] text-lg font-bold text-[#0D1B2A]">סינונים נוספים</h3>
@@ -399,7 +423,22 @@ export function SettingsTab() {
             </div>
           ))}
         </div>
+        </>)}
 
+        {group === 'advanced' && (<>
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6] space-y-3">
+          <CardTitle title="ייבוא מידע קיים">
+            יש לך רשימת אנשים, קובץ אקסל של תרומות, או דף מודפס? האפליקציה תכין הנחיה
+            שתדביק בצ'אט AI יחד עם הקובץ, ותקלוט בחזרה את התוצאה. לפני השמירה תראה
+            בדיוק מה נכנס ולאן.
+          </CardTitle>
+          <button
+            onClick={() => setImportOpen(true)}
+            className="w-full flex items-center justify-center gap-2 bg-purple-600 text-white text-sm font-bold py-2.5 rounded-xl active:scale-95 transition-transform"
+          >
+            <Bot size={15} /> פתח ייבוא
+          </button>
+        </div>
         {/* ── כלים מתקדמים ─────────────────────────────────────────────
             מה שיושב כאן אינו מיותר — הוא פשוט לא נחוץ ברוב הימים. מסך
             שנולד מתקלה ספציפית ומופיע לנצח במשקל שווה לכל השאר הופך את
@@ -479,7 +518,6 @@ export function SettingsTab() {
             </div>
           )}
         </div>
-
         <div className="bg-white rounded-xl p-4 border border-[#EDE6D6] space-y-3">
           <div className="text-sm font-bold text-[#0D1B2A] flex items-center gap-2">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="#1877F2"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" /></svg>
@@ -517,6 +555,14 @@ export function SettingsTab() {
             <div className="text-[11px] text-green-600 font-bold">✓ פייסבוק מוגדר ומוכן לפרסום</div>
           )}
         </div>
+        </>)}
+
+        {wizardOpen && (
+          <SetupWizard
+            onDone={() => window.location.reload()}
+            onCancel={() => setWizardOpen(false)}
+          />
+        )}
       </div>
 
       {importOpen && <GlobalAIImportModal onClose={() => setImportOpen(false)} />}

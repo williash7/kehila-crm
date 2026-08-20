@@ -493,6 +493,14 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd }: { setTab: (t: s
   };
 
   // ── Main render ─────────────────────────────────────────────────────────────
+  //
+  // סדר הכרטיסים מגיע מההגדרות. מי שלא נגע מקבל את הסדר המקורי, ומי
+  // שהסתיר כרטיס — הוא פשוט לא ברשימה, ולכן לא מוצג בשום פריסה.
+  const cardOrder = resolveCards(settings.dashboardCards);
+  const columnOf = (id: DashCardId) => DASH_CARDS.find(c => c.id === id)?.column || 'main';
+  const mainColumn = cardOrder.filter(id => columnOf(id) === 'main');
+  const sideColumn = cardOrder.filter(id => columnOf(id) === 'side');
+
   const renderCard = (id: DashCardId) => {
     switch (id) {
       case 'shabbat':    return renderShabbatCard();
@@ -528,37 +536,21 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd }: { setTab: (t: s
         </div>
       </div>
 
-      {/* ── Mobile layout ── */}
+      {/* ── Mobile layout ──
+          עמודה אחת, בדיוק בסדר שנקבע בהגדרות ← מראה ותצוגה ← דשבורד. */}
       <div className="p-4 space-y-4 md:hidden">
-        {renderShabbatCard()}
-        {renderRebbeCard()}
-        {renderTasksSummary()}
-        {renderHeroSummary()}
-        {renderStatsRow()}
-        {renderQuickActions()}
-        {renderHolidaysAndTasks()}
-        {renderHkReminder()}
-        {renderFailures()}
-        {renderRecent()}
+        {cardOrder.map(id => <React.Fragment key={id}>{renderCard(id)}</React.Fragment>)}
       </div>
 
-      {/* ── Desktop layout — two columns ── */}
+      {/* ── Desktop layout — two columns ──
+          במסך רחב הכרטיסים מתחלקים לפי אופיים: מידע וכסף מימין, הקשר
+          ופעולות בצד. הסדר שהמשתמש קבע נשמר **בתוך** כל עמודה. */}
       <div className="hidden md:grid md:grid-cols-[1fr_380px] md:gap-6 md:p-6 md:items-start">
-        {/* Left: primary — מידע ופעולות */}
         <div className="space-y-5">
-          {renderTasksSummary()}
-          {renderHeroSummary()}
-          {renderStatsRow()}
-          {renderHkReminder()}
-          {renderFailures()}
-          {renderRecent()}
+          {mainColumn.map(id => <React.Fragment key={id}>{renderCard(id)}</React.Fragment>)}
         </div>
-        {/* Right: context & actions */}
         <div className="space-y-5">
-          {renderShabbatCard()}
-          {renderRebbeCard()}
-          {renderHolidaysAndTasks()}
-          {renderQuickActions()}
+          {sideColumn.map(id => <React.Fragment key={id}>{renderCard(id)}</React.Fragment>)}
         </div>
       </div>
 

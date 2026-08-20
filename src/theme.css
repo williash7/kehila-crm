@@ -91,49 +91,45 @@
 }
 
 /* ── המיפוי: מחלקה → משתנה ────────────────────────────────────────────────
+   הכללים עצמם יושבים ב-theme-map.css, שנוצר אוטומטית מסריקת הקוד
+   (scripts/gen-theme-map.mjs). כך גם הווריאנטים — focus:, hover:, ושקיפות
+   כמו /10 — מקבלים כלל משלהם, במקום להישאר בצבע המקורי בכל ערכה.
+
    הסלקטור [data-theme] מוסיף specificity מעל המחלקה עצמה, ולכן זה גובר
    בלי !important. */
 
-[data-theme] .bg-\[\#0D1B2A\]      { background-color: var(--c-navy); }
-[data-theme] .bg-\[\#1A2E45\]      { background-color: var(--c-navy-mid); }
-[data-theme] .bg-\[\#C9A84C\]      { background-color: var(--c-gold); }
-[data-theme] .bg-\[\#E8C97A\]      { background-color: var(--c-gold-light); }
-[data-theme] .bg-\[\#9B7A2F\]      { background-color: var(--c-gold-dark); }
-[data-theme] .bg-\[\#FAF6EE\]      { background-color: var(--c-cream); }
-[data-theme] .bg-\[\#EDE6D6\]      { background-color: var(--c-border); }
-
-[data-theme] .text-\[\#0D1B2A\]    { color: var(--c-navy); }
-[data-theme] .text-\[\#1A2E45\]    { color: var(--c-navy-mid); }
-[data-theme] .text-\[\#C9A84C\]    { color: var(--c-gold); }
-[data-theme] .text-\[\#E8C97A\]    { color: var(--c-gold-light); }
-[data-theme] .text-\[\#9B7A2F\]    { color: var(--c-gold-dark); }
-
-[data-theme] .border-\[\#EDE6D6\]  { border-color: var(--c-border); }
-[data-theme] .border-\[\#C9A84C\]  { border-color: var(--c-gold); }
-[data-theme] .border-\[\#0D1B2A\]  { border-color: var(--c-navy); }
-
-[data-theme] .from-\[\#0D1B2A\]    { --tw-gradient-from: var(--c-navy); }
-[data-theme] .to-\[\#1A2E45\]      { --tw-gradient-to: var(--c-navy-mid); }
-[data-theme] .from-\[\#C9A84C\]    { --tw-gradient-from: var(--c-gold); }
-[data-theme] .to-\[\#9B7A2F\]      { --tw-gradient-to: var(--c-gold-dark); }
-
-[data-theme] body,
+[data-theme] body                  { background-color: var(--c-cream); }
 [data-theme] .bg-white             { background-color: var(--c-card); }
 
-/* ── ערכה כהה: הפיכת הטקסט הכהה לבהיר ────────────────────────────────────
-   בערכה כהה הכרטיסים כהים, ולכן טקסט אפור-כהה נעלם בתוכם. */
-[data-theme='dark'] .text-gray-500,
-[data-theme='dark'] .text-gray-600 { color: #94A3B8; }
-[data-theme='dark'] .text-gray-400 { color: #7C8CA3; }
-[data-theme='dark'] .text-gray-300 { color: #5A6B84; }
-[data-theme='dark'] .bg-gray-50,
-[data-theme='dark'] .bg-gray-100   { background-color: #202B3D; }
-[data-theme='dark'] .border-gray-200,
-[data-theme='dark'] .border-gray-100,
-[data-theme='dark'] .border-gray-50 { border-color: #2A3446; }
-[data-theme='dark'] input,
-[data-theme='dark'] textarea,
-[data-theme='dark'] select          { background-color: #202B3D; color: #E5E7EB; }
+/* ── ערכה כהה: היפוך הטקסט ────────────────────────────────────────────────
+   כאן צריך יותר מהחלפת משתנים. באפליקציה בהירה, טקסט כהה על כרטיס לבן הוא
+   ברירת המחדל — ויש לו 459 מופעים כ-text-[#0D1B2A]. בערכה כהה המשתנה הזה
+   נעשה כהה עוד יותר, והטקסט פשוט נעלם בתוך הכרטיס. לכן הוא מתהפך כאן
+   במפורש, ולא דרך המשתנה.
+
+   ה-html בתחילת הסלקטור אינו קישוט: המפה הנוצרת מיובאת אחרי הקובץ הזה,
+   ובלי ההעלאה בעדיפות היא הייתה גוברת על ההיפוך. */
+
+html[data-theme='dark'] .text-\[\#0D1B2A\] { color: #E5E7EB; }
+html[data-theme='dark'] .text-\[\#1A2E45\] { color: #CBD5E1; }
+html[data-theme='dark'] .text-gray-700,
+html[data-theme='dark'] .text-gray-600,
+html[data-theme='dark'] .text-gray-500 { color: #94A3B8; }
+html[data-theme='dark'] .text-gray-400 { color: #7C8CA3; }
+html[data-theme='dark'] .text-gray-300 { color: #5A6B84; }
+html[data-theme='dark'] .bg-gray-50,
+html[data-theme='dark'] .bg-gray-100  { background-color: #202B3D; }
+html[data-theme='dark'] .border-gray-200,
+html[data-theme='dark'] .border-gray-100,
+html[data-theme='dark'] .border-gray-50 { border-color: #2A3446; }
+html[data-theme='dark'] input,
+html[data-theme='dark'] textarea,
+html[data-theme='dark'] select        { background-color: #202B3D; color: #E5E7EB; }
+html[data-theme='dark'] .shadow-sm,
+html[data-theme='dark'] .shadow-md    { box-shadow: 0 1px 3px rgb(0 0 0 / 0.4); }
+
+/* ניגודיות גבוהה: גבולות מודגשים יותר, כי זה מה שמפריד בין אזורים. */
+html[data-theme='contrast'] .border-\[\#EDE6D6\] { border-color: #6B7280; }
 
 /* ── גודל התצוגה ─────────────────────────────────────────────────────────
    Tailwind מודד גם טקסט וגם מרווחים ב-rem, ולכן שינוי גודל הבסיס מגדיל
