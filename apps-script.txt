@@ -67,7 +67,7 @@
  *
  * **מעדכנים אותה בכל שינוי מהותי בקובץ.**
  */
-var CODE_VERSION = '2026-08-19c';
+var CODE_VERSION = '2026-08-19d';
 
 // ── שמות הלשוניות ────────────────────────────────────────────────────────────
 var SH = {
@@ -785,6 +785,12 @@ function getHK_() {
       })(),
       cancelDate: asDate_(get_(r, t, 'תאריך ביטול')),
       renewalOf:  String(get_(r, t, 'חידוש של') || '').trim(),
+      // הקמפיין הוא מה שמשייך הוראה לפרויקט. בלעדיו האפליקציה לא יכולה
+      // לדעת שההוראה שייכת לקמפיין, וגם לא להציג אותו במסך העריכה.
+      campaign:   fmt_(get_(r, t, 'קמפיין')),
+      phone:      fmt_(get_(r, t, 'טלפון')),
+      email:      fmt_(get_(r, t, 'אימייל')),
+      notes:      fmt_(get_(r, t, 'הערות')),
       active:     !cancelDate && (unlimited || remaining > 0),
     };
   }).filter(function (h) { return h.name; });
