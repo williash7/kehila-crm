@@ -505,9 +505,17 @@ export function buildSolicitationRows(
     (byName[name] || []).forEach(d => {
       const id = String(d?.id || '');
       const isHkCharge = id.indexOf('hk:') === 0;
-      // חיוב של הוראת קבע נספר דרך ההוראה עצמה, לא כתשלום נפרד —
-      // אחרת אותו כסף מופיע פעמיים באותה שורה.
-      if (isHkCharge && Array.from(hkIds).some(p => id.indexOf(p) === 0)) return;
+
+      // ── חיוב של הוראת קבע נספר דרך ההוראה עצמה ולא כתשלום נפרד ──────
+      //
+      // אחרת אותו כסף מופיע פעמיים באותה שורה: פעם כ"נגבה מההוראה" ופעם
+      // כתשלום. הזיהוי לפי המזהה, ובנוסף לפי אפיק הגבייה — שורה שנרשמה
+      // ידנית כ"הוראת קבע" למי שיש לו הוראה משויכת היא אותה גבייה, גם אם
+      // המזהה שלה אינו בפורמט של המנוע.
+      if (commitments.length && (
+            (isHkCharge && Array.from(hkIds).some(p => id.indexOf(p) === 0)) ||
+            String(d.method || '').trim() === 'הוראת קבע'
+          )) return;
 
       const taggedHere = !!tag && String(d.purpose || '').trim() === tag;
       if (excluded.has(id)) { candidates.push(toAttached(d, taggedHere)); return; }
