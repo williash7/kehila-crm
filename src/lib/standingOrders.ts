@@ -25,6 +25,8 @@ export interface HkEntry {
   renewalOf?: string;
   /** מספר ההוראה שחידשה את זו. מחושב באפליקציה, לא מגיע מהגיליון. */
   renewedBy?: string;
+  /** הקמפיין שההוראה משויכת אליו — מה שמקשר אותה לפרויקט */
+  campaign?: string;
   [key: string]: any;
 }
 

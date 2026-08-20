@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useAppStore } from '../store/AppContext';
 import { apiPost, explainApiError} from '../lib/api';
 import { buildChainIndex, chainFor, chainSummary, HkEntry } from '../lib/standingOrders';
+import { activeProjects } from '../lib/projects';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ביטול הוראת קבע.
@@ -394,7 +395,8 @@ export function RenewHkDialog({ target, onClose }: { target: any; onClose: () =>
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function EditHkDialog({ target, onClose }: { target: any; onClose: () => void }) {
-  const { refresh } = useAppStore();
+  const { projects, refresh } = useAppStore();
+  const openProjects = React.useMemo(() => activeProjects(projects as any), [projects]);
   const [name, setName] = useState(String(target.name || ''));
   const [amount, setAmount] = useState(String(Number(target.amount) || ''));
   const [unlimited, setUnlimited] = useState(!!target.unlimited);
@@ -487,10 +489,32 @@ export function EditHkDialog({ target, onClose }: { target: any; onClose: () => 
               ללא הגבלת זמן
             </label>
 
+
+            {/* ── שיוך לקמפיין ────────────────────────────────────────────
+                בדיוק כמו בהוספת תרומה: בחירה מרשימת הפרויקטים הפעילים
+                במקום הקלדה. הקלדה חופשית פירושה שגיאת כתיב אחת, וההוראה
+                לא נספרת בקמפיין — בלי שום סימן שמשהו לא בסדר. */}
             <label className={label}>
-              קמפיין <span className="font-normal text-gray-400">(מה שמשייך אותה לפרויקט)</span>
+              שיוך לקמפיין <span className="font-normal text-gray-400">(מה שגורם לה להיספר מול היעד)</span>
             </label>
-            <input value={campaign} onChange={e => setCampaign(e.target.value)} className={field + ' mb-3'} />
+            {openProjects.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {openProjects.map(p => (
+                  <button
+                    key={p.id} type="button"
+                    onClick={() => setCampaign(campaign === p.purposeTag ? '' : p.purposeTag)}
+                    className={`text-xs font-bold px-2.5 py-1.5 rounded-lg transition-colors ${
+                      campaign === p.purposeTag ? 'bg-[#0D1B2A] text-[#C9A84C]' : 'bg-[#C9A84C]/10 text-[#9B7A2F] hover:bg-[#C9A84C]/20'
+                    }`}
+                  >
+                    🎯 {p.name}
+                  </button>
+                ))}
+              </div>
+            )}
+            <input value={campaign} onChange={e => setCampaign(e.target.value)}
+                   placeholder={openProjects.length ? 'או הקלד קמפיין אחר' : 'שם הקמפיין'}
+                   className={field + ' mb-3'} />
 
             {scheduleChanged && (
               <div className="text-[11px] bg-amber-50 border border-amber-200 rounded-lg p-2.5 mb-3 text-amber-900 leading-relaxed">
