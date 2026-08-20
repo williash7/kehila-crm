@@ -10,6 +10,7 @@ import { StandingOrdersModal } from './StandingOrdersModal';
 import { getCustomHols } from '../lib/api';
 import { computePersonalDateEvents } from '../lib/personalDates';
 import { parseDdMmYyyy } from '../lib/dateUtils';
+import { CampaignTag } from './CampaignTag';
 import { countHkByStatus, isMonthlyReminderReviewed, markMonthlyReminderReviewed } from '../lib/standingOrders';
 import { HDate } from '@hebcal/core';
 import { toCanonicalHebrewString } from '../lib/hebrewDates';
@@ -411,7 +412,10 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd }: { setTab: (t: s
               </div>
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-bold text-[#0D1B2A] truncate">{d.name}</div>
-                <div className="text-[10px] text-gray-500 truncate">{d.date} · {d.method} {d.purpose ? `· ${d.purpose}` : ''}</div>
+                <div className="text-[10px] text-gray-500 flex items-center gap-1.5 flex-wrap">
+                  <span className="truncate">{d.date} · {d.method}</span>
+                  <CampaignTag value={d.purpose} size="xs" />
+                </div>
               </div>
               <div className="text-left shrink-0 flex flex-col items-end gap-1">
                 <div className="font-['Frank_Ruhl_Libre'] text-base font-bold text-[#9B7A2F]">₪{(d.amount || 0).toLocaleString()}</div>
@@ -463,7 +467,10 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd }: { setTab: (t: s
                 <div key={i} className="bg-white rounded-xl p-3 shadow-sm border border-gray-100 flex items-center justify-between cursor-pointer" onClick={() => setSelectedDonor(d.name)}>
                   <div>
                     <div className="font-bold text-[#0D1B2A] text-sm">{d.name}</div>
-                    <div className="text-xs text-gray-500 mt-0.5">{d.date} {d.purpose && `· ${d.purpose}`}</div>
+                    <div className="text-xs text-gray-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
+                      <span>{d.date}</span>
+                      <CampaignTag value={d.purpose} size="xs" />
+                    </div>
                   </div>
                   <div className="flex flex-col items-end shrink-0 mr-3">
                     <div className="font-['Frank_Ruhl_Libre'] font-bold text-lg text-[#C9A84C]">₪{d.amount?.toLocaleString() || 0}</div>

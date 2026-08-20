@@ -4,6 +4,7 @@ import { useAppStore } from '../store/AppContext';
 import { getHkStatus, sortHkList, countHkByStatus, openFailureFor, indexFailures, HK_STATUS_LABEL, HK_STATUS_COLOR, HkStatus } from '../lib/standingOrders';
 import { CancelHkDialog, ChangeHkAmountDialog, RenewHkDialog, EditHkDialog, CancelHkButton } from './CancelHkDialog';
 import { AddHkDialog } from './AddHkDialog';
+import { CampaignTag } from './CampaignTag';
 import { ProfileModal } from './ProfileModal';
 import { useCloseOnBack } from './FullScreenView';
 
@@ -211,6 +212,7 @@ export function StandingOrdersModal({ onClose }: { onClose: () => void }) {
                           #{h.id}{h.startDate ? ` · ${h.startDate}` : ''}
                         </div>
                       )}
+                      {h.campaign && <div className="mt-1"><CampaignTag value={h.campaign} /></div>}
                       {(h.renewalOf || h.renewedBy) && (
                       <div className="text-[10px] text-indigo-600 mt-0.5" dir="rtl">
                       {h.renewalOf ? <span>חידוש של <span dir="ltr">#{h.renewalOf}</span></span> : null}

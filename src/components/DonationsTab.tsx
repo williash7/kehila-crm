@@ -6,6 +6,7 @@ import { parseDdMmYyyy } from '../lib/dateUtils';
 import { ProfileModal } from './ProfileModal';
 import { CancelHkDialog, ChangeHkAmountDialog, RenewHkDialog, EditHkDialog, CancelHkButton } from './CancelHkDialog';
 import { AddHkDialog } from './AddHkDialog';
+import { CampaignTag } from './CampaignTag';
 import { FullScreenView } from './FullScreenView';
 import { apiPost, explainApiError} from '../lib/api';
 import { activeProjects } from '../lib/projects';
@@ -218,12 +219,17 @@ export function DonationsTab() {
                         <span className="text-sm">💰</span>
                         <span className="text-sm font-semibold text-[#0D1B2A]">{d.name || '—'}</span>
                       </div>
-                      <div className="text-[11px] text-gray-400 md:hidden">{d.date}{d.method ? ` · ${d.method}` : ''}</div>
+                      <div className="text-[11px] text-gray-400 md:hidden flex items-center gap-1.5 flex-wrap">
+                        <span>{d.date}{d.method ? ` · ${d.method}` : ''}</span>
+                        <CampaignTag value={d.purpose} size="xs" />
+                      </div>
                       <div className="text-right md:text-left md:contents shrink-0">
                         <span className="hidden md:block text-[12px] text-gray-500">{d.date || '—'}</span>
                         <span className="font-['Frank_Ruhl_Libre'] font-bold text-[#9B7A2F] text-sm">₪{(d.amount || 0).toLocaleString()}</span>
                         <span className="hidden md:block text-[12px] text-gray-500">{d.method || '—'}</span>
-                        <span className="hidden md:block text-[12px] text-gray-400 truncate">{d.purpose || '—'}</span>
+                        <span className="hidden md:block truncate">
+                          {d.purpose ? <CampaignTag value={d.purpose} size="xs" /> : <span className="text-[12px] text-gray-400">—</span>}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -308,6 +314,7 @@ export function DonationsTab() {
                             #{h.id}{h.startDate ? ` · ${h.startDate}` : ''}
                           </div>
                         )}
+                        {h.campaign && <div className="mt-1"><CampaignTag value={h.campaign} /></div>}
                         {(h.renewalOf || h.renewedBy) && (
                         <div className="text-[10px] text-indigo-600 mt-0.5" dir="rtl">
                         {h.renewalOf ? <span>חידוש של <span dir="ltr">#{h.renewalOf}</span></span> : null}
@@ -418,7 +425,7 @@ export function DonationsTab() {
                 {selectedDonation.purpose && (
                   <div className="bg-white border border-[#EDE6D6] rounded-xl p-3 shadow-sm">
                     <div className="text-[10px] text-gray-400 uppercase font-bold mb-1">ייעוד</div>
-                    <div className="text-sm text-[#0D1B2A]">{selectedDonation.purpose}</div>
+                    <CampaignTag value={selectedDonation.purpose} />
                   </div>
                 )}
 

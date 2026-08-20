@@ -4,6 +4,7 @@ import { MessageSquare, Phone, X, Edit, Calendar, PlusCircle, ClipboardList, Ref
 import { format } from 'date-fns';
 import { DonationModal } from './DonationModal';
 import { FullScreenView, SiblingItem } from './FullScreenView';
+import { CampaignTag } from './CampaignTag';
 import { MeetingModal } from './MeetingModal';
 import { ThankYouModal } from './ThankYouModal';
 import { ThankYouLetterModal } from './ThankYouLetterModal';
@@ -767,7 +768,10 @@ export function ProfileModal({ name, onClose, backLabel, siblings, onSelectSibli
                         ) : (
                           <>
                             <div className="text-sm font-semibold text-[#0D1B2A]">📝 מפגש — {e.data.meetType || ''}</div>
-                            <div className="text-[11px] text-gray-500 mt-1">{e.date} {e.data.purpose ? `· ${e.data.purpose}` : ''}</div>
+                            <div className="text-[11px] text-gray-500 mt-1 flex items-center gap-1.5 flex-wrap">
+                              <span>{e.date}</span>
+                              <CampaignTag value={e.data.purpose} size="xs" />
+                            </div>
                             {e.data.notes && <div className="text-xs text-[#3B82F6] mt-1.5 leading-snug">{e.data.notes}</div>}
                           </>
                         )}
