@@ -18,7 +18,41 @@ export interface AppSettings {
   donationsSinceDate: string; // ISO "yyyy-MM-dd" — מציגים סכומי תרומות רק מתאריך זה ואילך. '' = כל הזמנים.
   defaultTaskView: 'grouped' | 'flat' | 'calendar'; // תצוגת ברירת המחדל שנפתחת בטאב משימות
   holidayVisibility: HolidayVisibility; // אילו חגים ותאריכים מוצגים בלוח
+
+  // ── מראה ────────────────────────────────────────────────────────────────
+  // נשמר מקומית בלבד, כמו כל שאר ההגדרות. מכשיר אחר יכול להיראות אחרת —
+  // וזה מכוון: מסך גדול בבית ומסך קטן בכיס אינם צריכים אותה צפיפות.
+  theme: ThemeName;
+  uiSize: 'small' | 'normal' | 'large' | 'xlarge';
+  density: 'compact' | 'normal' | 'roomy';
+  graphics: boolean;
+  /** אילו כרטיסים מוצגים בדשבורד, ובאיזה סדר. ריק = ברירת המחדל. */
+  dashboardCards: string[];
 }
+
+export type ThemeName = 'classic' | 'clean' | 'warm' | 'olive' | 'dark' | 'contrast';
+
+export const THEMES: { id: ThemeName; label: string; hint: string; swatch: string[] }[] = [
+  { id: 'classic',  label: 'כחול־זהב',      hint: 'הערכה המקורית',            swatch: ['#0D1B2A', '#C9A84C', '#FAF6EE'] },
+  { id: 'clean',    label: 'בהיר ונקי',      hint: 'פחות חום, יותר ניגודיות',  swatch: ['#1E293B', '#2563EB', '#F8FAFC'] },
+  { id: 'warm',     label: 'חם',             hint: 'קרם וטרקוטה',              swatch: ['#44281D', '#C2703D', '#FDF6EF'] },
+  { id: 'olive',    label: 'ירוק זית',       hint: 'רגוע, פחות רשמי',          swatch: ['#1F2D24', '#6B8E4E', '#F6F8F3'] },
+  { id: 'dark',     label: 'כהה',            hint: 'לעבודה בערב',              swatch: ['#0B1220', '#E0B94F', '#1B2434'] },
+  { id: 'contrast', label: 'ניגודיות גבוהה', hint: 'לקריאה קלה יותר',          swatch: ['#000000', '#B45309', '#FFFFFF'] },
+];
+
+export const UI_SIZES: { id: AppSettings['uiSize']; label: string }[] = [
+  { id: 'small',  label: 'קטן' },
+  { id: 'normal', label: 'רגיל' },
+  { id: 'large',  label: 'גדול' },
+  { id: 'xlarge', label: 'גדול מאוד' },
+];
+
+export const DENSITIES: { id: AppSettings['density']; label: string; hint: string }[] = [
+  { id: 'compact', label: 'צפוף',  hint: 'יותר שורות במסך' },
+  { id: 'normal',  label: 'רגיל',  hint: '' },
+  { id: 'roomy',   label: 'מרווח', hint: 'יותר אוויר' },
+];
 
 export { DEFAULT_VISIBILITY };
 
@@ -44,6 +78,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
   donationsSinceDate: '',
   defaultTaskView: 'grouped',
   holidayVisibility: DEFAULT_VISIBILITY,
+  theme: 'classic',
+  uiSize: 'normal',
+  density: 'normal',
+  graphics: true,
+  dashboardCards: [],
 };
 
 const STORAGE_KEY = 'app_settings_v1';

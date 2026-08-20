@@ -7,6 +7,9 @@ import { DatesRescueModal } from './DatesRescueModal';
 import { SystemStatusCard } from './SystemStatusCard';
 import { ALL_CIRCLES, CIRCLE_LABELS, DEFAULT_SETTINGS } from '../lib/settings';
 import { computeMissingAttendanceContacts } from '../lib/backfillContacts';
+import { collectLegacyYahrzeits } from '../lib/family';
+import { AppearanceCard } from './AppearanceCard';
+import { CardTitle } from './Explain';
 import { apiPost } from '../lib/api';
 import { getOrg, resetOrg } from '../lib/orgConfig';
 import { SetupWizard } from './SetupWizard';
@@ -15,7 +18,7 @@ import { isSignedIn, signOut, currentAccount, isGoogleLoginAvailable } from '../
 import { deleteConfigFromDrive } from '../lib/driveConfig';
 
 export function SettingsTab() {
-  const { settings, updateSettings, donors, visibleDonors, eventsData, holidayExtras, donations, refresh, holidays, summary } = useAppStore();
+  const { settings, updateSettings, donors, visibleDonors, eventsData, holidayExtras, donations, crm, refresh, holidays, summary } = useAppStore();
   const org = getOrg();
   const vis = settings.holidayVisibility;
   const [openCat, setOpenCat] = useState<HolidayCategory | null>(null);
@@ -24,9 +27,33 @@ export function SettingsTab() {
   const [importOpen, setImportOpen] = useState(false);
   const [migrateOpen, setMigrateOpen] = useState(false);
   const [rescueOpen, setRescueOpen] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncProgress, setSyncProgress] = useState<{ done: number; total: number } | null>(null);
   const [syncResult, setSyncResult] = useState<string | null>(null);
+
+  // ── מה מהכלים המתקדמים בכלל רלוונטי כאן ואיפה ──────────────────────────
+  //
+  // חלק מהמסכים באפליקציה נולדו מתקלה ספציפית ולא ממשהו שמשתמש חדש צריך:
+  // העברת היארצייטים למבנה החדש, האבחון "איפה התאריכים שלי", והשלמת
+  // נוכחויות עבר. הם לא מיותרים — הם פשוט לא רלוונטיים לרוב המסכים ולרוב
+  // הזמן, ובהגדרות הם תפסו שלושה כרטיסים במשקל שווה לכל השאר.
+  //
+  // הפתרון: הם מופיעים **רק כשיש להם מה לעשות**, ומה שנשאר יושב תחת סעיף
+  // מקופל. שום פונקציונליות לא נמחקה.
+  const legacyYahrzeitCount = React.useMemo(() => {
+    let n = 0;
+    Object.keys(donors).forEach(name => {
+      const fields = { ...(donors[name] as any), ...((crm as any)[name]?.customFields || {}) };
+      n += collectLegacyYahrzeits(fields).length;
+    });
+    return n;
+  }, [donors, crm]);
+
+  const missingAttendance = React.useMemo(
+    () => computeMissingAttendanceContacts(eventsData, holidayExtras, donations).length,
+    [eventsData, holidayExtras, donations]
+  );
 
   const runAttendanceBackfill = async () => {
     const missing = computeMissingAttendanceContacts(eventsData, holidayExtras, donations);
@@ -118,6 +145,8 @@ export function SettingsTab() {
         {/* התשובה ל"האם הכול מעודכן?" — ראשונה, כי זו השאלה הראשונה
             שנשאלת כשמשהו לא מתנהג כמצופה */}
         <SystemStatusCard />
+
+        <AppearanceCard />
 
         {/* פרטי הארגון — נקבעים באשף ההגדרה, וניתנים לעריכה כאן בכל עת */}
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6]">
@@ -278,14 +307,11 @@ export function SettingsTab() {
         </div>
 
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6] space-y-3">
-          <div>
-            <h3 className="font-['Frank_Ruhl_Libre'] text-lg font-bold text-[#0D1B2A]">ייבוא מידע קיים</h3>
-            <p className="text-[11px] text-gray-400 mt-0.5 leading-relaxed">
-              יש לך רשימת אנשים, קובץ אקסל של תרומות, או דף מודפס? האפליקציה תכין הנחיה
-              שתדביק בצ'אט AI יחד עם הקובץ, ותקלוט בחזרה את התוצאה. אנשי קשר, תרומות,
-              הוראות קבע ומשימות — לפני השמירה תראה בדיוק מה נכנס.
-            </p>
-          </div>
+          <CardTitle title="ייבוא מידע קיים">
+            יש לך רשימת אנשים, קובץ אקסל של תרומות, או דף מודפס? האפליקציה תכין הנחיה
+            שתדביק בצ'אט AI יחד עם הקובץ, ותקלוט בחזרה את התוצאה. לפני השמירה תראה
+            בדיוק מה נכנס ולאן.
+          </CardTitle>
           <button
             onClick={() => setImportOpen(true)}
             className="w-full flex items-center justify-center gap-2 bg-purple-600 text-white text-sm font-bold py-2.5 rounded-xl active:scale-95 transition-transform"
@@ -294,39 +320,11 @@ export function SettingsTab() {
           </button>
         </div>
 
-        {/* פעולה חד-פעמית — רלוונטית רק למי שיש לו יארצייטים מהמבנה הישן */}
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6] space-y-3">
-          <div>
-            <h3 className="font-['Frank_Ruhl_Libre'] text-lg font-bold text-[#0D1B2A]">העברת יארצייטים למבנה החדש</h3>
-            <p className="text-[11px] text-gray-400 mt-0.5 leading-relaxed">
-              עד היום שם הנפטר נשמר כשם של <b>עמודה</b> בגיליון — ולכן כל יארצייט
-              שהוספת הופיע אצל כל אנשי הקשר. הפעולה הזו מעבירה אותם לרשומות בכרטיס
-              של האדם הנכון ומנקה את העמודות. תראה בדיוק מה עומד לקרות לפני האישור.
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setMigrateOpen(true)}
-              className="flex-1 flex items-center justify-center gap-2 bg-[#0D1B2A] text-[#E8C97A] text-sm font-bold py-2.5 rounded-xl active:scale-95 transition-transform"
-            >
-              בדוק מה יש להעביר
-            </button>
-            <button
-              onClick={() => setRescueOpen(true)}
-              className="px-3 rounded-xl border border-[#EDE6D6] bg-white text-[#0D1B2A] text-sm font-bold hover:border-[#C9A84C] transition-colors whitespace-nowrap"
-            >
-              איפה התאריכים שלי?
-            </button>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6] space-y-3">
-          <div>
-            <h3 className="font-['Frank_Ruhl_Libre'] text-lg font-bold text-[#0D1B2A]">טווח תאריכים לסכומי תרומות</h3>
-            <p className="text-[11px] text-gray-400 mt-0.5 leading-relaxed">
-              קובע מאיזה תאריך סופרים תרומות בכל הסכומים המוצגים באפליקציה — בדשבורד ("תרומות מתחילת שנה"), אצל אנשי הקשר (כמה כל אחד תרם) ובדוחות. השארה ריקה = מתחילת השנה הנוכחית.
-            </p>
-          </div>
+          <CardTitle title="טווח תאריכים לסכומי תרומות">
+            קובע מאיזה תאריך סופרים תרומות בכל הסכומים באפליקציה — בדשבורד, אצל אנשי
+            הקשר ובדוחות. השארה ריקה = מתחילת השנה הנוכחית.
+          </CardTitle>
           <div className="flex items-center gap-2">
             <input
               type="date"
@@ -396,27 +394,83 @@ export function SettingsTab() {
           ))}
         </div>
 
+        {/* ── כלים מתקדמים ─────────────────────────────────────────────
+            מה שיושב כאן אינו מיותר — הוא פשוט לא נחוץ ברוב הימים. מסך
+            שנולד מתקלה ספציפית ומופיע לנצח במשקל שווה לכל השאר הופך את
+            ההגדרות לרשימת דברים שאי אפשר להבין. */}
+        <div className="bg-white rounded-2xl shadow-sm border border-[#EDE6D6] overflow-hidden">
+          <button
+            onClick={() => setAdvancedOpen(v => !v)}
+            className="w-full flex items-center justify-between gap-2 p-4 text-right"
+          >
+            <div className="min-w-0">
+              <h3 className="font-['Frank_Ruhl_Libre'] text-lg font-bold text-[#0D1B2A]">כלים מתקדמים</h3>
+              <p className="text-[11px] text-gray-400 mt-0.5">
+                {legacyYahrzeitCount > 0 || missingAttendance > 0
+                  ? `יש כאן ${[legacyYahrzeitCount > 0 ? 'יארצייטים להעברה' : '', missingAttendance > 0 ? 'נוכחויות להשלמה' : ''].filter(Boolean).join(' ו')}`
+                  : 'אבחון, תיקונים והשלמות. אין כרגע משהו שדורש טיפול.'}
+              </p>
+            </div>
+            <ChevronDown size={18} className={`text-gray-400 shrink-0 transition-transform ${advancedOpen ? 'rotate-180' : ''}`} />
+          </button>
+
+          {advancedOpen && (
+            <div className="px-4 pb-4 space-y-3 border-t border-[#EDE6D6] pt-3">
+              {/* מוצג רק כשבאמת יש יארצייטים במבנה הישן */}
+              {legacyYahrzeitCount > 0 && (
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6] space-y-3">
+          <div>
+            <CardTitle title="העברת יארצייטים למבנה החדש">
+            עד היום שם הנפטר נשמר כשם של <b>עמודה</b> בגיליון — ולכן כל יארצייט
+              שהוספת הופיע אצל כל אנשי הקשר. הפעולה הזו מעבירה אותם לרשומות בכרטיס
+              של האדם הנכון ומנקה את העמודות. תראה בדיוק מה עומד לקרות לפני האישור.
+          </CardTitle>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setMigrateOpen(true)}
+              className="flex-1 flex items-center justify-center gap-2 bg-[#0D1B2A] text-[#E8C97A] text-sm font-bold py-2.5 rounded-xl active:scale-95 transition-transform"
+            >
+              העבר {legacyYahrzeitCount} יארצייטים
+            </button>
+          </div>
+        </div>
+              )}
+
+              {/* מוצג רק כשבאמת חסרות רשומות */}
+              {missingAttendance > 0 && (
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6] space-y-3">
           <div className="flex items-center gap-2">
-            <History size={18} className="text-[#9B7A2F]" />
-            <h3 className="font-['Frank_Ruhl_Libre'] text-lg font-bold text-[#0D1B2A]">סנכרון נוכחויות עבר כיצירת קשר</h3>
+            <History size={18} className="text-[#9B7A2F] shrink-0" />
+            <CardTitle title="השלמת נוכחויות עבר">
+              סימון נוכחות באירוע או בחג נרשם מעכשיו אוטומטית כ"יצירת קשר". הכפתור
+              הזה משלים למפרע את מה שסומן לפני העדכון. אפשר להריץ כמה פעמים — לא
+              ייווצרו כפילויות. הזמנות לחג שסומנו כ"בוצע" אינן נכללות, כי לא נשמר
+              להן תאריך מדויק.
+            </CardTitle>
           </div>
-          <p className="text-[11px] text-gray-500 leading-relaxed">
-            סימון נוכחות באירוע/חג נרשם מעכשיו אוטומטית כ"יצירת קשר" עבור אותו אדם. הכפתור הזה סורק את <b>כל</b> הנוכחויות שכבר סומנו בעבר (לפני העדכון) ומשלים למפרע רישום יצירת קשר לכל מי שעדיין חסר לו. אפשר להריץ כמה פעמים — לא ייווצרו כפילויות.
-          </p>
-          <p className="text-[10px] text-gray-400 leading-relaxed">
-            הערה: הזמנות לחג שסומנו כ"בוצע" (ולא נוכחות בפועל) לא נכללות כאן, כי לא נשמר להן תאריך מדויק בעבר.
-          </p>
           <button
             onClick={runAttendanceBackfill}
             disabled={isSyncing}
             className="w-full bg-[#0D1B2A] hover:bg-[#16283d] disabled:opacity-60 text-white rounded-xl py-3 text-sm font-bold transition-colors flex items-center justify-center gap-2"
           >
             {isSyncing ? <Loader2 size={16} className="animate-spin" /> : <History size={16} />}
-            {isSyncing && syncProgress ? `מסנכרן... (${syncProgress.done}/${syncProgress.total})` : 'הרץ סנכרון עכשיו'}
+            {isSyncing && syncProgress ? `מסנכרן... (${syncProgress.done}/${syncProgress.total})` : `השלם ${missingAttendance} רשומות`}
           </button>
           {syncResult && (
             <div className="text-[11px] text-[#0D1B2A] bg-[#FAF6EE] rounded-lg p-2.5 leading-relaxed">{syncResult}</div>
+          )}
+        </div>
+              )}
+
+              {/* האבחון זמין תמיד — הוא הדבר שמחפשים כשמשהו נעלם */}
+              <button
+                onClick={() => setRescueOpen(true)}
+                className="w-full border border-[#EDE6D6] text-[#0D1B2A] text-sm font-bold py-2.5 rounded-xl hover:border-[#C9A84C] transition-colors"
+              >
+                איפה התאריכים שלי?
+              </button>
+            </div>
           )}
         </div>
 

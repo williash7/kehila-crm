@@ -769,6 +769,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     saveEventsDataCloud(next);
   }, [loading, eventsData]);
 
+  // ── החלת המראה על מסמך ה-HTML ─────────────────────────────────────────
+  //
+  // התכונות יושבות על <html> ולא בתוך React: כך גם רקע העמוד, גלילה
+  // וסרגלי המערכת מקבלים את הערכה, ולא רק מה שמצויר בתוך האפליקציה.
+  useEffect(() => {
+    const el = document.documentElement;
+    el.setAttribute('data-theme', settings.theme || 'classic');
+    el.setAttribute('data-size', settings.uiSize || 'normal');
+    el.setAttribute('data-density', settings.density || 'normal');
+    el.setAttribute('data-graphics', settings.graphics === false ? 'off' : 'on');
+    // צבע סרגל הדפדפן בנייד — אחרת הוא נשאר זהב על ערכה כהה
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) {
+      const navy = getComputedStyle(el).getPropertyValue('--c-navy').trim();
+      if (navy) meta.setAttribute('content', navy);
+    }
+  }, [settings.theme, settings.uiSize, settings.density, settings.graphics]);
+
   useEffect(() => {
     loadAll();
     const localRebbe = localStorage.getItem('rebbe_date');

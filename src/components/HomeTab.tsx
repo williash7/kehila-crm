@@ -13,6 +13,7 @@ import { parseDdMmYyyy } from '../lib/dateUtils';
 import { CampaignTag } from './CampaignTag';
 import { countHkByStatus, isMonthlyReminderReviewed, markMonthlyReminderReviewed } from '../lib/standingOrders';
 import { HDate } from '@hebcal/core';
+import { DASH_CARDS, DashCardId, resolveCards } from '../lib/dashboardCards';
 import { toCanonicalHebrewString } from '../lib/hebrewDates';
 
 const FAILURE_WINDOW_DAYS = 30;
@@ -492,6 +493,22 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd }: { setTab: (t: s
   };
 
   // ── Main render ─────────────────────────────────────────────────────────────
+  const renderCard = (id: DashCardId) => {
+    switch (id) {
+      case 'shabbat':    return renderShabbatCard();
+      case 'rebbe':      return renderRebbeCard();
+      case 'tasks':      return renderTasksSummary();
+      case 'hero':       return renderHeroSummary();
+      case 'stats':      return renderStatsRow();
+      case 'quick':      return renderQuickActions();
+      case 'holidays':   return renderHolidaysAndTasks();
+      case 'hkReminder': return renderHkReminder();
+      case 'failures':   return renderFailures();
+      case 'recent':     return renderRecent();
+      default:           return null;
+    }
+  };
+
   return (
     <div className="animate-in fade-in pb-24 md:pb-0">
       {/* Topbar */}

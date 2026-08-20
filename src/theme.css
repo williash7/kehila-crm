@@ -1,0 +1,180 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   ערכות נושא, צפיפות וגודל תצוגה
+   ═══════════════════════════════════════════════════════════════════════════
+
+   ── למה הקובץ הזה נראה כך ─────────────────────────────────────────────────
+
+   הצבעים באפליקציה כתובים בתוך מחלקות Tailwind ישירות: bg-[#0D1B2A],
+   text-[#C9A84C], border-[#EDE6D6]. יש להם יותר מ-1,600 מופעים בשלושים
+   רכיבים. החלפת ערכת צבעים בדרך "הנכונה" הייתה דורשת לגעת בכל אחד מהם —
+   שינוי ענק, עם סיכון אמיתי לשבור מסכים שעובדים היום.
+
+   במקום זה, כל אחת משבע המחלקות האלה **ממופה כאן פעם אחת** למשתנה CSS.
+   ערכת ברירת המחדל נותנת למשתנים בדיוק את הערכים הקיימים — כלומר מי שלא
+   נוגע בכלום רואה מסך זהה לחלוטין לקודם. ערכה אחרת משנה את המשתנים, וכל
+   האפליקציה עוברת איתה.
+
+   הבחירה הזו מכוונת: היא ניתנת לביטול בשורה אחת, והיא לא נוגעת באף רכיב.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:root,
+[data-theme='classic'] {
+  --c-navy:        #0D1B2A;   /* רקע כהה, כותרות */
+  --c-navy-mid:    #1A2E45;
+  --c-gold:        #C9A84C;   /* צבע ההדגשה */
+  --c-gold-light:  #E8C97A;
+  --c-gold-dark:   #9B7A2F;
+  --c-cream:       #FAF6EE;   /* רקע האפליקציה */
+  --c-border:      #EDE6D6;
+  --c-card:        #FFFFFF;
+  --ui-scale: 1;
+}
+
+/* בהיר ונקי — פחות חום, יותר ניגודיות. למי שהקרם מרגיש לו "כבד". */
+[data-theme='clean'] {
+  --c-navy:        #1E293B;
+  --c-navy-mid:    #334155;
+  --c-gold:        #2563EB;
+  --c-gold-light:  #93C5FD;
+  --c-gold-dark:   #1D4ED8;
+  --c-cream:       #F8FAFC;
+  --c-border:      #E2E8F0;
+  --c-card:        #FFFFFF;
+}
+
+/* חם — קרם עמוק יותר וטרקוטה. קרוב לנוכחי באופי, שונה במזג. */
+[data-theme='warm'] {
+  --c-navy:        #44281D;
+  --c-navy-mid:    #5C3A2A;
+  --c-gold:        #C2703D;
+  --c-gold-light:  #E8B48C;
+  --c-gold-dark:   #94502A;
+  --c-cream:       #FDF6EF;
+  --c-border:      #EDDCCB;
+  --c-card:        #FFFFFF;
+}
+
+/* ירוק זית — רגוע, פחות "בנקאי". */
+[data-theme='olive'] {
+  --c-navy:        #1F2D24;
+  --c-navy-mid:    #33473A;
+  --c-gold:        #6B8E4E;
+  --c-gold-light:  #B7CF9B;
+  --c-gold-dark:   #4E6B39;
+  --c-cream:       #F6F8F3;
+  --c-border:      #E0E7D8;
+  --c-card:        #FFFFFF;
+}
+
+/* כהה — לעבודה בערב. הכרטיסים כהים, הטקסט בהיר. */
+[data-theme='dark'] {
+  --c-navy:        #0B1220;
+  --c-navy-mid:    #16213A;
+  --c-gold:        #E0B94F;
+  --c-gold-light:  #F3D98B;
+  --c-gold-dark:   #C9A84C;
+  --c-cream:       #111827;
+  --c-border:      #2A3446;
+  --c-card:        #1B2434;
+}
+
+/* ניגודיות גבוהה — לקריאה קשה, אור חזק, או עיניים עייפות. */
+[data-theme='contrast'] {
+  --c-navy:        #000000;
+  --c-navy-mid:    #1A1A1A;
+  --c-gold:        #B45309;
+  --c-gold-light:  #FCD34D;
+  --c-gold-dark:   #7C2D12;
+  --c-cream:       #FFFFFF;
+  --c-border:      #9CA3AF;
+  --c-card:        #FFFFFF;
+}
+
+/* ── המיפוי: מחלקה → משתנה ────────────────────────────────────────────────
+   הסלקטור [data-theme] מוסיף specificity מעל המחלקה עצמה, ולכן זה גובר
+   בלי !important. */
+
+[data-theme] .bg-\[\#0D1B2A\]      { background-color: var(--c-navy); }
+[data-theme] .bg-\[\#1A2E45\]      { background-color: var(--c-navy-mid); }
+[data-theme] .bg-\[\#C9A84C\]      { background-color: var(--c-gold); }
+[data-theme] .bg-\[\#E8C97A\]      { background-color: var(--c-gold-light); }
+[data-theme] .bg-\[\#9B7A2F\]      { background-color: var(--c-gold-dark); }
+[data-theme] .bg-\[\#FAF6EE\]      { background-color: var(--c-cream); }
+[data-theme] .bg-\[\#EDE6D6\]      { background-color: var(--c-border); }
+
+[data-theme] .text-\[\#0D1B2A\]    { color: var(--c-navy); }
+[data-theme] .text-\[\#1A2E45\]    { color: var(--c-navy-mid); }
+[data-theme] .text-\[\#C9A84C\]    { color: var(--c-gold); }
+[data-theme] .text-\[\#E8C97A\]    { color: var(--c-gold-light); }
+[data-theme] .text-\[\#9B7A2F\]    { color: var(--c-gold-dark); }
+
+[data-theme] .border-\[\#EDE6D6\]  { border-color: var(--c-border); }
+[data-theme] .border-\[\#C9A84C\]  { border-color: var(--c-gold); }
+[data-theme] .border-\[\#0D1B2A\]  { border-color: var(--c-navy); }
+
+[data-theme] .from-\[\#0D1B2A\]    { --tw-gradient-from: var(--c-navy); }
+[data-theme] .to-\[\#1A2E45\]      { --tw-gradient-to: var(--c-navy-mid); }
+[data-theme] .from-\[\#C9A84C\]    { --tw-gradient-from: var(--c-gold); }
+[data-theme] .to-\[\#9B7A2F\]      { --tw-gradient-to: var(--c-gold-dark); }
+
+[data-theme] body,
+[data-theme] .bg-white             { background-color: var(--c-card); }
+
+/* ── ערכה כהה: הפיכת הטקסט הכהה לבהיר ────────────────────────────────────
+   בערכה כהה הכרטיסים כהים, ולכן טקסט אפור-כהה נעלם בתוכם. */
+[data-theme='dark'] .text-gray-500,
+[data-theme='dark'] .text-gray-600 { color: #94A3B8; }
+[data-theme='dark'] .text-gray-400 { color: #7C8CA3; }
+[data-theme='dark'] .text-gray-300 { color: #5A6B84; }
+[data-theme='dark'] .bg-gray-50,
+[data-theme='dark'] .bg-gray-100   { background-color: #202B3D; }
+[data-theme='dark'] .border-gray-200,
+[data-theme='dark'] .border-gray-100,
+[data-theme='dark'] .border-gray-50 { border-color: #2A3446; }
+[data-theme='dark'] input,
+[data-theme='dark'] textarea,
+[data-theme='dark'] select          { background-color: #202B3D; color: #E5E7EB; }
+
+/* ── גודל התצוגה ─────────────────────────────────────────────────────────
+   Tailwind מודד גם טקסט וגם מרווחים ב-rem, ולכן שינוי גודל הבסיס מגדיל
+   את הכול יחד ושומר על הפרופורציות. */
+html { font-size: calc(16px * var(--ui-scale, 1)); }
+
+[data-size='small']  { --ui-scale: 0.92; }
+[data-size='normal'] { --ui-scale: 1; }
+[data-size='large']  { --ui-scale: 1.1; }
+[data-size='xlarge'] { --ui-scale: 1.22; }
+
+/* ── צפיפות ──────────────────────────────────────────────────────────────
+   כאן דווקא לא נוגעים בגודל הטקסט — רק במרווחים. "צפוף" נועד למי שרוצה
+   לראות יותר שורות במסך אחד, לא טקסט קטן יותר. */
+[data-density='compact'] .p-5      { padding: 0.85rem; }
+[data-density='compact'] .p-4      { padding: 0.7rem; }
+[data-density='compact'] .p-3      { padding: 0.55rem; }
+[data-density='compact'] .py-3     { padding-top: 0.5rem; padding-bottom: 0.5rem; }
+[data-density='compact'] .py-2\.5  { padding-top: 0.4rem; padding-bottom: 0.4rem; }
+[data-density='compact'] .mb-5     { margin-bottom: 0.75rem; }
+[data-density='compact'] .mb-4     { margin-bottom: 0.6rem; }
+[data-density='compact'] .space-y-5 > :not([hidden]) ~ :not([hidden]) { margin-top: 0.75rem; }
+[data-density='compact'] .space-y-4 > :not([hidden]) ~ :not([hidden]) { margin-top: 0.6rem; }
+[data-density='compact'] .space-y-3 > :not([hidden]) ~ :not([hidden]) { margin-top: 0.45rem; }
+
+[data-density='roomy'] .p-4        { padding: 1.25rem; }
+[data-density='roomy'] .p-3        { padding: 1rem; }
+[data-density='roomy'] .space-y-3 > :not([hidden]) ~ :not([hidden]) { margin-top: 1rem; }
+[data-density='roomy'] .space-y-4 > :not([hidden]) ~ :not([hidden]) { margin-top: 1.35rem; }
+
+/* ── רקע ──────────────────────────────────────────────────────────────────
+   שכבת מרקם עדינה מאוד מאחורי התוכן. לא דקורציה לשמה: היא מפרידה בין
+   "המשטח" לבין הכרטיסים הלבנים שעליו, ובלעדיה מסך עמוס נראה כמו קיר אחד. */
+[data-graphics='on'] body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(circle at 12% 8%,  color-mix(in srgb, var(--c-gold) 9%, transparent) 0, transparent 42%),
+    radial-gradient(circle at 88% 92%, color-mix(in srgb, var(--c-navy) 7%, transparent) 0, transparent 45%);
+}
+[data-graphics='on'] #root { position: relative; z-index: 1; }
