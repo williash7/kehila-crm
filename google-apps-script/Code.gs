@@ -670,6 +670,7 @@ function route_(action, body) {
     case 'cancelStandingOrder': return cancelStandingOrder_(body);
     case 'updateStandingOrderAmount': return updateStandingOrderAmount_(body);
     case 'renewStandingOrder': return renewStandingOrder_(body);
+    case 'previewRenewalDate': return previewRenewalDate_(body);
     case 'updateDonorField':   return updateDonorField_(body);
     case 'deleteContactColumns': return deleteContactColumns_(body);
     case 'updatePersonalDate': return updateDonorField_(body);
@@ -998,18 +999,81 @@ function addStandingOrder_(body) {
 // מצטרפת לשרשרת אחת שהאפליקציה יודעת להציג.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** מועד החיוב הראשון שאחרי סוף ההוראה — הנקודה שממנה נכון להתחיל חידוש. */
-function hkNextSlot_(start, payments, unlimited, cancelDate) {
+/**
+ * ── מתי באמת ייגבה החיוב הראשון של חידוש ──────────────────────────────────
+ *
+ * הכלל אצל הספק, כפי שמנהל החשבונות ניסח אותו: **יום החיוב בחודש הוא תכונה
+ * של ההוראה**, והחידוש נכנס למחזור בהזדמנות הקרובה של אותו יום. הוא אינו
+ * "חודש אחרי החיוב האחרון", ואינו היום שבו לחצת על חידוש.
+ *
+ * דוגמה אמיתית: החיוב האחרון היה ב-15/7, ההוראה חודשה ב-18/8, ויום החיוב
+ * של אותו תורם הוא ה-28 — לכן החיוב הראשון יוצא ב-28/8. אם יום החיוב היה
+ * ה-15, הוא היה יוצא רק ב-15/9, ובלשונך: "הפסדתי חודש".
+ *
+ * שתי טעויות שהחישוב הזה מונע:
+ *   · **תאריך בעבר.** הנוסחה הקודמת החזירה את המשבצת שאחרי ההוראה הישנה,
+ *     גם אם היא כבר חלפה — והמנוע היה מייצר מיד חיוב "שנגבה" שמעולם לא
+ *     נגבה, ומנפח את הכסף שנכנס.
+ *   · **יום חיוב שגוי.** יום החיוב אצל הספק לא חייב להיות היום שבו נפתחה
+ *     ההוראה הישנה. לכן אפשר לציין אותו במפורש.
+ */
+function hkNextSlot_(start, payments, unlimited, cancelDate, today, billingDay) {
   if (!start) return null;
-  if (cancelDate) return cancelDate;
-  var billingDay = start.getDate();
-  var months = unlimited
-    ? ((new Date()).getFullYear() - start.getFullYear()) * 12 +
-      ((new Date()).getMonth() - start.getMonth()) + 1
-    : (payments || 0);
-  var c = new Date(start.getFullYear(), start.getMonth() + months, 1);
-  return new Date(c.getFullYear(), c.getMonth(),
-                  Math.min(billingDay, daysInMonth_(c.getFullYear(), c.getMonth())));
+  var now = today || new Date();
+  now = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  var day = Number(billingDay) > 0 ? Math.min(31, Math.floor(Number(billingDay))) : start.getDate();
+
+  // המשבצת ה"טבעית": מיד אחרי סוף ההוראה הקודמת
+  var natural;
+  if (cancelDate) {
+    natural = new Date(cancelDate.getFullYear(), cancelDate.getMonth(), 1);
+  } else {
+    var months = unlimited
+      ? (now.getFullYear() - start.getFullYear()) * 12 + (now.getMonth() - start.getMonth()) + 1
+      : (payments || 0);
+    natural = new Date(start.getFullYear(), start.getMonth() + months, 1);
+  }
+
+  // ומכאן מתגלגלים קדימה עד ליום החיוב הקרוב שעוד לא עבר
+  for (var i = 0; i < 240; i++) {
+    var y = natural.getFullYear(), m = natural.getMonth();
+    var d = new Date(y, m, Math.min(day, daysInMonth_(y, m)));
+    if (d >= now) return d;
+    natural.setMonth(natural.getMonth() + 1);
+  }
+  return null;
+}
+
+/**
+ * מחשב מתי ייגבה החיוב הראשון — בלי לכתוב כלום.
+ *
+ * קיים כדי שדיאלוג החידוש יוכל להראות את התאריך **לפני** האישור. חידוש הוא
+ * פעולה שקשה לתקן אחריה, ו"מתי זה ייגבה בפועל" היא בדיוק השאלה שנשאלת
+ * בטלפון מול התורם.
+ */
+function previewRenewalDate_(body) {
+  var id = String(body.id || '').trim();
+  var t = table_(SH.HK);
+  if (!t.sheet || !id) return { success: false, error: 'חסר מזהה הוראה' };
+
+  for (var i = 0; i < t.rows.length; i++) {
+    var r = t.rows[i];
+    if (String(get_(r, t, 'מזהה') || '').trim() !== id) continue;
+    var rawPay = get_(r, t, 'מספר תשלומים');
+    var d = hkNextSlot_(
+      toDate_(get_(r, t, 'תאריך פתיחה')),
+      asNumber_(rawPay) || 0,
+      isUnlimited_(rawPay),
+      toDate_(get_(r, t, 'תאריך ביטול')),
+      new Date(),
+      Number(body.billingDay) || 0
+    );
+    return d
+      ? { success: true, startDate: asDate_(d), billingDay: d.getDate() }
+      : { success: false, error: 'לא הצלחתי לחשב תאריך' };
+  }
+  return { success: false, error: 'הוראת קבע ' + id + ' לא נמצאה' };
 }
 
 function renewStandingOrder_(body) {
@@ -1045,8 +1109,11 @@ function renewStandingOrder_(body) {
   var payments = asNumber_(body.payments) || (unlimited ? 0 : oldPayments);
   if (!unlimited && !payments) return { success: false, error: 'חסר מספר תשלומים לחידוש' };
 
-  var start = body.startDate ? toDate_(body.startDate)
-                             : hkNextSlot_(oldStart, oldPayments, oldUnlimited, oldCancel);
+  // יום החיוב: מה שנמסר, אחרת היום שבו נפתחה ההוראה הישנה.
+  var billingDay = Number(body.billingDay) > 0 ? Number(body.billingDay) : 0;
+  var start = body.startDate
+    ? toDate_(body.startDate)
+    : hkNextSlot_(oldStart, oldPayments, oldUnlimited, oldCancel, new Date(), billingDay);
   if (!start) return { success: false, error: 'לא הצלחתי לקבוע תאריך התחלה לחידוש' };
 
   // מזהה חדש. אם יש בידך את מספר ההוראה האמיתי מנדרים פלוס — הוא עדיף:
@@ -1109,6 +1176,7 @@ function renewStandingOrder_(body) {
     success: true, id: newId, renewalOf: id, name: name,
     amount: amount, startDate: asDate_(start),
     payments: unlimited ? UNLIMITED_TEXT : payments,
+    billingDay: start.getDate(),
     closedOld: closedOld, created: created,
   };
 }

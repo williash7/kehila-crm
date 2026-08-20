@@ -104,12 +104,26 @@ export interface Solicitation {
    */
   ask?: number | string;
   notes?: string;
+  /** מתי ניתנה ההבטחה — כדי לדעת אילו תשלומים באו אחריה */
+  pledgedDate?: string;
   /**
    * קישור מפורש להוראת קבע. בדרך כלל לא צריך אותו — הוראה שהקטגוריה שלה
    * היא הקמפיין משויכת לבד. הוא נועד למקרה ההפוך: התורם פתח הוראת קבע
    * עבור הקמפיין, אבל אצל הספק היא נרשמה תחת קטגוריה אחרת.
    */
   hkId?: string;
+  /**
+   * ── מה שהאפליקציה טעתה לגביו ──────────────────────────────────────────
+   *
+   * שיוך אוטומטי הוא הדבר הנכון ברוב המקרים, ובדיוק בגללו חייבת להיות דרך
+   * לבטל אותו: אדם שהבטיח לתרום ובאותו חודש שילם על סיור סליחות — התשלום
+   * הזה אינו הקמפיין. בלי כפתור להסיר, המספר שגוי ואין מה לעשות בנידון.
+   */
+  excludedDonationIds?: string[];
+  /** תשלום שלא סומן לקמפיין, ואתה קובע שהוא כן שייך */
+  includedDonationIds?: string[];
+  /** הוראת קבע שסומנה אוטומטית ואינה קשורה */
+  excludedHkIds?: string[];
 }
 
 /** מה אדם נתן — התשובה לשאלה "כמה סביר לבקש ממנו". */
@@ -397,22 +411,67 @@ export function unlinkedHkFor(sol: Solicitation, project: Project, hk: any[]): a
     String(h?.name || '').trim() === name && h.active && !linked.has(String(h.id)));
 }
 
+export interface AttachedDonation {
+  id: string;
+  name: string;
+  date: string;
+  amount: number;
+  method: string;
+  purpose: string;
+  /** האם היא סומנה לקמפיין מעצמה, או שצירפת אותה ידנית */
+  auto: boolean;
+}
+
 export interface SolicitationRow {
   sol: Solicitation;
   status: SolicitationStatus;
   /** כמה מתכוונים לבקש */
   ask: number;
-  /** כמה כבר נכנס בפועל מהאדם הזה לקמפיין הזה */
-  raised: number;
+  /** מה שהאדם התחייב לו בעל פה */
+  pledge: number;
+  /** כמה מההבטחה עוד לא כוסתה */
+  pledgeRemaining: number;
+  /** התשלומים שנספרים לקמפיין הזה */
+  donations: AttachedDonation[];
+  /** תשלומים של אותו אדם שאינם משויכים — מוצעים לצירוף */
+  candidates: AttachedDonation[];
   /** הוראות הקבע ששייכות לקמפיין */
   commitments: HkCommitment[];
-  /** מה שעוד צפוי: יתרת הוראות הקבע + הבטחה ידנית */
+  /** נכנס בפועל: תשלומים משויכים + חיובי הו״ק שכבר נגבו */
+  raised: number;
+  /** עוד צפוי: יתרת הו״ק + יתרת ההבטחה */
   outstanding: number;
   /** נכנס + צפוי — המספר שנספר מול היעד */
   committed: number;
   history?: GivingHistory;
 }
 
+function toAttached(d: any, auto: boolean): AttachedDonation {
+  return {
+    id: String(d?.id || ''),
+    name: String(d?.name || '').trim(),
+    date: String(d?.date || ''),
+    amount: num(d?.amount),
+    method: String(d?.method || ''),
+    purpose: String(d?.purpose || ''),
+    auto,
+  };
+}
+
+/**
+ * ── שני מספרים, ולמה שניהם נחוצים ─────────────────────────────────────────
+ *
+ * "אני אתן לך אלף שקל" הוא **התחייבות**. חודש אחר כך נכנסים 500 בקישור —
+ * זה **מה שנכנס**. הקמפיין צריך לדעת את שניהם: כמה התחייבויות אספתי (כמה
+ * מהיעד סגור), וכמה כסף באמת יש.
+ *
+ * הכיסוי מזוהה לבד: כל תשלום שנרשם על שם האדם עם ייעוד הקמפיין מקוזז מול
+ * ההבטחה שלו. גם הוראת קבע שנפתחה או חודשה בסכום גדול יותר מכסה אותה —
+ * מי שהבטיח ₪1,000 ופתח הוראה על ₪250×12 עמד בהבטחה ואין ממנו יתרה.
+ *
+ * ומה שנספר לבד אפשר גם להסיר: תשלום על סיור סליחות אינו הקמפיין, גם אם
+ * הוא הגיע מאותו אדם באותו חודש.
+ */
 export function buildSolicitationRows(
   project: Project,
   donations: any[],
@@ -421,40 +480,73 @@ export function buildSolicitationRows(
 ): SolicitationRow[] {
   const tag = (project.purposeTag || project.name || '').trim();
 
-  // כמה כל אדם כבר נתן לקמפיין — מעבר אחד על היומן
-  const byName: Record<string, number> = {};
+  // מעבר אחד על היומן: כל התשלומים לפי שם
+  const byName: Record<string, any[]> = {};
   (donations || []).forEach(d => {
-    if (!tag || String(d?.purpose || '').trim() !== tag) return;
     const n = String(d?.name || '').trim();
-    const a = num(d?.amount);
-    if (n && a > 0) byName[n] = (byName[n] || 0) + a;
+    if (!n || num(d?.amount) <= 0) return;
+    (byName[n] || (byName[n] = [])).push(d);
   });
 
   return (project.solicitations || []).map(sol => {
+    const name = String(sol.name || '').trim();
     const status = normalizeStatus(sol.status);
-    const commitments = hkForSolicitation(sol, project, hk);
-    const raised = byName[String(sol.name || '').trim()] || 0;
+    const excluded = new Set(sol.excludedDonationIds || []);
+    const included = new Set(sol.includedDonationIds || []);
+    const excludedHk = new Set(sol.excludedHkIds || []);
 
-    // הבטחה ידנית נספרת רק אם אין הוראת קבע שכבר מכסה את ההתחייבות,
-    // אחרת אותו כסף היה נספר פעמיים.
+    const commitments = hkForSolicitation(sol, project, hk)
+      .filter(c => !excludedHk.has(c.id));
+    const hkIds = new Set(commitments.map(c => 'hk:' + c.id + ':'));
+
+    const attached: AttachedDonation[] = [];
+    const candidates: AttachedDonation[] = [];
+
+    (byName[name] || []).forEach(d => {
+      const id = String(d?.id || '');
+      const isHkCharge = id.indexOf('hk:') === 0;
+      // חיוב של הוראת קבע נספר דרך ההוראה עצמה, לא כתשלום נפרד —
+      // אחרת אותו כסף מופיע פעמיים באותה שורה.
+      if (isHkCharge && Array.from(hkIds).some(p => id.indexOf(p) === 0)) return;
+
+      const taggedHere = !!tag && String(d.purpose || '').trim() === tag;
+      if (excluded.has(id)) { candidates.push(toAttached(d, taggedHere)); return; }
+      if (taggedHere || included.has(id)) attached.push(toAttached(d, taggedHere));
+      else if (!isHkCharge) candidates.push(toAttached(d, false));
+    });
+
+    const cashRaised = attached.reduce((t, d) => t + d.amount, 0);
+    const hkTotal = commitments.reduce((t, c) => t + c.total, 0);
+    const hkCollected = commitments.reduce((t, c) => t + c.collected, 0);
     const hkOutstanding = commitments.reduce((t, c) => t + c.outstanding, 0);
-    const manualPledge = commitments.length ? 0 : num(sol.pledged);
-    const outstanding = hkOutstanding + manualPledge;
+
+    // ההבטחה נסגרת גם בכסף שנכנס וגם בהוראת קבע שנפתחה בעקבותיה
+    const pledge = num(sol.pledged);
+    const pledgeRemaining = Math.max(0, pledge - cashRaised - hkTotal);
+
+    const raised = cashRaised + hkCollected;
+    const outstanding = hkOutstanding + pledgeRemaining;
 
     return {
       sol, status,
       ask: num(sol.ask),
-      raised,
+      pledge,
+      pledgeRemaining,
+      donations: attached,
+      candidates: candidates.sort((a, b) => (b.date || '').localeCompare(a.date || '')).slice(0, 6),
       commitments,
+      raised,
       outstanding,
       committed: raised + outstanding,
-      history: giving ? giving[String(sol.name || '').trim()] : undefined,
+      history: giving ? giving[name] : undefined,
     };
   });
 }
 
 export interface SolicitationTotals {
   ask: number;
+  /** סך ההתחייבויות שנאספו — הבטחות בעל פה והוראות קבע */
+  pledged: number;
   raised: number;
   outstanding: number;
   committed: number;
@@ -465,12 +557,15 @@ export function sumSolicitationRows(rows: SolicitationRow[]): SolicitationTotals
   const counts: Record<SolicitationStatus, number> = {
     toSend: 0, sent: 0, retry: 0, callBack: 0, giver: 0, giverNoAmount: 0, notGiver: 0,
   };
-  let ask = 0, raised = 0, outstanding = 0;
+  let ask = 0, raised = 0, outstanding = 0, pledged = 0;
   (rows || []).forEach(r => {
     counts[r.status]++;
     ask += r.ask;
     raised += r.raised;
     outstanding += r.outstanding;
+    // "כמה התחייבויות אספתי": ההבטחה בעל פה, או ההוראה שנפתחה במקומה —
+    // הגדולה מביניהן, כדי שאותה התחייבות לא תיספר פעמיים.
+    pledged += Math.max(r.pledge, r.commitments.reduce((t, c) => t + c.total, 0));
   });
-  return { ask, raised, outstanding, committed: raised + outstanding, counts };
+  return { ask, pledged, raised, outstanding, committed: raised + outstanding, counts };
 }

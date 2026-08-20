@@ -223,11 +223,31 @@ export function RenewHkDialog({ target, onClose }: { target: any; onClose: () =>
     target.unlimited ? '' : String(Number(target.payments) || 12)
   );
   const [unlimited, setUnlimited] = useState(!!target.unlimited);
-  const [startDate, setStartDate] = useState('');   // ריק = השרת ממשיך מהמקום שבו נעצרה
+  const [startDate, setStartDate] = useState('');   // ריק = השרת מחשב את מועד החיוב הבא
+  const [billingDay, setBillingDay] = useState('');
+  const [preview, setPreview] = useState('');
+  const [previewing, setPreviewing] = useState(false);
   const [newId, setNewId] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [done, setDone] = useState<any | null>(null);
+
+  // ── מתי זה ייגבה בפועל ──────────────────────────────────────────────────
+  //
+  // יום החיוב בחודש הוא תכונה של ההוראה אצל הספק, והחידוש נכנס למחזור
+  // בהזדמנות הקרובה של אותו יום — לא חודש אחרי החיוב האחרון, ולא היום שבו
+  // לחצת. זו בדיוק השאלה שנשאלת מול התורם בטלפון, ולכן היא נענית כאן
+  // **לפני** האישור ולא אחריו.
+  React.useEffect(() => {
+    if (startDate) { setPreview(''); return; }
+    let cancelled = false;
+    setPreviewing(true);
+    apiPost('previewRenewalDate', { id: target.id, billingDay: Number(billingDay) || 0 })
+      .then(res => { if (!cancelled) setPreview(res?.success ? res.startDate : ''); })
+      .catch(() => { if (!cancelled) setPreview(''); })
+      .finally(() => { if (!cancelled) setPreviewing(false); });
+    return () => { cancelled = true; };
+  }, [target.id, billingDay, startDate]);
 
   async function submit() {
     const value = Number(amount);
@@ -241,6 +261,7 @@ export function RenewHkDialog({ target, onClose }: { target: any; onClose: () =>
       unlimited,
       payments: unlimited ? '' : Number(payments),
       startDate: startDate || '',
+      billingDay: Number(billingDay) || 0,
       newId: newId.trim(),
     });
     setBusy(false);
@@ -264,7 +285,8 @@ export function RenewHkDialog({ target, onClose }: { target: any; onClose: () =>
           <>
             <div className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg p-2.5 mb-3 leading-relaxed">
               נפתחה הוראה <b dir="ltr">#{done.id}</b> על ₪{Number(done.amount).toLocaleString()} לחודש,
-              מ-{done.startDate}, {done.payments === 'ללא הגבלה' ? 'ללא הגבלת זמן' : `${done.payments} תשלומים`}.
+              {' '}החיוב הראשון ב-<b>{done.startDate}</b>{done.billingDay ? ` (ובכל ${done.billingDay} לחודש)` : ''},
+              {' '}{done.payments === 'ללא הגבלה' ? 'ללא הגבלת זמן' : `${done.payments} תשלומים`}.
               {done.closedOld ? ` ההוראה הקודמת נסגרה ב-${done.closedOld} כדי שלא ייגבו שתיהן במקביל.` : ''}
               {done.created ? ` נוצרו ${done.created} חיובים.` : ''}
               <div className="mt-1">ההיסטוריה הקודמת נשמרה ומוצגת יחד עם החדשה.</div>
@@ -301,7 +323,31 @@ export function RenewHkDialog({ target, onClose }: { target: any; onClose: () =>
             </label>
 
             <label className={label}>
-              תאריך התחלה <span className="font-normal text-gray-400">(ריק = מיד אחרי החיוב האחרון)</span>
+              יום החיוב בחודש <span className="font-normal text-gray-400">(כפי שרשום אצל הספק)</span>
+            </label>
+            <input
+              type="number" min={1} max={31} value={billingDay} onChange={e => setBillingDay(e.target.value)}
+              placeholder={`ברירת מחדל: ${String(target.startDate || '').slice(0, 2) || '—'}`}
+              className={field + ' mb-1'}
+            />
+            <p className="text-[10px] text-gray-400 mb-3 leading-relaxed">
+              זה מה שקובע מתי ייגבה החיוב הראשון — לא היום שבו אתה מחדש. אם היום
+              כבר עבר החודש, החיוב ייצא רק בחודש הבא.
+            </p>
+
+            {/* התשובה לשאלה "אז מתי זה ייגבה?", לפני האישור */}
+            {!startDate && (
+              <div className={`rounded-lg p-2.5 mb-3 text-xs border ${
+                preview ? 'bg-indigo-50 border-indigo-200 text-indigo-800' : 'bg-gray-50 border-gray-200 text-gray-500'
+              }`}>
+                {previewing ? 'מחשב...' : preview
+                  ? <>החיוב הראשון ייגבה ב-<b>{preview}</b></>
+                  : 'לא הצלחתי לחשב את מועד החיוב — אפשר לקבוע תאריך ידנית למטה.'}
+              </div>
+            )}
+
+            <label className={label}>
+              או תאריך התחלה מדויק <span className="font-normal text-gray-400">(לא חובה)</span>
             </label>
             <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className={field + ' mb-3'} />
 

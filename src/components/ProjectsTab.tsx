@@ -386,11 +386,12 @@ function ProjectDetail({ project, donations, hk, donorNames, crm, pane, setPane,
                   שבקופה; "צפוי" הוא יתרת הוראות הקבע וההבטחות; "סה״כ" הוא
                   מה שנמדד מול היעד. */}
               {rows.length > 0 && (
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
                   {[
                     { label: 'מבקשים', value: totals.ask, tone: 'text-[#0D1B2A]' },
+                    { label: 'התחייבויות שנאספו', value: totals.pledged, tone: 'text-indigo-700' },
                     { label: 'נכנס בפועל', value: totals.raised, tone: 'text-emerald-700' },
-                    { label: 'צפוי מהו״ק והבטחות', value: totals.outstanding, tone: 'text-amber-700' },
+                    { label: 'עוד צפוי', value: totals.outstanding, tone: 'text-amber-700' },
                     { label: 'סה״כ מובטח', value: totals.committed, tone: 'text-[#9B7A2F]' },
                   ].map(x => (
                     <div key={x.label} className="bg-white rounded-xl border border-[#EDE6D6] px-3 py-2">
@@ -471,9 +472,29 @@ function ProjectDetail({ project, donations, hk, donorNames, crm, pane, setPane,
                             />
                           </label>
 
+                          {/* ההבטחה — תמיד ניתנת לעריכה, גם כשיש הוראת קבע */}
+                          <label className="flex items-center gap-1 text-[11px] text-gray-500">
+                            הבטיח
+                            <input
+                              type="number" value={s.pledged ?? ''} placeholder="₪"
+                              onChange={e => setSol(i, { pledged: e.target.value, pledgedDate: s.pledgedDate || new Date().toLocaleDateString('he-IL') })}
+                              className="w-[72px] border border-amber-200 bg-amber-50/50 rounded-lg px-2 py-1 text-xs outline-none focus:border-[#C9A84C]"
+                            />
+                          </label>
+
                           {row.raised > 0 && (
                             <span className="text-[11px] bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg px-2 py-1 font-bold">
                               נכנס ₪{row.raised.toLocaleString()}
+                            </span>
+                          )}
+                          {row.pledgeRemaining > 0 && (
+                            <span className="text-[11px] bg-amber-50 text-amber-800 border border-amber-200 rounded-lg px-2 py-1">
+                              נותר מההבטחה ₪{row.pledgeRemaining.toLocaleString()}
+                            </span>
+                          )}
+                          {row.pledge > 0 && row.pledgeRemaining === 0 && (
+                            <span className="text-[11px] bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg px-2 py-1">
+                              ✓ עמד בהבטחה
                             </span>
                           )}
 
@@ -481,25 +502,62 @@ function ProjectDetail({ project, donations, hk, donorNames, crm, pane, setPane,
                           {row.commitments.map(c => (
                             <span key={c.id}
                               title={`${c.paid} מתוך ${c.payments} חיובים נגבו`}
-                              className="text-[11px] bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg px-2 py-1">
+                              className="text-[11px] bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg pr-2 pl-1 py-1 inline-flex items-center gap-1.5">
                               🔄 ₪{c.monthly.toLocaleString()}×{c.unlimited ? `${c.payments} (ללא הגבלה)` : c.payments}
                               {' = '}<b>₪{c.total.toLocaleString()}</b>
                               {c.outstanding > 0 && <span className="opacity-70"> · נותרו ₪{c.outstanding.toLocaleString()}</span>}
+                              <button
+                                title="ההוראה הזו אינה שייכת לקמפיין"
+                                onClick={() => setSol(i, {
+                                  excludedHkIds: [...(s.excludedHkIds || []), c.id],
+                                  hkId: s.hkId === c.id ? undefined : s.hkId,
+                                })}
+                                className="text-indigo-400 hover:text-red-500"
+                              ><X size={11} /></button>
                             </span>
                           ))}
 
-                          {/* הבטחה ידנית — רק כשאין הוראת קבע שכבר מכסה אותה */}
-                          {row.commitments.length === 0 && (
-                            <label className="flex items-center gap-1 text-[11px] text-gray-500">
-                              הבטיח
-                              <input
-                                type="number" value={s.pledged ?? ''} placeholder="₪"
-                                onChange={e => setSol(i, { pledged: e.target.value })}
-                                className="w-[72px] border border-amber-200 bg-amber-50/50 rounded-lg px-2 py-1 text-xs outline-none focus:border-[#C9A84C]"
-                              />
-                            </label>
-                          )}
                         </div>
+
+                        {/* ── התשלומים שנספרים לשורה הזו ─────────────────
+                            כל אחד עם ✕ להסרה: תשלום על סיור סליחות אינו
+                            הקמפיין, גם אם הוא מאותו אדם ובאותו חודש. */}
+                        {row.donations.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5 mt-1.5">
+                            {row.donations.map(d => (
+                              <span key={d.id}
+                                className="text-[10px] bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-lg pr-2 pl-1 py-1 flex items-center gap-1.5">
+                                ₪{d.amount.toLocaleString()} · {d.date}{d.method ? ` · ${d.method}` : ''}
+                                {!d.auto && <span className="opacity-60">(צורף ידנית)</span>}
+                                <button
+                                  title="לא שייך לקמפיין הזה"
+                                  onClick={() => setSol(i, {
+                                    excludedDonationIds: [...(s.excludedDonationIds || []), d.id],
+                                    includedDonationIds: (s.includedDonationIds || []).filter(x => x !== d.id),
+                                  })}
+                                  className="text-emerald-600/50 hover:text-red-500"
+                                ><X size={11} /></button>
+                              </span>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* תשלומים של אותו אדם שלא סומנו לקמפיין — הצעה לצרף */}
+                        {row.candidates.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5 mt-1.5">
+                            {row.candidates.map(d => (
+                              <button key={d.id}
+                                title={d.purpose ? `ייעוד: ${d.purpose}` : 'בלי ייעוד'}
+                                onClick={() => setSol(i, {
+                                  includedDonationIds: [...(s.includedDonationIds || []), d.id],
+                                  excludedDonationIds: (s.excludedDonationIds || []).filter(x => x !== d.id),
+                                })}
+                                className="text-[10px] bg-white text-gray-500 border border-dashed border-gray-300 rounded-lg px-2 py-1 hover:border-[#C9A84C] hover:text-[#9B7A2F]">
+                                + ₪{d.amount.toLocaleString()} · {d.date}{d.purpose ? ` · ${d.purpose}` : ''}
+                              </button>
+                            ))}
+                          </div>
+                        )}
 
                         {/* הוראת קבע קיימת שאינה משויכת — הצעה לשייך */}
                         {unlinked.length > 0 && row.commitments.length === 0 && (
@@ -515,10 +573,12 @@ function ProjectDetail({ project, donations, hk, donorNames, crm, pane, setPane,
                             ))}
                           </div>
                         )}
-                        {s.hkId && (
-                          <button onClick={() => setSol(i, { hkId: undefined })}
-                                  className="text-[10px] text-gray-400 hover:text-red-500 mt-1">
-                            בטל שיוך הוראת קבע
+                        {((s.excludedDonationIds?.length || 0) + (s.excludedHkIds?.length || 0)) > 0 && (
+                          <button
+                            onClick={() => setSol(i, { excludedDonationIds: [], excludedHkIds: [] })}
+                            className="text-[10px] text-gray-400 hover:text-[#9B7A2F] mt-1"
+                          >
+                            ↺ החזר {(s.excludedDonationIds?.length || 0) + (s.excludedHkIds?.length || 0)} פריטים שהוסרו
                           </button>
                         )}
 
