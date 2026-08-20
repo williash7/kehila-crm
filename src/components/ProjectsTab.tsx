@@ -9,6 +9,7 @@ import {
   projectDonations, syncSolicitationsWithDonations, buildGivingIndex, suggestedAsk, totalAsk,
   SOLICITATION_LABEL, SOLICITATION_COLOR, SOLICITATION_ORDER, normalizeStatus,
   buildSolicitationRows, sumSolicitationRows, unlinkedHkFor, explicitHkIds, SolicitationRow,
+  breakdownFor, BreakdownMetric, BREAKDOWN_LABEL, BREAKDOWN_HINT,
 } from '../lib/projects';
 import { logAction } from '../lib/score';
 
@@ -241,6 +242,8 @@ function ProjectDetail({ project, donations, hk, donorNames, crm, pane, setPane,
   const [rowSearch, setRowSearch] = React.useState('');
   // שורה שממנה נפתח חלון פתיחת הוראת קבע — כדי לשייך אותה חזרה לשורה
   const [hkForRow, setHkForRow] = React.useState<number | null>(null);
+  // איזה מהמספרים בראש הרשימה נפתח לפירוט
+  const [breakdown, setBreakdown] = React.useState<BreakdownMetric | null>(null);
   const [openNotes, setOpenNotes] = React.useState<number | null>(null);
   const shownRows = React.useMemo(() => {
     const q = rowSearch.trim().toLowerCase();
@@ -413,18 +416,25 @@ function ProjectDetail({ project, donations, hk, donorNames, crm, pane, setPane,
                   מה שנמדד מול היעד. */}
               {rows.length > 0 && (
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
-                  {[
-                    { label: 'מבקשים', value: totals.ask, tone: 'text-[#0D1B2A]' },
-                    { label: 'התחייבויות שנאספו', value: totals.pledged, tone: 'text-indigo-700' },
-                    { label: 'נכנס בפועל', value: totals.raised, tone: 'text-emerald-700' },
-                    { label: 'צפוי מהו״ק', value: totals.hkOutstanding, tone: 'text-[#9B7A2F]' },
-                    { label: 'הבטחות בעל פה', value: totals.pledgeOutstanding, tone: 'text-amber-700' },
-                    { label: 'סה״כ מובטח', value: totals.committed, tone: 'text-[#9B7A2F]' },
-                  ].map(x => (
-                    <div key={x.label} className="bg-white rounded-xl border border-[#EDE6D6] px-3 py-2">
-                      <div className="text-[10px] text-gray-400 font-bold truncate">{x.label}</div>
+                  {([
+                    { key: 'ask' as const, value: totals.ask, tone: 'text-[#0D1B2A]' },
+                    { key: 'pledged' as const, value: totals.pledged, tone: 'text-indigo-700' },
+                    { key: 'raised' as const, value: totals.raised, tone: 'text-emerald-700' },
+                    { key: 'hkOutstanding' as const, value: totals.hkOutstanding, tone: 'text-[#9B7A2F]' },
+                    { key: 'pledgeOutstanding' as const, value: totals.pledgeOutstanding, tone: 'text-amber-700' },
+                    { key: 'committed' as const, value: totals.committed, tone: 'text-[#9B7A2F]' },
+                  ]).map(x => (
+                    /* כל מספר נפתח לרשימת מה שהרכיב אותו. מספר שאי אפשר
+                       לפתוח הוא בקשה לסמוך, וברגע שהוא לא מסתדר עם מה
+                       שזכרת — מפסיקים להסתכל עליו. */
+                    <button
+                      key={x.key}
+                      onClick={() => setBreakdown(x.key)}
+                      className="bg-white rounded-xl border border-[#EDE6D6] px-3 py-2 text-right hover:border-[#C9A84C] transition-colors"
+                    >
+                      <div className="text-[10px] text-gray-400 font-bold truncate">{BREAKDOWN_LABEL[x.key]}</div>
                       <div className={`font-['Frank_Ruhl_Libre'] text-lg font-bold ${x.tone}`}>₪{x.value.toLocaleString()}</div>
-                    </div>
+                    </button>
                   ))}
                 </div>
               )}
@@ -707,6 +717,14 @@ function ProjectDetail({ project, donations, hk, donorNames, crm, pane, setPane,
           <button onClick={onDelete} className="px-4 py-2.5 rounded-xl bg-red-50 text-red-600 text-sm font-bold">מחק</button>
         </div>
 
+        {breakdown && (
+          <BreakdownModal
+            metric={breakdown}
+            rows={rows}
+            onClose={() => setBreakdown(null)}
+          />
+        )}
+
         {hkForRow !== null && sols[hkForRow] && (
           <AddHkDialog
             presetName={sols[hkForRow].name}
@@ -717,6 +735,78 @@ function ProjectDetail({ project, donations, hk, donorNames, crm, pane, setPane,
         )}
       </>
     </FullScreenView>
+  );
+}
+
+/**
+ * הפירוט שמאחורי מספר אחד בראש הרשימה.
+ *
+ * מסודר לפי סכום יורד ולא לפי שם: השאלה הראשונה כשפותחים מספר היא "ממי
+ * מגיע רובו", ולא "מי כאן לפי אלף-בית".
+ */
+function BreakdownModal({ metric, rows, onClose }: {
+  metric: BreakdownMetric;
+  rows: SolicitationRow[];
+  onClose: () => void;
+}) {
+  const items = React.useMemo(() => breakdownFor(rows, metric), [rows, metric]);
+  const total = items.reduce((t, x) => t + x.amount, 0);
+  const [q, setQ] = React.useState('');
+  const shown = q.trim()
+    ? items.filter(x => x.name.toLowerCase().includes(q.trim().toLowerCase()))
+    : items;
+
+  const icon: Record<string, string> = { donation: '💰', hk: '🔄', pledge: '🤝', ask: '🎯' };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 z-[210] flex items-end md:items-center justify-center p-0 md:p-4 backdrop-blur-sm"
+         onClick={e => e.target === e.currentTarget && onClose()} dir="rtl">
+      <div className="bg-[#FAF6EE] rounded-t-3xl md:rounded-3xl p-5 pb-8 w-full max-w-[520px] max-h-[88vh] flex flex-col">
+        <div className="flex justify-between items-start gap-2 mb-1 shrink-0">
+          <div className="min-w-0">
+            <h2 className="font-['Frank_Ruhl_Libre'] text-xl font-bold text-[#0D1B2A]">{BREAKDOWN_LABEL[metric]}</h2>
+            <p className="text-[11px] text-gray-400">{BREAKDOWN_HINT[metric]}</p>
+          </div>
+          <button onClick={onClose} className="bg-gray-200/50 p-2 rounded-full text-gray-500 shrink-0"><X size={16} /></button>
+        </div>
+
+        <div className="flex items-baseline justify-between gap-2 bg-white rounded-xl border border-[#EDE6D6] px-3 py-2 my-3 shrink-0">
+          <span className="text-xs text-gray-500">{items.length} רשומות</span>
+          <span className="font-['Frank_Ruhl_Libre'] text-xl font-bold text-[#9B7A2F]">₪{total.toLocaleString()}</span>
+        </div>
+
+        {items.length > 8 && (
+          <div className="relative mb-2 shrink-0">
+            <Search size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input value={q} onChange={e => setQ(e.target.value)} placeholder="חיפוש שם..."
+                   className="w-full bg-white border border-[#EDE6D6] rounded-lg py-1.5 pr-8 pl-3 text-sm outline-none focus:border-[#C9A84C]" />
+          </div>
+        )}
+
+        {shown.length === 0 ? (
+          <p className="text-sm text-gray-400 text-center py-8">אין כאן כלום עדיין.</p>
+        ) : (
+          <div className="flex-1 overflow-y-auto space-y-1.5">
+            {shown.map((x, i) => (
+              <div key={x.name + i} className="bg-white rounded-xl border border-[#EDE6D6] px-3 py-2 flex items-center gap-2.5">
+                <span className="text-base shrink-0">{icon[x.kind]}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-bold text-[#0D1B2A] truncate">{x.name}</div>
+                  <div className="text-[11px] text-gray-400 truncate">{x.detail}</div>
+                </div>
+                <span className="font-['Frank_Ruhl_Libre'] font-bold text-[#0D1B2A] shrink-0">
+                  ₪{x.amount.toLocaleString()}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <button onClick={onClose} className="w-full bg-[#0D1B2A] text-[#E8C97A] py-2.5 rounded-xl font-bold text-sm mt-3 shrink-0">
+          סגור
+        </button>
+      </div>
+    </div>
   );
 }
 

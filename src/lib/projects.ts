@@ -634,3 +634,101 @@ export function sumSolicitationRows(rows: SolicitationRow[]): SolicitationTotals
   return { ask, pledged, raised, hkOutstanding, pledgeOutstanding, outstanding,
            committed: raised + outstanding, counts };
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  פירוט מאחורי כל מספר
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * מספר מסכם בלי דרך לפתוח אותו הוא בקשה לסמוך. ברגע שהוא לא מסתדר עם מה
+ * שאתה זוכר, אין מה לעשות חוץ מלנחש — ואז מפסיקים להסתכל עליו.
+ *
+ * כאן כל אחד מהמספרים בראש הרשימה נפתח לרשימת השורות שהרכיבו אותו, עם
+ * הסכום והמקור של כל אחת.
+ */
+export type BreakdownMetric = 'ask' | 'pledged' | 'raised' | 'hkOutstanding' | 'pledgeOutstanding' | 'committed';
+
+export const BREAKDOWN_LABEL: Record<BreakdownMetric, string> = {
+  ask:               'מבקשים',
+  pledged:           'התחייבויות שנאספו',
+  raised:            'נכנס בפועל',
+  hkOutstanding:     'צפוי מהוראות קבע',
+  pledgeOutstanding: 'הבטחות בעל פה',
+  committed:         'סה״כ מובטח',
+};
+
+export const BREAKDOWN_HINT: Record<BreakdownMetric, string> = {
+  ask:               'הסכום שהחלטת לבקש מכל אחד ברשימה',
+  pledged:           'מי שהתחייב — בהבטחה בעל פה או בהוראת קבע',
+  raised:            'כסף שכבר נכנס בפועל, תשלום-תשלום',
+  hkOutstanding:     'חיובים עתידיים של הוראות קבע שכבר נפתחו',
+  pledgeOutstanding: 'מה שהובטח בעל פה וטרם נכנס',
+  committed:         'נכנס בפועל ועוד כל מה שצפוי',
+};
+
+export interface BreakdownItem {
+  name: string;
+  amount: number;
+  /** מאיפה הסכום הזה — תאריך ואפיק, או פירוט ההוראה */
+  detail: string;
+  kind: 'donation' | 'hk' | 'pledge' | 'ask';
+}
+
+export function breakdownFor(rows: SolicitationRow[], metric: BreakdownMetric): BreakdownItem[] {
+  const out: BreakdownItem[] = [];
+
+  (rows || []).forEach(r => {
+    const name = r.sol.name;
+
+    if (metric === 'ask') {
+      if (r.ask > 0) out.push({ name, amount: r.ask, detail: SOLICITATION_LABEL[r.status], kind: 'ask' });
+      return;
+    }
+
+    if (metric === 'pledged') {
+      const hkTotal = r.commitments.reduce((t, c) => t + c.total, 0);
+      if (hkTotal >= r.pledge && hkTotal > 0) {
+        r.commitments.forEach(c => out.push({
+          name, amount: c.total, kind: 'hk',
+          detail: `הוראת קבע · ₪${c.monthly.toLocaleString()} × ${c.unlimited ? `${c.payments} (ללא הגבלה)` : c.payments}`,
+        }));
+      } else if (r.pledge > 0) {
+        out.push({ name, amount: r.pledge, detail: 'הבטחה בעל פה', kind: 'pledge' });
+      }
+      return;
+    }
+
+    if (metric === 'raised' || metric === 'committed') {
+      r.donations.forEach(d => out.push({
+        name, amount: d.amount, kind: 'donation',
+        detail: [d.date, d.method, d.auto ? '' : 'צורף ידנית'].filter(Boolean).join(' · '),
+      }));
+      r.commitments.forEach(c => {
+        if (c.collected > 0) out.push({
+          name, amount: c.collected, kind: 'hk',
+          detail: `הוראת קבע · ${c.paid} חיובים שנגבו`,
+        });
+      });
+    }
+
+    if (metric === 'hkOutstanding' || metric === 'committed') {
+      r.commitments.forEach(c => {
+        if (c.outstanding > 0) out.push({
+          name, amount: c.outstanding, kind: 'hk',
+          detail: `הוראת קבע · נותרו ${c.payments - c.paid} חיובים` + (c.nextCharge ? ` · הבא ${c.nextCharge}` : ''),
+        });
+      });
+    }
+
+    if (metric === 'pledgeOutstanding' || metric === 'committed') {
+      if (r.pledgeRemaining > 0) out.push({
+        name, amount: r.pledgeRemaining, kind: 'pledge',
+        detail: r.pledge > r.pledgeRemaining
+          ? `הבטיח ₪${r.pledge.toLocaleString()}, נותר לגבות`
+          : 'הבטחה בעל פה',
+      });
+    }
+  });
+
+  return out.sort((a, b) => b.amount - a.amount);
+}
