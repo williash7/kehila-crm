@@ -23,6 +23,14 @@ export interface AppSettings {
   // נשמר מקומית בלבד, כמו כל שאר ההגדרות. מכשיר אחר יכול להיראות אחרת —
   // וזה מכוון: מסך גדול בבית ומסך קטן בכיס אינם צריכים אותה צפיפות.
   theme: ThemeName;
+  /** גימור: פינות, עובי גבול ועומק צל — נעים יחד */
+  finish: FinishName;
+  /** סרגל הניווט: כהה, בהיר, או בצבע ההדגשה */
+  nav: NavName;
+  /** עובי הקו של האייקונים, וכמה בולט הפריט הפעיל */
+  icons: IconsName;
+  /** שילוב הגופנים */
+  font: FontName;
   uiSize: 'small' | 'normal' | 'large' | 'xlarge';
   density: 'compact' | 'normal' | 'roomy';
   graphics: boolean;
@@ -30,7 +38,14 @@ export interface AppSettings {
   dashboardCards: string[];
 }
 
-export type ThemeName = 'classic' | 'clean' | 'warm' | 'olive' | 'dark' | 'contrast';
+export type ThemeName =
+  | 'classic' | 'clean' | 'warm' | 'olive' | 'dark' | 'contrast'
+  | 'bordeaux' | 'sky' | 'mono' | 'earth' | 'midnight' | 'jerusalem';
+
+export type FinishName = 'soft' | 'sharp' | 'defined' | 'float';
+export type NavName    = 'dark' | 'light' | 'color';
+export type IconsName  = 'thin' | 'normal' | 'bold';
+export type FontName   = 'classic' | 'modern' | 'native';
 
 export const THEMES: { id: ThemeName; label: string; hint: string; swatch: string[] }[] = [
   { id: 'classic',  label: 'כחול־זהב',      hint: 'הערכה המקורית',            swatch: ['#0D1B2A', '#C9A84C', '#FAF6EE'] },
@@ -39,6 +54,42 @@ export const THEMES: { id: ThemeName; label: string; hint: string; swatch: strin
   { id: 'olive',    label: 'ירוק זית',       hint: 'רגוע, פחות רשמי',          swatch: ['#1F2D24', '#6B8E4E', '#F6F8F3'] },
   { id: 'dark',     label: 'כהה',            hint: 'לעבודה בערב',              swatch: ['#0B1220', '#E0B94F', '#1B2434'] },
   { id: 'contrast', label: 'ניגודיות גבוהה', hint: 'לקריאה קלה יותר',          swatch: ['#000000', '#B45309', '#FFFFFF'] },
+  { id: 'bordeaux', label: 'בורדו־זהב',    hint: 'עמוק וחגיגי',              swatch: ['#3D0F1B', '#C0A062', '#FBF5F2'] },
+  { id: 'sky',      label: 'תכלת־כסף',     hint: 'קריר, בלי חום',            swatch: ['#16323F', '#3E92B8', '#F4F9FB'] },
+  { id: 'mono',     label: 'שחור־זהב',     hint: 'מינימלי ומדויק',           swatch: ['#111111', '#B99537', '#FAFAFA'] },
+  { id: 'earth',    label: 'אדמה',          hint: 'חול וחמרה',                swatch: ['#33322A', '#A8763E', '#FAF7F0'] },
+  { id: 'midnight', label: 'לילה כחול',     hint: 'כהה, אך לא שחור',          swatch: ['#0B1526', '#7FA6E8', '#1B2740'] },
+  { id: 'jerusalem',label: 'ירושלים',       hint: 'אבן ירושלמית וזהב',        swatch: ['#3D3427', '#B8873B', '#FBF7EF'] },
+];
+
+// ── הצירים הנוספים ────────────────────────────────────────────────────────
+//
+// כל ציר עונה על שאלה אחרת, וכולם מצטרפים זה לזה: ערכה כהה עם גימור חד
+// ואייקונים דקים היא בחירה חוקית, ואיש לא צריך להכין אותה מראש.
+
+export const FINISHES: { id: FinishName; label: string; hint: string }[] = [
+  { id: 'float',   label: 'מרחף',  hint: 'בלי גבול, עם עומק' },
+  { id: 'soft',    label: 'רך',    hint: 'פינות גדולות, גבול עדין' },
+  { id: 'defined', label: 'מוגדר', hint: 'גבול עבה, בלי צל' },
+  { id: 'sharp',   label: 'חד',    hint: 'פינות ישרות, טבלאי' },
+];
+
+export const NAVS: { id: NavName; label: string; hint: string }[] = [
+  { id: 'dark',  label: 'כהה',    hint: 'הסרגל מנוגד למסך' },
+  { id: 'light', label: 'בהיר',   hint: 'הסרגל ממשיך את המסך' },
+  { id: 'color', label: 'צבעוני', hint: 'הסרגל בצבע ההדגשה' },
+];
+
+export const ICON_STYLES: { id: IconsName; label: string; hint: string }[] = [
+  { id: 'thin',   label: 'דק',   hint: 'קווים עדינים, סימון פס' },
+  { id: 'normal', label: 'רגיל', hint: 'סימון ברקע מלא' },
+  { id: 'bold',   label: 'עבה',  hint: 'ברור במסך קטן' },
+];
+
+export const FONTS: { id: FontName; label: string; hint: string }[] = [
+  { id: 'classic', label: 'קלאסי',  hint: 'כותרות מסורתיות' },
+  { id: 'modern',  label: 'מודרני', hint: 'גופן אחד, נקי' },
+  { id: 'native',  label: 'ניטרלי', hint: 'גופן המכשיר' },
 ];
 
 export const UI_SIZES: { id: AppSettings['uiSize']; label: string }[] = [
@@ -79,6 +130,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
   defaultTaskView: 'grouped',
   holidayVisibility: DEFAULT_VISIBILITY,
   theme: 'classic',
+  finish: 'float',
+  nav: 'dark',
+  icons: 'thin',
+  font: 'classic',
   uiSize: 'normal',
   density: 'normal',
   graphics: true,

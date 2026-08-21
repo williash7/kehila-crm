@@ -23,7 +23,9 @@
 }
 
 body {
-  font-family: 'Heebo', sans-serif;
+  /* ציר הטיפוגרפיה דורס את זה ב-theme.css. הערך כאן הוא הנפילה
+     האחורית, למקרה שאין data-font על ה-html. */
+  font-family: var(--font-body, 'Heebo', sans-serif);
   background: var(--cream);
   color: var(--text-main);
   max-width: 430px;

@@ -1,18 +1,70 @@
 import React, { useState } from 'react';
-import { Check, ChevronUp, ChevronDown, Eye, EyeOff, RotateCcw } from 'lucide-react';
+import { Check, ChevronUp, ChevronDown, Eye, EyeOff, RotateCcw, Home, Users, HandCoins } from 'lucide-react';
 import { useAppStore } from '../store/AppContext';
-import { THEMES, UI_SIZES, DENSITIES, DEFAULT_SETTINGS } from '../lib/settings';
+import {
+  THEMES, FINISHES, NAVS, ICON_STYLES, FONTS,
+  UI_SIZES, DENSITIES, DEFAULT_SETTINGS,
+} from '../lib/settings';
 import { DASH_CARDS, DashCardId, resolveCards, hiddenCards, moveCard, DEFAULT_ORDER } from '../lib/dashboardCards';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // מראה ותצוגה.
 //
-// שלוש הגדרות שאין להן תשובה נכונה אחת: צבע, גודל וצפיפות. הן תלויות
-// במסך, בתאורה, בעיניים ובהעדפה — ולכן הן שייכות למשתמש ולא למעצב.
+// שבע הגדרות שאין להן תשובה נכונה אחת: צבע, גימור, ניווט, אייקונים, גופן,
+// גודל וצפיפות. הן תלויות במסך, בתאורה, בעיניים ובהעדפה — ולכן הן שייכות
+// למשתמש ולא למעצב.
 //
 // כולן נשמרות **מקומית בלבד**. זה מכוון: מסך גדול בבית ומסך קטן בכיס אינם
 // צריכים אותה צפיפות, ואילו סנכרון היה כופה על שניהם את אותה בחירה.
 // ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * תצוגה מקדימה חיה.
+ *
+ * הדוגמית הזו אינה איור: היא בנויה מאותן מחלקות שמרכיבות את המסכים
+ * האמיתיים — bg-white, rounded-2xl, border, shadow-sm — ולכן כל ציר שמשנה
+ * אותן משנה גם אותה. שם של סגנון לא אומר כלום; ההבדל בין "מרחף" ל"מוגדר"
+ * הוא דבר שצריך לראות.
+ */
+function LivePreview() {
+  return (
+    <div className="rounded-2xl overflow-hidden border border-[#EDE6D6]">
+      <div className="flex" style={{ background: 'var(--c-cream)' }}>
+        {/* פס ניווט מוקטן */}
+        <div className="w-20 shrink-0 nav-bg nav-border border-l p-1.5 space-y-1">
+          {[
+            { Icon: Home, label: 'דשבורד', on: true },
+            { Icon: Users, label: 'קשר', on: false },
+            { Icon: HandCoins, label: 'תרומות', on: false },
+          ].map(({ Icon, label, on }) => (
+            <div
+              key={label}
+              className={`flex items-center gap-1.5 px-1.5 py-1.5 rounded-lg text-[9px] font-medium ${
+                on ? 'nav-active' : 'nav-text'
+              }`}
+            >
+              <Icon size={12} /> {label}
+            </div>
+          ))}
+        </div>
+
+        {/* תוכן */}
+        <div className="flex-1 min-w-0 p-2.5 space-y-2">
+          <div className="bg-white rounded-2xl border border-[#EDE6D6] shadow-sm p-2.5">
+            <div className="font-['Frank_Ruhl_Libre'] text-sm font-bold text-[#0D1B2A]">תרומות החודש</div>
+            <div className="font-['Frank_Ruhl_Libre'] text-xl font-black text-[#C9A84C] leading-tight">₪4,280</div>
+            <div className="text-[9px] text-gray-400">מתוכן ₪2,400 בהוראות קבע</div>
+          </div>
+          <div className="flex gap-1.5">
+            <div className="bg-[#0D1B2A] text-[#E8C97A] text-[10px] font-bold px-2.5 py-1.5 rounded-xl">כפתור</div>
+            <div className="bg-white border border-[#EDE6D6] text-[#0D1B2A] text-[10px] font-bold px-2.5 py-1.5 rounded-xl shadow-sm">משני</div>
+            <div className="bg-[#C9A84C]/15 text-[#9B7A2F] text-[10px] font-bold px-2.5 py-1.5 rounded-full">תווית</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function AppearanceCard() {
   const { settings, updateSettings } = useAppStore();
@@ -23,6 +75,35 @@ export function AppearanceCard() {
   const metaOf = (id: DashCardId) => DASH_CARDS.find(c => c.id === id)!;
 
   const setCards = (next: DashCardId[]) => updateSettings({ dashboardCards: next });
+
+  /** בורר ציר אחד: כמה אפשרויות שוות בשורה, עם רמז מתחת לכל אחת. */
+  const Axis = <T extends string>({ label, options, value, onPick, cols = 3 }: {
+    label: string;
+    options: { id: T; label: string; hint?: string }[];
+    value: T;
+    onPick: (id: T) => void;
+    cols?: number;
+  }) => (
+    <div>
+      <label className="block text-[11px] font-bold text-gray-600 mb-1.5">{label}</label>
+      <div className={`grid gap-1.5 ${cols === 4 ? 'grid-cols-4' : cols === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
+        {options.map(o => (
+          <button
+            key={o.id}
+            onClick={() => onPick(o.id)}
+            className={`py-2 px-1 rounded-lg text-xs font-bold border transition-colors ${
+              value === o.id
+                ? 'bg-[#0D1B2A] text-[#C9A84C] border-[#0D1B2A]'
+                : 'bg-white text-gray-500 border-[#EDE6D6] hover:border-[#C9A84C]'
+            }`}
+          >
+            {o.label}
+            {o.hint && <span className="block text-[9px] font-normal opacity-70 leading-tight mt-0.5">{o.hint}</span>}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
 
   return (
     <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6] space-y-3">
@@ -45,6 +126,8 @@ export function AppearanceCard() {
 
       {tab === 'look' ? (
         <>
+          <LivePreview />
+
           {/* ── ערכת צבעים ── */}
           <div>
             <label className="block text-[11px] font-bold text-gray-600 mb-1.5">ערכת צבעים</label>
@@ -76,47 +159,49 @@ export function AppearanceCard() {
             </div>
           </div>
 
-          {/* ── גודל ── */}
-          <div>
-            <label className="block text-[11px] font-bold text-gray-600 mb-1.5">גודל התצוגה</label>
-            <div className="grid grid-cols-4 gap-1.5">
-              {UI_SIZES.map(x => (
-                <button
-                  key={x.id}
-                  onClick={() => updateSettings({ uiSize: x.id })}
-                  className={`py-2 rounded-lg text-xs font-bold border transition-colors ${
-                    (settings.uiSize || 'normal') === x.id
-                      ? 'bg-[#0D1B2A] text-[#C9A84C] border-[#0D1B2A]'
-                      : 'bg-white text-gray-500 border-[#EDE6D6]'
-                  }`}
-                >
-                  {x.label}
-                </button>
-              ))}
-            </div>
-            <p className="text-[10px] text-gray-400 mt-1">משנה גם טקסט וגם מרווחים, כדי שהפרופורציות יישמרו.</p>
-          </div>
+          <Axis
+            label="גימור — פינות, גבולות וצללים"
+            options={FINISHES}
+            value={settings.finish || 'float'}
+            onPick={finish => updateSettings({ finish })}
+            cols={4}
+          />
 
-          {/* ── צפיפות ── */}
-          <div>
-            <label className="block text-[11px] font-bold text-gray-600 mb-1.5">צפיפות</label>
-            <div className="grid grid-cols-3 gap-1.5">
-              {DENSITIES.map(x => (
-                <button
-                  key={x.id}
-                  onClick={() => updateSettings({ density: x.id })}
-                  className={`py-2 rounded-lg text-xs font-bold border transition-colors ${
-                    (settings.density || 'normal') === x.id
-                      ? 'bg-[#0D1B2A] text-[#C9A84C] border-[#0D1B2A]'
-                      : 'bg-white text-gray-500 border-[#EDE6D6]'
-                  }`}
-                >
-                  {x.label}
-                  {x.hint && <span className="block text-[9px] font-normal opacity-70">{x.hint}</span>}
-                </button>
-              ))}
-            </div>
-          </div>
+          <Axis
+            label="סרגל הניווט"
+            options={NAVS}
+            value={settings.nav || 'dark'}
+            onPick={nav => updateSettings({ nav })}
+          />
+
+          <Axis
+            label="אייקונים וסימון הפריט הפעיל"
+            options={ICON_STYLES}
+            value={settings.icons || 'thin'}
+            onPick={icons => updateSettings({ icons })}
+          />
+
+          <Axis
+            label="גופנים"
+            options={FONTS}
+            value={settings.font || 'classic'}
+            onPick={font => updateSettings({ font })}
+          />
+
+          <Axis
+            label="גודל התצוגה"
+            options={UI_SIZES}
+            value={settings.uiSize || 'normal'}
+            onPick={uiSize => updateSettings({ uiSize })}
+            cols={4}
+          />
+
+          <Axis
+            label="צפיפות"
+            options={DENSITIES}
+            value={settings.density || 'normal'}
+            onPick={density => updateSettings({ density })}
+          />
 
           <label className="flex items-center justify-between gap-3 py-1 cursor-pointer">
             <span className="min-w-0">
@@ -134,13 +219,17 @@ export function AppearanceCard() {
           <button
             onClick={() => updateSettings({
               theme: DEFAULT_SETTINGS.theme,
+              finish: DEFAULT_SETTINGS.finish,
+              nav: DEFAULT_SETTINGS.nav,
+              icons: DEFAULT_SETTINGS.icons,
+              font: DEFAULT_SETTINGS.font,
               uiSize: DEFAULT_SETTINGS.uiSize,
               density: DEFAULT_SETTINGS.density,
               graphics: DEFAULT_SETTINGS.graphics,
             })}
             className="w-full flex items-center justify-center gap-1.5 border border-[#EDE6D6] text-gray-500 text-xs font-bold py-2 rounded-xl hover:bg-gray-50"
           >
-            <RotateCcw size={13} /> חזרה לעיצוב המקורי
+            <RotateCcw size={13} /> חזרה לברירת המחדל
           </button>
         </>
       ) : (

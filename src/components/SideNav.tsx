@@ -35,28 +35,28 @@ export function SideNav({ currentTab, setTab, onDonationClick, addLabel }: SideN
   ];
 
   return (
-    <aside className="hidden md:block w-60 shrink-0 bg-[#0D1B2A] border-l border-white/10">
+    <aside className="hidden md:block w-60 shrink-0 nav-bg nav-border border-l">
       <div className="sticky top-0 h-screen flex flex-col overflow-y-auto">
       {/* Branding */}
-      <div className="p-5 border-b border-white/10">
+      <div className="p-5 border-b nav-border">
         <div className="flex items-center gap-3">
           <div className="w-11 h-11 bg-gradient-to-br from-[#C9A84C] to-[#9B7A2F] rounded-xl flex items-center justify-center font-['Frank_Ruhl_Libre'] text-2xl text-white font-black shrink-0">
             {orgInitial}
           </div>
           <div className="min-w-0">
-            <div className="font-['Frank_Ruhl_Libre'] text-sm font-bold text-[#C9A84C] leading-tight">{orgTitle}</div>
-            <div className="text-[10px] text-white/40 mt-0.5 truncate">{hebrewDate}</div>
+            <div className="font-['Frank_Ruhl_Libre'] text-sm font-bold nav-text-strong leading-tight">{orgTitle}</div>
+            <div className="text-[10px] nav-text mt-0.5 truncate opacity-80">{hebrewDate}</div>
           </div>
         </div>
 
         {/* Quick summary */}
         {effectiveSummary && (
-          <div className="mt-4 bg-white/5 rounded-xl p-3 border border-white/10">
-            <div className="text-[10px] text-white/40 uppercase tracking-wide mb-1">סה"כ תרומות</div>
-            <div className="font-['Frank_Ruhl_Libre'] text-xl font-bold text-[#E8C97A]">
+          <div className="mt-4 nav-surface nav-border rounded-xl p-3 border">
+            <div className="text-[10px] nav-text uppercase tracking-wide mb-1 opacity-80">סה"כ תרומות</div>
+            <div className="font-['Frank_Ruhl_Libre'] text-xl font-bold nav-text-strong">
               ₪{effectiveSummary.total?.toLocaleString() || 0}
             </div>
-            <div className="text-[10px] text-white/30 mt-0.5">החודש: ₪{effectiveSummary.thisMonthTotal?.toLocaleString() || 0}</div>
+            <div className="text-[10px] nav-text opacity-70 mt-0.5">החודש: ₪{effectiveSummary.thisMonthTotal?.toLocaleString() || 0}</div>
           </div>
         )}
       </div>
@@ -72,14 +72,14 @@ export function SideNav({ currentTab, setTab, onDonationClick, addLabel }: SideN
               onClick={() => setTab(item.id)}
               className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 ${
                 isActive
-                  ? 'bg-[#C9A84C]/15 text-[#C9A84C] border border-[#C9A84C]/20'
-                  : 'text-white/50 hover:text-white/80 hover:bg-white/5 border border-transparent'
+                  ? 'nav-active border nav-border'
+                  : 'nav-text nav-item border border-transparent'
               }`}
             >
               <Icon size={17} />
               {item.label}
               {item.id === 'home' && isActive && (
-                <span className="mr-auto w-1.5 h-1.5 rounded-full bg-[#C9A84C]" />
+                <span className="mr-auto w-1.5 h-1.5 rounded-full nav-surface" />
               )}
             </button>
           );
@@ -87,7 +87,7 @@ export function SideNav({ currentTab, setTab, onDonationClick, addLabel }: SideN
       </nav>
 
       {/* Bottom actions */}
-      <div className="p-4 border-t border-white/10 space-y-2">
+      <div className="p-4 border-t nav-border space-y-2">
         {addLabel && (
           <button
             onClick={onDonationClick}
@@ -99,7 +99,7 @@ export function SideNav({ currentTab, setTab, onDonationClick, addLabel }: SideN
         )}
         <button
           onClick={() => refresh()}
-          className="w-full flex items-center justify-center gap-2 text-white/30 hover:text-white/55 py-1.5 rounded-xl text-xs transition-colors"
+          className="w-full flex items-center justify-center gap-2 nav-text opacity-70 hover:opacity-100 py-1.5 rounded-xl text-xs transition-opacity"
         >
           <RefreshCw size={12} />
           רענן נתונים

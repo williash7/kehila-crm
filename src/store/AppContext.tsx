@@ -779,11 +779,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     el.setAttribute('data-size', settings.uiSize || 'normal');
     el.setAttribute('data-density', settings.density || 'normal');
     el.setAttribute('data-graphics', settings.graphics === false ? 'off' : 'on');
+    el.setAttribute('data-finish', settings.finish || 'float');
+    el.setAttribute('data-nav', settings.nav || 'dark');
+    el.setAttribute('data-icons', settings.icons || 'thin');
+    el.setAttribute('data-font', settings.font || 'classic');
     // צבע סרגל הדפדפן בנייד — אחרת הוא נשאר זהב על ערכה כהה
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) {
-      const navy = getComputedStyle(el).getPropertyValue('--c-navy').trim();
-      if (navy) meta.setAttribute('content', navy);
+      // סרגל הדפדפן צמוד לסרגל הניווט של האפליקציה, ולכן הוא לוקח את
+      // צבע הניווט — לא את צבע הבסיס. בסרגל בהיר ההבדל בולט מאוד.
+      const navBg = getComputedStyle(el).getPropertyValue('--c-nav-bg').trim();
+      if (navBg) meta.setAttribute('content', navBg);
     }
   }, [settings.theme, settings.uiSize, settings.density, settings.graphics]);
 

@@ -1,32 +1,59 @@
 /* ═══════════════════════════════════════════════════════════════════════════
-   ערכות נושא, צפיפות וגודל תצוגה
+   מערכת העיצוב: צבע, גימור, אייקונים, טיפוגרפיה וניווט
    ═══════════════════════════════════════════════════════════════════════════
 
    ── למה הקובץ הזה נראה כך ─────────────────────────────────────────────────
 
    הצבעים באפליקציה כתובים בתוך מחלקות Tailwind ישירות: bg-[#0D1B2A],
-   text-[#C9A84C], border-[#EDE6D6]. יש להם יותר מ-1,600 מופעים בשלושים
-   רכיבים. החלפת ערכת צבעים בדרך "הנכונה" הייתה דורשת לגעת בכל אחד מהם —
-   שינוי ענק, עם סיכון אמיתי לשבור מסכים שעובדים היום.
+   text-[#C9A84C], border-[#EDE6D6]. יש להם יותר מ-1,600 מופעים בתשעים
+   רכיבים. החלפת עיצוב בדרך "הנכונה" הייתה דורשת לגעת בכל אחד מהם — שינוי
+   ענק, עם סיכון אמיתי לשבור מסכים שעובדים היום.
 
-   במקום זה, כל אחת משבע המחלקות האלה **ממופה כאן פעם אחת** למשתנה CSS.
-   ערכת ברירת המחדל נותנת למשתנים בדיוק את הערכים הקיימים — כלומר מי שלא
-   נוגע בכלום רואה מסך זהה לחלוטין לקודם. ערכה אחרת משנה את המשתנים, וכל
-   האפליקציה עוברת איתה.
+   במקום זה, כל מחלקה כזו ממופה למשתנה CSS. המיפוי עצמו יושב ב-
+   theme-map.css, שנוצר אוטומטית מסריקת הקוד (scripts/gen-theme-map.mjs),
+   כך שגם הווריאנטים — focus:, hover:, ושקיפות כמו /10 — מקבלים כלל משלהם.
 
-   הבחירה הזו מכוונת: היא ניתנת לביטול בשורה אחת, והיא לא נוגעת באף רכיב.
+   ── חמישה צירים בלתי תלויים ───────────────────────────────────────────────
+
+   data-theme    צבע          12 ערכות
+   data-finish   גימור        פינות, עובי גבול, עומק צל
+   data-nav      ניווט        כהה / בהיר / צבעוני
+   data-icons    אייקונים     עובי הקו וסימון הפריט הפעיל
+   data-font     טיפוגרפיה    שילוב הגופנים
+
+   הם נבחרים בנפרד ומצטרפים זה לזה. ערכה כהה עם גימור חד ואייקונים דקים
+   היא שילוב חוקי לחלוטין, ואיש לא צריך לתכנת אותו מראש.
    ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── ציר 1: צבע ────────────────────────────────────────────────────────────
+
+   כל ערכה מגדירה את **מלוא** הטוקנים, ולא רק שמונה צבעי בסיס.
+
+   הגרסה הקודמת הגדירה שמונה, וזו הייתה טעות שנראתה במסך: סרגל הצד נבנה
+   מ-bg-[#0D1B2A] עם text-white/50 ו-bg-white/5 מעליו. הבסיס אמנם התחלף
+   עם הערכה, אבל שכבות הלבן-השקוף נשארו זהות בדיוק — ולכן החלפת ערכה
+   נראתה כמו "עוד שכבה על אותו צבע" במקום כמו צבע אחר.
+
+   לכן יש כאן טוקנים נפרדים לניווט, לטקסט ולמשטחים. */
 
 :root,
 [data-theme='classic'] {
-  --c-navy:        #0D1B2A;   /* רקע כהה, כותרות */
+  --c-navy:        #0D1B2A;
   --c-navy-mid:    #1A2E45;
-  --c-gold:        #C9A84C;   /* צבע ההדגשה */
+  --c-gold:        #C9A84C;
   --c-gold-light:  #E8C97A;
   --c-gold-dark:   #9B7A2F;
-  --c-cream:       #FAF6EE;   /* רקע האפליקציה */
+  --c-cream:       #FAF6EE;
   --c-border:      #EDE6D6;
   --c-card:        #FFFFFF;
+  --c-text:        #0D1B2A;
+  --c-text-dim:    #6B7280;
+  --c-nav-bg:          #0D1B2A;
+  --c-nav-surface:     rgba(255,255,255,0.05);
+  --c-nav-border:      rgba(255,255,255,0.10);
+  --c-nav-text:        rgba(255,255,255,0.50);
+  --c-nav-text-strong: #C9A84C;
+  --c-nav-active-bg:   rgba(201,168,76,0.15);
   --ui-scale: 1;
 }
 
@@ -40,9 +67,17 @@
   --c-cream:       #F8FAFC;
   --c-border:      #E2E8F0;
   --c-card:        #FFFFFF;
+  --c-text:        #1E293B;
+  --c-text-dim:    #64748B;
+  --c-nav-bg:          #1E293B;
+  --c-nav-surface:     rgba(255,255,255,0.06);
+  --c-nav-border:      rgba(148,163,184,0.25);
+  --c-nav-text:        rgba(226,232,240,0.62);
+  --c-nav-text-strong: #93C5FD;
+  --c-nav-active-bg:   rgba(37,99,235,0.28);
 }
 
-/* חם — קרם עמוק יותר וטרקוטה. קרוב לנוכחי באופי, שונה במזג. */
+/* חם — קרם עמוק וטרקוטה. קרוב למקורי באופי, שונה במזג. */
 [data-theme='warm'] {
   --c-navy:        #44281D;
   --c-navy-mid:    #5C3A2A;
@@ -52,6 +87,14 @@
   --c-cream:       #FDF6EF;
   --c-border:      #EDDCCB;
   --c-card:        #FFFFFF;
+  --c-text:        #44281D;
+  --c-text-dim:    #8A6B5A;
+  --c-nav-bg:          #3A2118;
+  --c-nav-surface:     rgba(255,255,255,0.06);
+  --c-nav-border:      rgba(232,180,140,0.20);
+  --c-nav-text:        rgba(253,246,239,0.55);
+  --c-nav-text-strong: #E8B48C;
+  --c-nav-active-bg:   rgba(194,112,61,0.28);
 }
 
 /* ירוק זית — רגוע, פחות "בנקאי". */
@@ -64,6 +107,14 @@
   --c-cream:       #F6F8F3;
   --c-border:      #E0E7D8;
   --c-card:        #FFFFFF;
+  --c-text:        #1F2D24;
+  --c-text-dim:    #5E7060;
+  --c-nav-bg:          #1B2820;
+  --c-nav-surface:     rgba(255,255,255,0.05);
+  --c-nav-border:      rgba(183,207,155,0.18);
+  --c-nav-text:        rgba(246,248,243,0.55);
+  --c-nav-text-strong: #B7CF9B;
+  --c-nav-active-bg:   rgba(107,142,78,0.30);
 }
 
 /* כהה — לעבודה בערב. הכרטיסים כהים, הטקסט בהיר. */
@@ -76,9 +127,17 @@
   --c-cream:       #111827;
   --c-border:      #2A3446;
   --c-card:        #1B2434;
+  --c-text:        #E5E7EB;
+  --c-text-dim:    #94A3B8;
+  --c-nav-bg:          #0B1220;
+  --c-nav-surface:     rgba(255,255,255,0.05);
+  --c-nav-border:      rgba(255,255,255,0.08);
+  --c-nav-text:        rgba(229,231,235,0.50);
+  --c-nav-text-strong: #E0B94F;
+  --c-nav-active-bg:   rgba(224,185,79,0.18);
 }
 
-/* ניגודיות גבוהה — לקריאה קשה, אור חזק, או עיניים עייפות. */
+/* ניגודיות גבוהה — לאור חזק, לעיניים עייפות, ולמסך שלא רואים בו טוב. */
 [data-theme='contrast'] {
   --c-navy:        #000000;
   --c-navy-mid:    #1A1A1A;
@@ -86,50 +145,324 @@
   --c-gold-light:  #FCD34D;
   --c-gold-dark:   #7C2D12;
   --c-cream:       #FFFFFF;
-  --c-border:      #9CA3AF;
+  --c-border:      #6B7280;
   --c-card:        #FFFFFF;
+  --c-text:        #000000;
+  --c-text-dim:    #374151;
+  --c-nav-bg:          #000000;
+  --c-nav-surface:     rgba(255,255,255,0.10);
+  --c-nav-border:      rgba(255,255,255,0.35);
+  --c-nav-text:        rgba(255,255,255,0.80);
+  --c-nav-text-strong: #FCD34D;
+  --c-nav-active-bg:   rgba(252,211,77,0.28);
 }
 
-/* ── המיפוי: מחלקה → משתנה ────────────────────────────────────────────────
-   הכללים עצמם יושבים ב-theme-map.css, שנוצר אוטומטית מסריקת הקוד
-   (scripts/gen-theme-map.mjs). כך גם הווריאנטים — focus:, hover:, ושקיפות
-   כמו /10 — מקבלים כלל משלהם, במקום להישאר בצבע המקורי בכל ערכה.
+/* ── שש ערכות חדשות ────────────────────────────────────────────────────── */
 
-   הסלקטור [data-theme] מוסיף specificity מעל המחלקה עצמה, ולכן זה גובר
-   בלי !important. */
+/* בורדו־זהב — עמוק וחגיגי. */
+[data-theme='bordeaux'] {
+  --c-navy:        #4A1220;
+  --c-navy-mid:    #63202F;
+  --c-gold:        #C0A062;
+  --c-gold-light:  #E5CE9C;
+  --c-gold-dark:   #8F7237;
+  --c-cream:       #FBF5F2;
+  --c-border:      #EBD9D6;
+  --c-card:        #FFFFFF;
+  --c-text:        #3D0F1B;
+  --c-text-dim:    #7C5560;
+  --c-nav-bg:          #3D0F1B;
+  --c-nav-surface:     rgba(255,255,255,0.06);
+  --c-nav-border:      rgba(229,206,156,0.20);
+  --c-nav-text:        rgba(251,245,242,0.55);
+  --c-nav-text-strong: #E5CE9C;
+  --c-nav-active-bg:   rgba(192,160,98,0.25);
+}
 
-[data-theme] body                  { background-color: var(--c-cream); }
-[data-theme] .bg-white             { background-color: var(--c-card); }
+/* תכלת־כסף — קריר ורגוע, בלי חום בכלל. */
+[data-theme='sky'] {
+  --c-navy:        #1B3A4B;
+  --c-navy-mid:    #2C566B;
+  --c-gold:        #3E92B8;
+  --c-gold-light:  #9BD0E6;
+  --c-gold-dark:   #2A6B89;
+  --c-cream:       #F4F9FB;
+  --c-border:      #DCE9EF;
+  --c-card:        #FFFFFF;
+  --c-text:        #16323F;
+  --c-text-dim:    #5D7C8A;
+  --c-nav-bg:          #16323F;
+  --c-nav-surface:     rgba(255,255,255,0.06);
+  --c-nav-border:      rgba(155,208,230,0.20);
+  --c-nav-text:        rgba(244,249,251,0.58);
+  --c-nav-text-strong: #9BD0E6;
+  --c-nav-active-bg:   rgba(62,146,184,0.28);
+}
 
-/* ── ערכה כהה: היפוך הטקסט ────────────────────────────────────────────────
-   כאן צריך יותר מהחלפת משתנים. באפליקציה בהירה, טקסט כהה על כרטיס לבן הוא
-   ברירת המחדל — ויש לו 459 מופעים כ-text-[#0D1B2A]. בערכה כהה המשתנה הזה
-   נעשה כהה עוד יותר, והטקסט פשוט נעלם בתוך הכרטיס. לכן הוא מתהפך כאן
-   במפורש, ולא דרך המשתנה.
+/* שחור־זהב — מינימלי, ניגודיות גבוהה, בלי גוונים מיותרים. */
+[data-theme='mono'] {
+  --c-navy:        #171717;
+  --c-navy-mid:    #2E2E2E;
+  --c-gold:        #B99537;
+  --c-gold-light:  #E3C775;
+  --c-gold-dark:   #8A6D22;
+  --c-cream:       #FAFAFA;
+  --c-border:      #E4E4E4;
+  --c-card:        #FFFFFF;
+  --c-text:        #171717;
+  --c-text-dim:    #6E6E6E;
+  --c-nav-bg:          #111111;
+  --c-nav-surface:     rgba(255,255,255,0.06);
+  --c-nav-border:      rgba(255,255,255,0.12);
+  --c-nav-text:        rgba(250,250,250,0.52);
+  --c-nav-text-strong: #E3C775;
+  --c-nav-active-bg:   rgba(185,149,55,0.22);
+}
 
-   ה-html בתחילת הסלקטור אינו קישוט: המפה הנוצרת מיובאת אחרי הקובץ הזה,
-   ובלי ההעלאה בעדיפות היא הייתה גוברת על ההיפוך. */
+/* אדמה — חול, חמרה וירוק מרווה. חמים בלי להיות כתומים. */
+[data-theme='earth'] {
+  --c-navy:        #3B3A2E;
+  --c-navy-mid:    #55533F;
+  --c-gold:        #A8763E;
+  --c-gold-light:  #D9AE79;
+  --c-gold-dark:   #7C5628;
+  --c-cream:       #FAF7F0;
+  --c-border:      #E6DECE;
+  --c-card:        #FFFFFF;
+  --c-text:        #33322A;
+  --c-text-dim:    #736F5E;
+  --c-nav-bg:          #33322A;
+  --c-nav-surface:     rgba(255,255,255,0.06);
+  --c-nav-border:      rgba(217,174,121,0.20);
+  --c-nav-text:        rgba(250,247,240,0.55);
+  --c-nav-text-strong: #D9AE79;
+  --c-nav-active-bg:   rgba(168,118,62,0.28);
+}
 
-html[data-theme='dark'] .text-\[\#0D1B2A\] { color: #E5E7EB; }
-html[data-theme='dark'] .text-\[\#1A2E45\] { color: #CBD5E1; }
-html[data-theme='dark'] .text-gray-700,
-html[data-theme='dark'] .text-gray-600,
-html[data-theme='dark'] .text-gray-500 { color: #94A3B8; }
-html[data-theme='dark'] .text-gray-400 { color: #7C8CA3; }
-html[data-theme='dark'] .text-gray-300 { color: #5A6B84; }
-html[data-theme='dark'] .bg-gray-50,
-html[data-theme='dark'] .bg-gray-100  { background-color: #202B3D; }
-html[data-theme='dark'] .border-gray-200,
-html[data-theme='dark'] .border-gray-100,
-html[data-theme='dark'] .border-gray-50 { border-color: #2A3446; }
-html[data-theme='dark'] input,
-html[data-theme='dark'] textarea,
-html[data-theme='dark'] select        { background-color: #202B3D; color: #E5E7EB; }
-html[data-theme='dark'] .shadow-sm,
-html[data-theme='dark'] .shadow-md    { box-shadow: 0 1px 3px rgb(0 0 0 / 0.4); }
+/* לילה כחול — כהה, אבל כחול ולא שחור. נוח לעיניים בערב. */
+[data-theme='midnight'] {
+  --c-navy:        #0F1E3D;
+  --c-navy-mid:    #1B2F57;
+  --c-gold:        #7FA6E8;
+  --c-gold-light:  #B9D0F5;
+  --c-gold-dark:   #4E7BC4;
+  --c-cream:       #131C2E;
+  --c-border:      #2A3A57;
+  --c-card:        #1B2740;
+  --c-text:        #E3EAF6;
+  --c-text-dim:    #94A6C4;
+  --c-nav-bg:          #0B1526;
+  --c-nav-surface:     rgba(255,255,255,0.05);
+  --c-nav-border:      rgba(127,166,232,0.16);
+  --c-nav-text:        rgba(227,234,246,0.52);
+  --c-nav-text-strong: #B9D0F5;
+  --c-nav-active-bg:   rgba(127,166,232,0.20);
+}
 
-/* ניגודיות גבוהה: גבולות מודגשים יותר, כי זה מה שמפריד בין אזורים. */
-html[data-theme='contrast'] .border-\[\#EDE6D6\] { border-color: #6B7280; }
+/* ירושלים — אבן ירושלמית וזהב. הכי קרוב למקורי, ובכל זאת אחר. */
+[data-theme='jerusalem'] {
+  --c-navy:        #4A3F2F;
+  --c-navy-mid:    #665844;
+  --c-gold:        #B8873B;
+  --c-gold-light:  #E2BE79;
+  --c-gold-dark:   #8A6423;
+  --c-cream:       #FBF7EF;
+  --c-border:      #E9DEC8;
+  --c-card:        #FFFFFF;
+  --c-text:        #3D3427;
+  --c-text-dim:    #7A6E5B;
+  --c-nav-bg:          #3D3427;
+  --c-nav-surface:     rgba(255,255,255,0.06);
+  --c-nav-border:      rgba(226,190,121,0.22);
+  --c-nav-text:        rgba(251,247,239,0.56);
+  --c-nav-text-strong: #E2BE79;
+  --c-nav-active-bg:   rgba(184,135,59,0.28);
+}
+
+/* ── בסיס הצבע ────────────────────────────────────────────────────────── */
+
+[data-theme] body      { background-color: var(--c-cream); }
+[data-theme] .bg-white { background-color: var(--c-card); }
+
+/* ערכות שהכרטיס בהן כהה: הטקסט הכהה חייב להתהפך, אחרת הוא נעלם בתוכו.
+   ה-html בתחילת הסלקטור מעלה עדיפות מעל המפה הנוצרת, שמיובאת אחרי. */
+html[data-theme='dark']      .text-\[\#0D1B2A\],
+html[data-theme='midnight']  .text-\[\#0D1B2A\] { color: var(--c-text); }
+html[data-theme='dark']      .text-\[\#1A2E45\],
+html[data-theme='midnight']  .text-\[\#1A2E45\] { color: var(--c-text-dim); }
+html[data-theme='dark']      .text-gray-700,
+html[data-theme='dark']      .text-gray-600,
+html[data-theme='dark']      .text-gray-500,
+html[data-theme='midnight']  .text-gray-700,
+html[data-theme='midnight']  .text-gray-600,
+html[data-theme='midnight']  .text-gray-500 { color: var(--c-text-dim); }
+html[data-theme='dark']      .text-gray-400,
+html[data-theme='midnight']  .text-gray-400 { color: color-mix(in srgb, var(--c-text-dim) 78%, transparent); }
+html[data-theme='dark']      .text-gray-300,
+html[data-theme='midnight']  .text-gray-300 { color: color-mix(in srgb, var(--c-text-dim) 55%, transparent); }
+html[data-theme='dark']      .bg-gray-50,
+html[data-theme='dark']      .bg-gray-100,
+html[data-theme='midnight']  .bg-gray-50,
+html[data-theme='midnight']  .bg-gray-100 { background-color: color-mix(in srgb, var(--c-card) 88%, #FFFFFF); }
+html[data-theme='dark']      .border-gray-200,
+html[data-theme='dark']      .border-gray-100,
+html[data-theme='midnight']  .border-gray-200,
+html[data-theme='midnight']  .border-gray-100 { border-color: var(--c-border); }
+html[data-theme='dark']      input,
+html[data-theme='dark']      textarea,
+html[data-theme='dark']      select,
+html[data-theme='midnight']  input,
+html[data-theme='midnight']  textarea,
+html[data-theme='midnight']  select {
+  background-color: color-mix(in srgb, var(--c-card) 88%, #FFFFFF);
+  color: var(--c-text);
+}
+
+/* ── ציר 2: גימור ──────────────────────────────────────────────────────────
+
+   העיגול, עובי הגבול והצל הם מה שקובע אם מסך מרגיש רך או מדויק — יותר
+   מהצבע. שלושתם נעים יחד, כי גימור עקבי הוא בדיוק מה שמבדיל בין "מעוצב"
+   ל"מורכב מחלקים". */
+
+:root {
+  --r-3xl: 1.5rem;  --r-2xl: 1rem;     --r-xl: 0.75rem;
+  --r-lg: 0.5rem;   --r-md: 0.375rem;
+  --bw: 1px;
+  --sh-sm: 0 1px 2px rgb(0 0 0 / 0.05);
+  --sh-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+  --sh-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+}
+
+/* רך — פינות גדולות, גבול כמעט שקוף, צל רחב. זהו המראה שהיה עד היום. */
+[data-finish='soft'] {
+  --r-3xl: 1.6rem; --r-2xl: 1.15rem; --r-xl: 0.85rem; --r-lg: 0.6rem; --r-md: 0.45rem;
+  --bw: 1px;
+  --sh-sm: 0 1px 3px rgb(0 0 0 / 0.05);
+  --sh-md: 0 4px 10px -2px rgb(0 0 0 / 0.09);
+  --sh-lg: 0 12px 24px -6px rgb(0 0 0 / 0.12);
+}
+
+/* חד — בלי עיגול כמעט. מדויק, "טבלאי", קל לסריקה מהירה בעין. */
+[data-finish='sharp'] {
+  --r-3xl: 0.35rem; --r-2xl: 0.25rem; --r-xl: 0.2rem; --r-lg: 0.15rem; --r-md: 0.1rem;
+  --bw: 1px;
+  --sh-sm: none; --sh-md: none; --sh-lg: 0 2px 8px rgb(0 0 0 / 0.08);
+}
+
+/* מוגדר — הגבול עושה את כל העבודה, בלי צללים. ברור מאוד במסך בהיר. */
+[data-finish='defined'] {
+  --r-3xl: 0.8rem; --r-2xl: 0.6rem; --r-xl: 0.5rem; --r-lg: 0.35rem; --r-md: 0.25rem;
+  --bw: 2px;
+  --sh-sm: none; --sh-md: none; --sh-lg: none;
+}
+
+/* מרחף — בלי גבול בכלל, רק עומק. הכרטיסים "יושבים מעל" הרקע. */
+[data-finish='float'] {
+  --r-3xl: 1.75rem; --r-2xl: 1.25rem; --r-xl: 0.95rem; --r-lg: 0.7rem; --r-md: 0.5rem;
+  --bw: 0px;
+  --sh-sm: 0 2px 8px rgb(0 0 0 / 0.06);
+  --sh-md: 0 8px 20px -4px rgb(0 0 0 / 0.10);
+  --sh-lg: 0 18px 35px -10px rgb(0 0 0 / 0.16);
+}
+
+[data-finish] .rounded-3xl   { border-radius: var(--r-3xl); }
+[data-finish] .rounded-2xl   { border-radius: var(--r-2xl); }
+[data-finish] .rounded-xl    { border-radius: var(--r-xl); }
+[data-finish] .rounded-lg    { border-radius: var(--r-lg); }
+[data-finish] .rounded-md    { border-radius: var(--r-md); }
+[data-finish] .rounded-t-3xl { border-radius: var(--r-3xl) var(--r-3xl) 0 0; }
+[data-finish] .shadow-sm     { box-shadow: var(--sh-sm); }
+[data-finish] .shadow-md     { box-shadow: var(--sh-md); }
+[data-finish] .shadow-lg     { box-shadow: var(--sh-lg); }
+
+/* עובי הגבול. .rounded-full נשאר עגול תמיד — צ'יפ או אווטאר חד אינם
+   "גימור אחר", הם נראים כמו תקלה. */
+[data-finish] .border        { border-width: var(--bw); }
+
+/* ב"מרחף" אין גבולות, ולכן הכרטיס חייב עומק כדי לא להימחק ברקע. */
+[data-finish='float'] .bg-white.border { box-shadow: var(--sh-sm); }
+
+/* ── ציר 3: אייקונים ───────────────────────────────────────────────────────
+
+   lucide כותב את עובי הקו כתכונת SVG (stroke-width="2"). תכונת מצגת כזו
+   מפסידה לכל כלל CSS, ולכן אפשר לשלוט בכולם מכאן בלי לגעת בשום קריאה
+   לאייקון — ויש מאות כאלה. */
+
+[data-icons='thin']   svg { stroke-width: 1.5; }
+[data-icons='normal'] svg { stroke-width: 2; }
+[data-icons='bold']   svg { stroke-width: 2.5; }
+
+/* ── ציר 4: טיפוגרפיה ────────────────────────────────────────────────────── */
+
+:root {
+  --font-display: 'Frank Ruhl Libre', serif;
+  --font-body: 'Heebo', system-ui, sans-serif;
+}
+[data-font='modern'] {
+  --font-display: 'Assistant', system-ui, sans-serif;
+  --font-body: 'Assistant', system-ui, sans-serif;
+}
+[data-font='native'] {
+  --font-display: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-body: system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+[data-font] body                           { font-family: var(--font-body); }
+[data-font] .font-\[\'Frank_Ruhl_Libre\'\] { font-family: var(--font-display); }
+
+/* בגופן ללא תגים, כותרת באותו משקל נבלעת בטקסט. הפיצוי הוא במשקל. */
+[data-font='modern'] .font-\[\'Frank_Ruhl_Libre\'\],
+[data-font='native'] .font-\[\'Frank_Ruhl_Libre\'\] { font-weight: 800; letter-spacing: -0.01em; }
+
+/* ── ציר 5: הניווט ─────────────────────────────────────────────────────────
+
+   הטוקנים למעלה מוגדרים לפי הערכה. כאן בוחרים אם הסרגל בכלל כהה. */
+
+/* בהיר — הסרגל הופך למשטח קרם עם טקסט כהה, כמו המשך של המסך. */
+[data-nav='light'] {
+  --c-nav-bg:          var(--c-cream);
+  --c-nav-surface:     color-mix(in srgb, var(--c-gold) 8%, transparent);
+  --c-nav-border:      var(--c-border);
+  --c-nav-text:        var(--c-text-dim);
+  --c-nav-text-strong: var(--c-gold-dark);
+  --c-nav-active-bg:   color-mix(in srgb, var(--c-gold) 18%, transparent);
+}
+
+/* צבעוני — הסרגל בצבע ההדגשה עצמו. הכי בולט, הכי פחות "רשמי". */
+[data-nav='color'] {
+  --c-nav-bg:          var(--c-gold-dark);
+  --c-nav-surface:     rgba(255,255,255,0.14);
+  --c-nav-border:      rgba(255,255,255,0.22);
+  --c-nav-text:        rgba(255,255,255,0.72);
+  --c-nav-text-strong: #FFFFFF;
+  --c-nav-active-bg:   rgba(255,255,255,0.20);
+}
+
+/* המחלקות שהרכיבים משתמשים בהן. שם סמנטי, לא צבע — וזו כל הנקודה:
+   "הרקע של הניווט" יודע להשתנות, "#0D1B2A עם לבן-5%-מעליו" לא. */
+.nav-bg          { background-color: var(--c-nav-bg); }
+.nav-surface     { background-color: var(--c-nav-surface); }
+.nav-border      { border-color: var(--c-nav-border); }
+.nav-text        { color: var(--c-nav-text); }
+.nav-text-strong { color: var(--c-nav-text-strong); }
+.nav-active      { background-color: var(--c-nav-active-bg); color: var(--c-nav-text-strong); }
+.nav-item:hover  { background-color: var(--c-nav-surface); color: var(--c-nav-text-strong); }
+
+/* סימון הפריט הפעיל — חלק מציר האייקונים, כי זו אותה שאלה בדיוק: כמה
+   בולט צריך להיות מה שנבחר. */
+[data-icons] .nav-active { position: relative; }
+[data-icons='thin'] .nav-active::before,
+[data-icons='bold'] .nav-active::before {
+  content: '';
+  position: absolute;
+  inset-inline-end: 0;
+  top: 20%;
+  bottom: 20%;
+  width: 3px;
+  border-radius: 9999px;
+  background: var(--c-nav-text-strong);
+}
+[data-icons='thin'] .nav-active { background-color: transparent; }
 
 /* ── גודל התצוגה ─────────────────────────────────────────────────────────
    Tailwind מודד גם טקסט וגם מרווחים ב-rem, ולכן שינוי גודל הבסיס מגדיל
@@ -162,7 +495,7 @@ html { font-size: calc(16px * var(--ui-scale, 1)); }
 
 /* ── רקע ──────────────────────────────────────────────────────────────────
    שכבת מרקם עדינה מאוד מאחורי התוכן. לא דקורציה לשמה: היא מפרידה בין
-   "המשטח" לבין הכרטיסים הלבנים שעליו, ובלעדיה מסך עמוס נראה כמו קיר אחד. */
+   "המשטח" לבין הכרטיסים שעליו, ובלעדיה מסך עמוס נראה כמו קיר אחד. */
 [data-graphics='on'] body::before {
   content: '';
   position: fixed;

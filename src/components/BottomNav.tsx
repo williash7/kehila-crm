@@ -29,7 +29,9 @@ export function BottomNav({ currentTab, setTab }: BottomNavProps) {
   ];
 
   return (
-    <nav className="md:hidden fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] bg-[#0D1B2A] flex overflow-x-auto no-scrollbar py-2 pb-6 z-50 border-t border-[rgba(201,168,76,0.15)]">
+    // הצבעים כאן סמנטיים (nav-bg, nav-text) ולא קשיחים. זה ההבדל בין סרגל
+    // שמתחלף עם הערכה לבין סרגל שמקבל "עוד שכבה" מעל אותו כחול.
+    <nav className="md:hidden fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] nav-bg nav-border flex overflow-x-auto no-scrollbar py-2 pb-6 z-50 border-t">
       {navItems.map(item => {
         const Icon = item.icon;
         const isActive = currentTab === item.id;
@@ -38,7 +40,7 @@ export function BottomNav({ currentTab, setTab }: BottomNavProps) {
             key={item.id}
             onClick={() => setTab(item.id)}
             className={`shrink-0 w-[58px] flex flex-col items-center gap-1 p-1 cursor-pointer bg-transparent border-none text-[10px] font-medium transition-colors ${
-              isActive ? 'text-[#C9A84C]' : 'text-white/35'
+              isActive ? 'nav-text-strong' : 'nav-text opacity-70'
             }`}
           >
             <Icon size={20} className={`transition-transform ${isActive ? 'scale-110' : ''}`} />

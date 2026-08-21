@@ -1,5 +1,5 @@
 /* ═══ נוצר אוטומטית על ידי scripts/gen-theme-map.mjs — אין לערוך ביד ═══
-   65 כללים, מתוך סריקה של 94 קבצים.
+   64 כללים, מתוך סריקה של 94 קבצים.
    לעדכון: npm run theme
    ═════════════════════════════════════════════════════════════════════ */
 
@@ -27,7 +27,6 @@
 [data-theme] .bg-\[\#FDF6E3\] { background-color: var(--c-cream); }
 [data-theme] .border-\[\#0D1B2A\] { border-color: var(--c-navy); }
 [data-theme] .border-\[\#C9A84C\] { border-color: var(--c-gold); }
-[data-theme] .border-\[\#C9A84C\]\/20 { border-color: color-mix(in srgb, var(--c-gold) 20%, transparent); }
 [data-theme] .border-\[\#C9A84C\]\/30 { border-color: color-mix(in srgb, var(--c-gold) 30%, transparent); }
 [data-theme] .border-\[\#C9A84C\]\/40 { border-color: color-mix(in srgb, var(--c-gold) 40%, transparent); }
 [data-theme] .border-\[\#E8C97A\] { border-color: var(--c-gold-light); }
