@@ -66,9 +66,21 @@ function LivePreview() {
   );
 }
 
+type TabId = 'color' | 'finish' | 'size' | 'dashboard';
+
+const TABS: { id: TabId; label: string; icon: string }[] = [
+  { id: 'color',     label: 'צבע',    icon: '🎨' },
+  { id: 'finish',    label: 'סגנון',  icon: '✦' },
+  { id: 'size',      label: 'גודל',   icon: '🔍' },
+  { id: 'dashboard', label: 'דשבורד', icon: '🏠' },
+];
+
 export function AppearanceCard() {
   const { settings, updateSettings } = useAppStore();
-  const [tab, setTab] = useState<'look' | 'dashboard'>('look');
+  // חמישה צירים, שתים־עשרה ערכות ושלושה בוררי תצוגה בטור אחד הפכו את
+  // הכרטיס למסך גלילה. כל ציר מקבל לשונית משלו: בכל רגע רואים החלטה אחת,
+  // ומעליה תמיד את התצוגה המקדימה שמראה מה היא עשתה.
+  const [tab, setTab] = useState<TabId>('color');
 
   const cards = resolveCards(settings.dashboardCards);
   const hidden = hiddenCards(settings.dashboardCards);
@@ -109,28 +121,35 @@ export function AppearanceCard() {
     <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6] space-y-3">
       <div className="flex items-center justify-between gap-2">
         <h3 className="font-['Frank_Ruhl_Libre'] text-lg font-bold text-[#0D1B2A]">מראה ותצוגה</h3>
-        <div className="flex gap-1 bg-[#FAF6EE] rounded-lg p-0.5">
-          {([['look', 'עיצוב'], ['dashboard', 'דשבורד']] as const).map(([id, label]) => (
-            <button
-              key={id}
-              onClick={() => setTab(id)}
-              className={`px-3 py-1 rounded-md text-xs font-bold transition-colors ${
-                tab === id ? 'bg-[#0D1B2A] text-[#C9A84C]' : 'text-gray-500'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
       </div>
 
-      {tab === 'look' ? (
-        <>
-          <LivePreview />
+      <div className="flex gap-1 overflow-x-auto no-scrollbar -mx-1 px-1 pb-0.5">
+        {TABS.map(t => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-bold border transition-colors ${
+              tab === t.id
+                ? 'bg-[#0D1B2A] text-[#C9A84C] border-[#0D1B2A]'
+                : 'bg-white text-gray-500 border-[#EDE6D6] hover:border-[#C9A84C]'
+            }`}
+          >
+            {t.icon} {t.label}
+          </button>
+        ))}
+      </div>
 
-          {/* ── ערכת צבעים ── */}
+      {/* התצוגה המקדימה נשארת מעל כל לשונית שנוגעת בעיצוב — אין טעם לבחור
+          גימור בלי לראות אותו. */}
+      {tab !== 'dashboard' && <LivePreview />}
+
+      {tab === 'color' && (
+        <>
           <div>
-            <label className="block text-[11px] font-bold text-gray-600 mb-1.5">ערכת צבעים</label>
+            <p className="text-[11px] text-gray-400 leading-relaxed mb-2">
+              כל ערכה קובעת גם את <b>מבנה</b> הניווט, לא רק את הגוון: יש ערכות
+              עם סרגל לבן, עם סרגל צבעוני מלא, ועם סרגל כהה.
+            </p>
             <div className="grid grid-cols-2 gap-2">
               {THEMES.map(t => {
                 const on = (settings.theme || 'classic') === t.id;
@@ -158,7 +177,11 @@ export function AppearanceCard() {
               })}
             </div>
           </div>
+        </>
+      )}
 
+      {tab === 'finish' && (
+        <>
           <Axis
             label="גימור — פינות, גבולות וצללים"
             options={FINISHES}
@@ -166,12 +189,18 @@ export function AppearanceCard() {
             onPick={finish => updateSettings({ finish })}
             cols={4}
           />
+          <p className="text-[11px] text-gray-400 leading-relaxed">
+            הגימור משנה יותר מהצבע. <b>מרחף</b> מוותר על גבולות ונשען על עומק,
+            <b> מוגדר</b> עושה בדיוק את ההפך, ו<b>חד</b> מוותר על עיגול — נוח
+            למי שסורק מסך מהר.
+          </p>
 
           <Axis
             label="סרגל הניווט"
             options={NAVS}
-            value={settings.nav || 'dark'}
+            value={settings.nav || 'auto'}
             onPick={nav => updateSettings({ nav })}
+            cols={4}
           />
 
           <Axis
@@ -187,7 +216,11 @@ export function AppearanceCard() {
             value={settings.font || 'classic'}
             onPick={font => updateSettings({ font })}
           />
+        </>
+      )}
 
+      {tab === 'size' && (
+        <>
           <Axis
             label="גודל התצוגה"
             options={UI_SIZES}
@@ -232,7 +265,9 @@ export function AppearanceCard() {
             <RotateCcw size={13} /> חזרה לברירת המחדל
           </button>
         </>
-      ) : (
+      )}
+
+      {tab === 'dashboard' && (
         <>
           <p className="text-[11px] text-gray-400 leading-relaxed">
             הדשבורד הוא המסך שנפתח בכל בוקר, ומה שחשוב בו משתנה מאדם לאדם.

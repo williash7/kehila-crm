@@ -40,26 +40,26 @@ export interface AppSettings {
 
 export type ThemeName =
   | 'classic' | 'clean' | 'warm' | 'olive' | 'dark' | 'contrast'
-  | 'bordeaux' | 'sky' | 'mono' | 'earth' | 'midnight' | 'jerusalem';
+  | 'bordeaux' | 'sky' | 'mono' | 'plum' | 'midnight' | 'jerusalem';
 
 export type FinishName = 'soft' | 'sharp' | 'defined' | 'float';
-export type NavName    = 'dark' | 'light' | 'color';
+export type NavName    = 'auto' | 'dark' | 'light' | 'color';
 export type IconsName  = 'thin' | 'normal' | 'bold';
 export type FontName   = 'classic' | 'modern' | 'native';
 
 export const THEMES: { id: ThemeName; label: string; hint: string; swatch: string[] }[] = [
   { id: 'classic',  label: 'כחול־זהב',      hint: 'הערכה המקורית',            swatch: ['#0D1B2A', '#C9A84C', '#FAF6EE'] },
-  { id: 'clean',    label: 'בהיר ונקי',      hint: 'פחות חום, יותר ניגודיות',  swatch: ['#1E293B', '#2563EB', '#F8FAFC'] },
-  { id: 'warm',     label: 'חם',             hint: 'קרם וטרקוטה',              swatch: ['#44281D', '#C2703D', '#FDF6EF'] },
-  { id: 'olive',    label: 'ירוק זית',       hint: 'רגוע, פחות רשמי',          swatch: ['#1F2D24', '#6B8E4E', '#F6F8F3'] },
+  { id: 'clean',    label: 'בהיר ונקי',    hint: 'סרגל לבן, כחול',           swatch: ['#FFFFFF', '#2563EB', '#F1F5F9'] },
+  { id: 'warm',     label: 'חם',           hint: 'טרקוטה מלאה',              swatch: ['#A6461A', '#D2691E', '#FEF6EE'] },
+  { id: 'olive',    label: 'ירוק',         hint: 'סרגל ירוק רווי',           swatch: ['#33691E', '#558B2F', '#F4F8EF'] },
   { id: 'dark',     label: 'כהה',            hint: 'לעבודה בערב',              swatch: ['#0B1220', '#E0B94F', '#1B2434'] },
-  { id: 'contrast', label: 'ניגודיות גבוהה', hint: 'לקריאה קלה יותר',          swatch: ['#000000', '#B45309', '#FFFFFF'] },
-  { id: 'bordeaux', label: 'בורדו־זהב',    hint: 'עמוק וחגיגי',              swatch: ['#3D0F1B', '#C0A062', '#FBF5F2'] },
-  { id: 'sky',      label: 'תכלת־כסף',     hint: 'קריר, בלי חום',            swatch: ['#16323F', '#3E92B8', '#F4F9FB'] },
-  { id: 'mono',     label: 'שחור־זהב',     hint: 'מינימלי ומדויק',           swatch: ['#111111', '#B99537', '#FAFAFA'] },
-  { id: 'earth',    label: 'אדמה',          hint: 'חול וחמרה',                swatch: ['#33322A', '#A8763E', '#FAF7F0'] },
+  { id: 'contrast', label: 'ניגודיות',     hint: 'שחור־לבן־ענבר',            swatch: ['#000000', '#FFB300', '#FFFFFF'] },
+  { id: 'bordeaux', label: 'בורדו',        hint: 'יין עמוק ורווי',           swatch: ['#6B1030', '#A81D46', '#FDF3F6'] },
+  { id: 'sky',      label: 'תכלת',         hint: 'טורקיז, סרגל צבעוני',      swatch: ['#06697F', '#0891B2', '#EFFAFC'] },
+  { id: 'mono',     label: 'שחור־לבן',     hint: 'סרגל לבן, בלי צבע',        swatch: ['#FFFFFF', '#111111', '#F4F4F4'] },
+  { id: 'plum',     label: 'סגול',          hint: 'הכי רחוק מהמקורי',         swatch: ['#4C1D95', '#7C3AED', '#F7F4FE'] },
   { id: 'midnight', label: 'לילה כחול',     hint: 'כהה, אך לא שחור',          swatch: ['#0B1526', '#7FA6E8', '#1B2740'] },
-  { id: 'jerusalem',label: 'ירושלים',       hint: 'אבן ירושלמית וזהב',        swatch: ['#3D3427', '#B8873B', '#FBF7EF'] },
+  { id: 'jerusalem',label: 'ירושלים',      hint: 'סרגל אבן בהיר',            swatch: ['#F0E4C8', '#B8873B', '#FBF6EA'] },
 ];
 
 // ── הצירים הנוספים ────────────────────────────────────────────────────────
@@ -75,9 +75,10 @@ export const FINISHES: { id: FinishName; label: string; hint: string }[] = [
 ];
 
 export const NAVS: { id: NavName; label: string; hint: string }[] = [
-  { id: 'dark',  label: 'כהה',    hint: 'הסרגל מנוגד למסך' },
-  { id: 'light', label: 'בהיר',   hint: 'הסרגל ממשיך את המסך' },
-  { id: 'color', label: 'צבעוני', hint: 'הסרגל בצבע ההדגשה' },
+  { id: 'auto',  label: 'לפי הערכה', hint: 'כל ערכה והמבנה שלה' },
+  { id: 'dark',  label: 'כהה',       hint: 'מנוגד למסך' },
+  { id: 'light', label: 'בהיר',      hint: 'ממשיך את המסך' },
+  { id: 'color', label: 'צבעוני',    hint: 'בצבע ההדגשה' },
 ];
 
 export const ICON_STYLES: { id: IconsName; label: string; hint: string }[] = [
@@ -131,7 +132,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   holidayVisibility: DEFAULT_VISIBILITY,
   theme: 'classic',
   finish: 'float',
-  nav: 'dark',
+  nav: 'auto',
   icons: 'thin',
   font: 'classic',
   uiSize: 'normal',

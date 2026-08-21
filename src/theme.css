@@ -57,64 +57,65 @@
   --ui-scale: 1;
 }
 
-/* בהיר ונקי — פחות חום, יותר ניגודיות. למי שהקרם מרגיש לו "כבד". */
+/* בהיר ונקי — סרגל **לבן**, לא כהה. זו לא ערכה אחרת של אותו עיצוב אלא
+   מבנה אחר: המסך כולו בהיר, וההפרדה נעשית בקו ולא בניגוד. */
 [data-theme='clean'] {
   --c-navy:        #1E293B;
   --c-navy-mid:    #334155;
   --c-gold:        #2563EB;
-  --c-gold-light:  #93C5FD;
+  --c-gold-light:  #60A5FA;
   --c-gold-dark:   #1D4ED8;
-  --c-cream:       #F8FAFC;
-  --c-border:      #E2E8F0;
+  --c-cream:       #F1F5F9;
+  --c-border:      #DDE5ED;
   --c-card:        #FFFFFF;
-  --c-text:        #1E293B;
+  --c-text:        #0F172A;
   --c-text-dim:    #64748B;
-  --c-nav-bg:          #1E293B;
-  --c-nav-surface:     rgba(255,255,255,0.06);
-  --c-nav-border:      rgba(148,163,184,0.25);
-  --c-nav-text:        rgba(226,232,240,0.62);
-  --c-nav-text-strong: #93C5FD;
-  --c-nav-active-bg:   rgba(37,99,235,0.28);
+  --c-nav-bg:          #FFFFFF;
+  --c-nav-surface:     rgba(37,99,235,0.07);
+  --c-nav-border:      #DDE5ED;
+  --c-nav-text:        #64748B;
+  --c-nav-text-strong: #2563EB;
+  --c-nav-active-bg:   rgba(37,99,235,0.12);
 }
 
-/* חם — קרם עמוק וטרקוטה. קרוב למקורי באופי, שונה במזג. */
+/* חם — טרקוטה מלאה. הסרגל בצבע עצמו, לא בחום כהה. */
 [data-theme='warm'] {
-  --c-navy:        #44281D;
-  --c-navy-mid:    #5C3A2A;
-  --c-gold:        #C2703D;
-  --c-gold-light:  #E8B48C;
-  --c-gold-dark:   #94502A;
-  --c-cream:       #FDF6EF;
-  --c-border:      #EDDCCB;
+  --c-navy:        #7A3B1E;
+  --c-navy-mid:    #99532F;
+  --c-gold:        #D2691E;
+  --c-gold-light:  #F0A868;
+  --c-gold-dark:   #9C4A16;
+  --c-cream:       #FEF6EE;
+  --c-border:      #F0DCC8;
   --c-card:        #FFFFFF;
-  --c-text:        #44281D;
-  --c-text-dim:    #8A6B5A;
-  --c-nav-bg:          #3A2118;
-  --c-nav-surface:     rgba(255,255,255,0.06);
-  --c-nav-border:      rgba(232,180,140,0.20);
-  --c-nav-text:        rgba(253,246,239,0.55);
-  --c-nav-text-strong: #E8B48C;
-  --c-nav-active-bg:   rgba(194,112,61,0.28);
+  --c-text:        #52250F;
+  --c-text-dim:    #96684E;
+  --c-nav-bg:          #A6461A;
+  --c-nav-surface:     rgba(255,255,255,0.16);
+  --c-nav-border:      rgba(255,255,255,0.24);
+  --c-nav-text:        rgba(255,255,255,0.78);
+  --c-nav-text-strong: #FFFFFF;
+  --c-nav-active-bg:   rgba(255,255,255,0.24);
 }
 
-/* ירוק זית — רגוע, פחות "בנקאי". */
+/* ירוק זית — ירוק רווי, וסרגל ירוק. */
 [data-theme='olive'] {
-  --c-navy:        #1F2D24;
-  --c-navy-mid:    #33473A;
-  --c-gold:        #6B8E4E;
-  --c-gold-light:  #B7CF9B;
-  --c-gold-dark:   #4E6B39;
-  --c-cream:       #F6F8F3;
-  --c-border:      #E0E7D8;
+  --c-navy:        #2F4A22;
+  --c-navy-mid:    #446634;
+  --c-gold:        #558B2F;
+  --c-gold-light:  #9CCC65;
+  --c-gold-dark:   #33691E;
+  --c-cream:       #F4F8EF;
+  --c-border:      #DDE8CE;
   --c-card:        #FFFFFF;
-  --c-text:        #1F2D24;
-  --c-text-dim:    #5E7060;
-  --c-nav-bg:          #1B2820;
-  --c-nav-surface:     rgba(255,255,255,0.05);
-  --c-nav-border:      rgba(183,207,155,0.18);
-  --c-nav-text:        rgba(246,248,243,0.55);
-  --c-nav-text-strong: #B7CF9B;
-  --c-nav-active-bg:   rgba(107,142,78,0.30);
+  --c-text:        #26381B;
+  --c-text-dim:    #63775A;
+  --c-nav-bg:          #33691E;
+  --c-nav-surface:     rgba(255,255,255,0.15);
+  --c-nav-border:      rgba(255,255,255,0.22);
+  --c-nav-text:        rgba(255,255,255,0.76);
+  --c-nav-text-strong: #FFFFFF;
+  --c-nav-active-bg:   rgba(255,255,255,0.22);
 }
 
 /* כהה — לעבודה בערב. הכרטיסים כהים, הטקסט בהיר. */
@@ -137,106 +138,106 @@
   --c-nav-active-bg:   rgba(224,185,79,0.18);
 }
 
-/* ניגודיות גבוהה — לאור חזק, לעיניים עייפות, ולמסך שלא רואים בו טוב. */
+/* ניגודיות גבוהה — שחור על לבן, בלי גוונים. לאור חזק ולעיניים עייפות. */
 [data-theme='contrast'] {
   --c-navy:        #000000;
   --c-navy-mid:    #1A1A1A;
-  --c-gold:        #B45309;
-  --c-gold-light:  #FCD34D;
-  --c-gold-dark:   #7C2D12;
+  --c-gold:        #A33A00;
+  --c-gold-light:  #FFB300;
+  --c-gold-dark:   #7A2B00;
   --c-cream:       #FFFFFF;
-  --c-border:      #6B7280;
+  --c-border:      #4B5563;
   --c-card:        #FFFFFF;
   --c-text:        #000000;
-  --c-text-dim:    #374151;
+  --c-text-dim:    #1F2937;
   --c-nav-bg:          #000000;
-  --c-nav-surface:     rgba(255,255,255,0.10);
-  --c-nav-border:      rgba(255,255,255,0.35);
-  --c-nav-text:        rgba(255,255,255,0.80);
-  --c-nav-text-strong: #FCD34D;
-  --c-nav-active-bg:   rgba(252,211,77,0.28);
+  --c-nav-surface:     rgba(255,255,255,0.14);
+  --c-nav-border:      rgba(255,255,255,0.45);
+  --c-nav-text:        rgba(255,255,255,0.92);
+  --c-nav-text-strong: #FFB300;
+  --c-nav-active-bg:   rgba(255,179,0,0.32);
 }
 
 /* ── שש ערכות חדשות ────────────────────────────────────────────────────── */
 
-/* בורדו־זהב — עמוק וחגיגי. */
+/* בורדו — יין עמוק ורווי, לא "חום עם נגיעה". */
 [data-theme='bordeaux'] {
-  --c-navy:        #4A1220;
-  --c-navy-mid:    #63202F;
-  --c-gold:        #C0A062;
-  --c-gold-light:  #E5CE9C;
-  --c-gold-dark:   #8F7237;
-  --c-cream:       #FBF5F2;
-  --c-border:      #EBD9D6;
+  --c-navy:        #6B1030;
+  --c-navy-mid:    #8C1B42;
+  --c-gold:        #A81D46;
+  --c-gold-light:  #E58BA8;
+  --c-gold-dark:   #7A0C2C;
+  --c-cream:       #FDF3F6;
+  --c-border:      #F2D8E1;
   --c-card:        #FFFFFF;
-  --c-text:        #3D0F1B;
-  --c-text-dim:    #7C5560;
-  --c-nav-bg:          #3D0F1B;
-  --c-nav-surface:     rgba(255,255,255,0.06);
-  --c-nav-border:      rgba(229,206,156,0.20);
-  --c-nav-text:        rgba(251,245,242,0.55);
-  --c-nav-text-strong: #E5CE9C;
-  --c-nav-active-bg:   rgba(192,160,98,0.25);
+  --c-text:        #4A0A20;
+  --c-text-dim:    #8A5A6C;
+  --c-nav-bg:          #6B1030;
+  --c-nav-surface:     rgba(255,255,255,0.14);
+  --c-nav-border:      rgba(255,255,255,0.20);
+  --c-nav-text:        rgba(255,255,255,0.74);
+  --c-nav-text-strong: #FFFFFF;
+  --c-nav-active-bg:   rgba(255,255,255,0.22);
 }
 
-/* תכלת־כסף — קריר ורגוע, בלי חום בכלל. */
+/* תכלת — טורקיז רווי, וסרגל בצבע. הכי "לא רשמי" מכולן. */
 [data-theme='sky'] {
-  --c-navy:        #1B3A4B;
-  --c-navy-mid:    #2C566B;
-  --c-gold:        #3E92B8;
-  --c-gold-light:  #9BD0E6;
-  --c-gold-dark:   #2A6B89;
-  --c-cream:       #F4F9FB;
-  --c-border:      #DCE9EF;
+  --c-navy:        #065F73;
+  --c-navy-mid:    #0E7C93;
+  --c-gold:        #0891B2;
+  --c-gold-light:  #67D9F0;
+  --c-gold-dark:   #036B80;
+  --c-cream:       #EFFAFC;
+  --c-border:      #CDEBF2;
   --c-card:        #FFFFFF;
-  --c-text:        #16323F;
-  --c-text-dim:    #5D7C8A;
-  --c-nav-bg:          #16323F;
-  --c-nav-surface:     rgba(255,255,255,0.06);
-  --c-nav-border:      rgba(155,208,230,0.20);
-  --c-nav-text:        rgba(244,249,251,0.58);
-  --c-nav-text-strong: #9BD0E6;
-  --c-nav-active-bg:   rgba(62,146,184,0.28);
+  --c-text:        #06414F;
+  --c-text-dim:    #4E7F8C;
+  --c-nav-bg:          #06697F;
+  --c-nav-surface:     rgba(255,255,255,0.16);
+  --c-nav-border:      rgba(255,255,255,0.24);
+  --c-nav-text:        rgba(255,255,255,0.78);
+  --c-nav-text-strong: #FFFFFF;
+  --c-nav-active-bg:   rgba(255,255,255,0.24);
 }
 
-/* שחור־זהב — מינימלי, ניגודיות גבוהה, בלי גוונים מיותרים. */
+/* שחור־לבן — בלי צבע בכלל, וסרגל **לבן**. מינימלי באמת, לא "כהה עם זהב". */
 [data-theme='mono'] {
-  --c-navy:        #171717;
-  --c-navy-mid:    #2E2E2E;
-  --c-gold:        #B99537;
-  --c-gold-light:  #E3C775;
-  --c-gold-dark:   #8A6D22;
-  --c-cream:       #FAFAFA;
-  --c-border:      #E4E4E4;
+  --c-navy:        #111111;
+  --c-navy-mid:    #333333;
+  --c-gold:        #111111;
+  --c-gold-light:  #7A7A7A;
+  --c-gold-dark:   #000000;
+  --c-cream:       #F4F4F4;
+  --c-border:      #D6D6D6;
   --c-card:        #FFFFFF;
-  --c-text:        #171717;
-  --c-text-dim:    #6E6E6E;
-  --c-nav-bg:          #111111;
-  --c-nav-surface:     rgba(255,255,255,0.06);
-  --c-nav-border:      rgba(255,255,255,0.12);
-  --c-nav-text:        rgba(250,250,250,0.52);
-  --c-nav-text-strong: #E3C775;
-  --c-nav-active-bg:   rgba(185,149,55,0.22);
+  --c-text:        #111111;
+  --c-text-dim:    #757575;
+  --c-nav-bg:          #FFFFFF;
+  --c-nav-surface:     rgba(0,0,0,0.05);
+  --c-nav-border:      #D6D6D6;
+  --c-nav-text:        #757575;
+  --c-nav-text-strong: #111111;
+  --c-nav-active-bg:   rgba(0,0,0,0.09);
 }
 
-/* אדמה — חול, חמרה וירוק מרווה. חמים בלי להיות כתומים. */
-[data-theme='earth'] {
-  --c-navy:        #3B3A2E;
-  --c-navy-mid:    #55533F;
-  --c-gold:        #A8763E;
-  --c-gold-light:  #D9AE79;
-  --c-gold-dark:   #7C5628;
-  --c-cream:       #FAF7F0;
-  --c-border:      #E6DECE;
+/* סגול — הכי רחוק מהמקורי. */
+[data-theme='plum'] {
+  --c-navy:        #4C1D95;
+  --c-navy-mid:    #6D28D9;
+  --c-gold:        #7C3AED;
+  --c-gold-light:  #C4B5FD;
+  --c-gold-dark:   #5B21B6;
+  --c-cream:       #F7F4FE;
+  --c-border:      #E4DBFA;
   --c-card:        #FFFFFF;
-  --c-text:        #33322A;
-  --c-text-dim:    #736F5E;
-  --c-nav-bg:          #33322A;
-  --c-nav-surface:     rgba(255,255,255,0.06);
-  --c-nav-border:      rgba(217,174,121,0.20);
-  --c-nav-text:        rgba(250,247,240,0.55);
-  --c-nav-text-strong: #D9AE79;
-  --c-nav-active-bg:   rgba(168,118,62,0.28);
+  --c-text:        #2E1065;
+  --c-text-dim:    #7065A0;
+  --c-nav-bg:          #4C1D95;
+  --c-nav-surface:     rgba(255,255,255,0.14);
+  --c-nav-border:      rgba(255,255,255,0.20);
+  --c-nav-text:        rgba(255,255,255,0.74);
+  --c-nav-text-strong: #FFFFFF;
+  --c-nav-active-bg:   rgba(255,255,255,0.22);
 }
 
 /* לילה כחול — כהה, אבל כחול ולא שחור. נוח לעיניים בערב. */
@@ -259,24 +260,24 @@
   --c-nav-active-bg:   rgba(127,166,232,0.20);
 }
 
-/* ירושלים — אבן ירושלמית וזהב. הכי קרוב למקורי, ובכל זאת אחר. */
+/* ירושלים — אבן ירושלמית וזהב, וסרגל **בהיר** בצבע האבן. */
 [data-theme='jerusalem'] {
-  --c-navy:        #4A3F2F;
-  --c-navy-mid:    #665844;
+  --c-navy:        #7A5C1E;
+  --c-navy-mid:    #9A7833;
   --c-gold:        #B8873B;
   --c-gold-light:  #E2BE79;
   --c-gold-dark:   #8A6423;
-  --c-cream:       #FBF7EF;
-  --c-border:      #E9DEC8;
+  --c-cream:       #FBF6EA;
+  --c-border:      #E7D9BC;
   --c-card:        #FFFFFF;
-  --c-text:        #3D3427;
-  --c-text-dim:    #7A6E5B;
-  --c-nav-bg:          #3D3427;
-  --c-nav-surface:     rgba(255,255,255,0.06);
-  --c-nav-border:      rgba(226,190,121,0.22);
-  --c-nav-text:        rgba(251,247,239,0.56);
-  --c-nav-text-strong: #E2BE79;
-  --c-nav-active-bg:   rgba(184,135,59,0.28);
+  --c-text:        #4A3A1C;
+  --c-text-dim:    #8A7855;
+  --c-nav-bg:          #F0E4C8;
+  --c-nav-surface:     rgba(138,100,35,0.10);
+  --c-nav-border:      #DCC89E;
+  --c-nav-text:        #7A6840;
+  --c-nav-text-strong: #6B4E17;
+  --c-nav-active-bg:   rgba(138,100,35,0.18);
 }
 
 /* ── בסיס הצבע ────────────────────────────────────────────────────────── */
@@ -416,26 +417,45 @@ html[data-theme='midnight']  select {
 
 /* ── ציר 5: הניווט ─────────────────────────────────────────────────────────
 
-   הטוקנים למעלה מוגדרים לפי הערכה. כאן בוחרים אם הסרגל בכלל כהה. */
+   ── למה ברירת המחדל היא "לפי הערכה" ─────────────────────────────────────
+
+   בגרסה הקודמת ברירת המחדל הייתה 'dark', והיא דרסה את מה שכל ערכה קבעה
+   לעצמה. התוצאה: **כל** שתים־עשרה הערכות הציגו סרגל כהה בבהירות 0–20%,
+   ונבדלו זו מזו רק בגוון שלו. זה נראה בדיוק כמו מה שהוא היה — פילטר צבע
+   מעל אותו עיצוב, ולא עיצוב אחר.
+
+   עכשיו הערכה קובעת גם את **מבנה** הניווט: "בהיר ונקי" מגיע עם סרגל לבן,
+   "תכלת" עם סרגל טורקיז מלא, "ירושלים" עם סרגל אבן בהיר. שלוש האפשרויות
+   שמתחת הן דריסה מפורשת, למי שרוצה משהו אחר מהערכה. */
+
+/* כהה — נגזר מצבע הבסיס של הערכה. */
+[data-nav='dark'] {
+  --c-nav-bg:          var(--c-navy);
+  --c-nav-surface:     rgba(255,255,255,0.07);
+  --c-nav-border:      rgba(255,255,255,0.12);
+  --c-nav-text:        rgba(255,255,255,0.55);
+  --c-nav-text-strong: var(--c-gold-light);
+  --c-nav-active-bg:   rgba(255,255,255,0.14);
+}
 
 /* בהיר — הסרגל הופך למשטח קרם עם טקסט כהה, כמו המשך של המסך. */
 [data-nav='light'] {
-  --c-nav-bg:          var(--c-cream);
+  --c-nav-bg:          var(--c-card);
   --c-nav-surface:     color-mix(in srgb, var(--c-gold) 8%, transparent);
   --c-nav-border:      var(--c-border);
   --c-nav-text:        var(--c-text-dim);
   --c-nav-text-strong: var(--c-gold-dark);
-  --c-nav-active-bg:   color-mix(in srgb, var(--c-gold) 18%, transparent);
+  --c-nav-active-bg:   color-mix(in srgb, var(--c-gold) 16%, transparent);
 }
 
 /* צבעוני — הסרגל בצבע ההדגשה עצמו. הכי בולט, הכי פחות "רשמי". */
 [data-nav='color'] {
   --c-nav-bg:          var(--c-gold-dark);
-  --c-nav-surface:     rgba(255,255,255,0.14);
-  --c-nav-border:      rgba(255,255,255,0.22);
-  --c-nav-text:        rgba(255,255,255,0.72);
+  --c-nav-surface:     rgba(255,255,255,0.16);
+  --c-nav-border:      rgba(255,255,255,0.24);
+  --c-nav-text:        rgba(255,255,255,0.76);
   --c-nav-text-strong: #FFFFFF;
-  --c-nav-active-bg:   rgba(255,255,255,0.20);
+  --c-nav-active-bg:   rgba(255,255,255,0.24);
 }
 
 /* המחלקות שהרכיבים משתמשים בהן. שם סמנטי, לא צבע — וזו כל הנקודה:

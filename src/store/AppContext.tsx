@@ -780,7 +780,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     el.setAttribute('data-density', settings.density || 'normal');
     el.setAttribute('data-graphics', settings.graphics === false ? 'off' : 'on');
     el.setAttribute('data-finish', settings.finish || 'float');
-    el.setAttribute('data-nav', settings.nav || 'dark');
+    el.setAttribute('data-nav', settings.nav || 'auto');
     el.setAttribute('data-icons', settings.icons || 'thin');
     el.setAttribute('data-font', settings.font || 'classic');
     // צבע סרגל הדפדפן בנייד — אחרת הוא נשאר זהב על ערכה כהה
@@ -791,7 +791,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const navBg = getComputedStyle(el).getPropertyValue('--c-nav-bg').trim();
       if (navBg) meta.setAttribute('content', navBg);
     }
-  }, [settings.theme, settings.uiSize, settings.density, settings.graphics]);
+    // ── תלות מפורשת בכל ציר ──────────────────────────────────────────────
+    // כאן היה באג שנראה בדיוק כמו "האפשרות לא עושה כלום": נוספו ארבעה
+    // צירים חדשים, ורשימת התלויות נשארה עם הארבעה הישנים. התכונות נכתבו
+    // פעם אחת בטעינה, וכל בחירה של גימור, ניווט, אייקון או גופן נשמרה
+    // בהגדרות בלי שאיש יעדכן את ה-DOM. הצבע דווקא עבד, כי theme היה ברשימה.
+  }, [
+    settings.theme, settings.uiSize, settings.density, settings.graphics,
+    settings.finish, settings.nav, settings.icons, settings.font,
+  ]);
 
   useEffect(() => {
     loadAll();
