@@ -67,7 +67,7 @@
  *
  * **מעדכנים אותה בכל שינוי מהותי בקובץ.**
  */
-var CODE_VERSION = '2026-08-19e';
+var CODE_VERSION = '2026-08-22a';
 
 // ── שמות הלשוניות ────────────────────────────────────────────────────────────
 var SH = {
@@ -324,7 +324,41 @@ function alert_(msg) {
  * קורא לשונית ומחזיר { headers, rows, sheet, col(name) }.
  * col('סכום') מחזיר את מספר האינדקס של העמודה, או -1.
  */
+/**
+ * מטמון לכל ריצה.
+ *
+ * בקשת getAll אחת קוראת ל-readSync_ שבע פעמים, וכל אחת מהן קראה את
+ * לשונית הסנכרון מחדש — שבע קריאות רשת לגוגל לאותם נתונים בדיוק.
+ * getDataRange().getValues() הוא הדבר היקר ביותר כאן, והוא נמדד
+ * בעשיריות שנייה.
+ *
+ * המטמון חי בתוך ריצה אחת בלבד. Apps Script מפעילה תהליך חדש לכל בקשה,
+ * ולכן אין סכנה שנגיש נתון ישן לבקשה הבאה.
+ */
+var __tableCache = {};
+
+/**
+ * המטמון פעיל **רק בבקשות קריאה**.
+ *
+ * זו החלטה מכוונת. יש בקוד יותר מעשרים מקומות שכותבים ישירות ללשונית
+ * (setValue, appendRow, deleteRow), וכל אחד מהם היה חייב לזכור לפסול את
+ * המטמון. מספיק שאחד יישכח כדי לקבל באג שקט שקורא נתונים שכבר השתנו —
+ * וזה בדיוק סוג הבאג שהכי קשה למצוא, כי הוא נראה כמו "הגיליון לא התעדכן".
+ *
+ * בקשת קריאה לא משנה כלום, ולכן שם המטמון בטוח לחלוטין. ושם גם נמצא כל
+ * הרווח: בקשת getAll קוראת את אותה לשונית שבע פעמים.
+ */
+var __cacheOn = false;
+
+/** מנקה את המטמון. חובה אחרי כתיבה, אחרת נקרא את המצב שלפניה. */
+function invalidateTable_(name) {
+  if (name) delete __tableCache[name];
+  else __tableCache = {};
+}
+
 function table_(name) {
+  if (__cacheOn && __tableCache[name]) return __tableCache[name];
+
   var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(name);
   if (!sh) return { headers: [], rows: [], sheet: null, col: function () { return -1; } };
 
@@ -333,12 +367,14 @@ function table_(name) {
   var index = {};
   headers.forEach(function (h, i) { if (h) index[h] = i; });
 
-  return {
+  var built = {
     sheet: sh,
     headers: headers,
     rows: values.slice(1).filter(function (r) { return r.join('').trim() !== ''; }),
     col: function (n) { return index[n] === undefined ? -1 : index[n]; },
   };
+  if (__cacheOn) __tableCache[name] = built;
+  return built;
 }
 
 /**
@@ -362,6 +398,9 @@ function flushWrites_() {
   Object.keys(_writeQueue).forEach(function (sheetName) {
     var queued = _writeQueue[sheetName];
     if (!queued || !queued.length) return;
+
+    // הלשונית עומדת להשתנות, ולכן מה ששמור עליה במטמון כבר לא נכון.
+    invalidateTable_(sheetName);
 
     var t = table_(sheetName);
     if (!t.sheet) return;
@@ -481,6 +520,8 @@ function orderIdFromChargeId_(chargeId) {
 
 function doGet(e) {
   var action = (e && e.parameter && e.parameter.action) || '';
+  __cacheOn = true;          // בקשת קריאה — בטוח למחזר לשוניות
+  __tableCache = {};
   return json_(safe_(function () {
     var res = route_(action, {});
     flushWrites_();
@@ -489,6 +530,8 @@ function doGet(e) {
 }
 
 function doPost(e) {
+  __cacheOn = false;         // בקשת כתיבה — תמיד לקרוא את המצב האמיתי
+  __tableCache = {};
   return json_(safe_(function () {
     var body = JSON.parse((e && e.postData && e.postData.contents) || '{}');
 
@@ -636,6 +679,7 @@ function route_(action, body) {
     // קריאה
     case 'ping':             return { ok: true, version: CODE_VERSION,
                                       sheet: SpreadsheetApp.getActiveSpreadsheet().getName() };
+    case 'getAll':           return getAll_();
     case 'getSummary':       return getSummary_();
     case 'getDonations':     return { donations: getDonations_() };
     case 'getDonors':        return { donors: getDonors_() };
@@ -893,6 +937,46 @@ function recentFailureCount_(now) {
     if (!d || d.getTime() >= cutoff) n++;   // בלי תאריך — סופרים, לא מסתירים
   });
   return n;
+}
+
+/**
+ * כל מה שהאפליקציה צריכה בפתיחה — בבקשה אחת.
+ *
+ * ── למה זה קיים ─────────────────────────────────────────────────────────
+ *
+ * הפתיחה ירתה **שתים־עשרה** בקשות נפרדות. Apps Script מגבילה ריצות
+ * במקביל, ולכן הלקוח שולח לכל היותר שלוש בו-זמנית — כלומר ארבעה גלים,
+ * וכל גל משלם מחדש את זמן ההתנעה של הסקריפט. זה מה שנראה כמו "האפליקציה
+ * איטית": לא החישוב, אלא ארבע המתנות ברצף.
+ *
+ * גרוע מכך, שבע מהן היו readSync_ — כולן קוראות את **אותה לשונית**.
+ * שבע נסיעות הלוך-חזור לאותם נתונים בדיוק.
+ *
+ * כאן הכול נקרא פעם אחת, מעל מטמון הלשוניות, ונשלח יחד. אם חלק נכשל,
+ * השאר עדיין מגיעים — שדה ריק עדיף על פתיחה שנופלת כולה.
+ */
+function getAll_() {
+  function attempt(fn, fallback) {
+    try { return fn(); } catch (e) { return fallback; }
+  }
+
+  var summary = attempt(getSummary_, {});
+
+  return {
+    version:       CODE_VERSION,
+    summary:       summary,
+    donations:     attempt(getDonations_, []),
+    donors:        attempt(getDonors_, {}),
+    hk:            attempt(getHK_, []),
+    failures:      attempt(getFailures_, []),
+    rebbeDate:     attempt(function () { return readSync_('rebbeDate') || ''; }, ''),
+    crm:           attempt(function () { return readSync_('crm') || {}; }, {}),
+    events:        attempt(function () { return readSync_('events') || []; }, []),
+    holidayExtras: attempt(function () { return readSync_('holidayExtras') || {}; }, {}),
+    history:       attempt(function () { return readSync_('history') || []; }, []),
+    homeVisits:    attempt(function () { return readSync_('homeVisits') || { rounds: [] }; }, { rounds: [] }),
+    projects:      attempt(function () { return readSync_('projects') || []; }, []),
+  };
 }
 
 function getSummary_() {
@@ -2604,9 +2688,14 @@ function writeSyncRaw_(key, payload) {
   var t = table_(SH.SYNC);
   if (!t.sheet) return;
   for (var i = 0; i < t.rows.length; i++) {
-    if (String(t.rows[i][0]).trim() === key) { t.sheet.getRange(i + 2, 2).setValue(payload); return; }
+    if (String(t.rows[i][0]).trim() === key) {
+      t.sheet.getRange(i + 2, 2).setValue(payload);
+      invalidateTable_(SH.SYNC);
+      return;
+    }
   }
   t.sheet.appendRow([key, payload]);
+  invalidateTable_(SH.SYNC);
 }
 
 function writeOverflow_(key, payload) {
