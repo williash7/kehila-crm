@@ -67,8 +67,9 @@
  *
  * **מעדכנים אותה בכל שינוי מהותי בקובץ.**
  */
-var CODE_VERSION = '2026-08-23a';
+var CODE_VERSION = '2026-08-23b';
 var EXPORT_SCHEMA_VERSION = 1;
+var EXPORT_MAX_LIMIT = 500;
 
 // ── שמות הלשוניות ────────────────────────────────────────────────────────────
 var SH = {
@@ -524,7 +525,10 @@ function doGet(e) {
   __cacheOn = true;          // בקשת קריאה — בטוח למחזר לשוניות
   __tableCache = {};
   return json_(safe_(function () {
-    var res = route_(action, {});
+    // פרמטרי GET נדרשים לייצוא המדורג (sheet/offset/limit/syncKey).
+    // מעבירים עותק פשוט ולא את אובייקט האירוע של Apps Script.
+    var params = (e && e.parameter) || {};
+    var res = route_(action, params);
     flushWrites_();
     return res;
   }));
@@ -674,14 +678,16 @@ function json_(obj) {
 function route_(action, body) {
   // כל פעולת קריאה מושכת קודם מיילים חדשים. פעולות כתיבה לא — המשתמש
   // מחכה לאישור, ואין טעם להוסיף לו סריקה באמצע.
-  if (action.indexOf('get') === 0) maybeSync_();
+  // דוח תקינות הוא אבחון קריאה-בלבד. אסור שקריאתו תתזמן סנכרון רקע
+  // שיכתוב לגיליון בזמן שהדוח קורא אותו.
+  if (action.indexOf('get') === 0 && action !== 'getIntegrity') maybeSync_();
 
   switch (action) {
     // קריאה
     case 'ping':             return { ok: true, version: CODE_VERSION,
                                       sheet: SpreadsheetApp.getActiveSpreadsheet().getName() };
     case 'getAll':           return getAll_();
-    case 'exportAll':        return exportAll_();
+    case 'exportAll':        return exportAll_(body);
     case 'getIntegrity':     return getIntegrity_();
     case 'getSummary':       return getSummary_();
     case 'getDonations':     return { donations: getDonations_() };
@@ -1008,45 +1014,156 @@ function exportMatrix_(values) {
   });
 }
 
-/**
- * גיבוי מלא של כל הלשוניות שבבעלות האפליקציה.
- *
- * `sheets` הוא העותק הנאמן של התאים, כולל עמודות שהמשתמש הוסיף בעצמו.
- * `syncResolved` הוא שכבה נוספת ונוחה לשחזור: בלשונית הסנכרון תא גדול
- * עשוי להכיל רק מצביע לקובץ overflow ב-Drive, ולכן כאן מחזירים גם את
- * התוכן המלא שאליו הוא מצביע.
- *
- * אין כאן יצירת קובץ, כתיבה ל-Drive או שינוי תאים. האפליקציה מורידה את
- * התשובה כקובץ מקומי רק אחרי שהמשתמש לוחץ על כפתור הגיבוי.
- */
-function exportAll_() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheetsOut = {};
-
+/** שמות לשוניות שמותר לחשוף דרך הגיבוי. */
+function exportSheetNames_() {
+  var names = [];
   Object.keys(SH).forEach(function (key) {
-    var name = SH[key];
-    var sheet = ss.getSheetByName(name);
-    if (!sheet) {
-      sheetsOut[name] = { present: false, headers: [], rows: [], rowCount: 0 };
-      return;
-    }
-
-    var values = sheet.getDataRange().getValues();
-    var matrix = exportMatrix_(values);
-    sheetsOut[name] = {
-      present: true,
-      headers: matrix.length ? matrix[0] : [],
-      rows: matrix.slice(1),
-      rowCount: Math.max(matrix.length - 1, 0),
-    };
+    if (names.indexOf(SH[key]) < 0) names.push(SH[key]);
   });
+  return names;
+}
 
-  var syncResolved = {};
+/** כותרות ומספר שורות בלי לקרוא את כל תוכן הלשונית לזיכרון. */
+function exportSheetMeta_(sheet) {
+  if (!sheet) return { present: false, headers: [], rowCount: 0 };
+  var lastRow = sheet.getLastRow();
+  var lastColumn = sheet.getLastColumn();
+  var headers = [];
+  if (lastRow > 0 && lastColumn > 0) {
+    headers = exportMatrix_(sheet.getRange(1, 1, 1, lastColumn).getValues())[0] || [];
+  }
+  return {
+    present: true,
+    headers: headers,
+    rowCount: Math.max(lastRow - 1, 0),
+  };
+}
+
+/** רשימת מפתחות בלבד; ערכי overflow נקראים בבקשות נפרדות. */
+function exportSyncKeys_() {
+  var keys = [];
   var sync = table_(SH.SYNC);
   sync.rows.forEach(function (row) {
     var key = String(get_(row, sync, 'מפתח') || row[0] || '').trim();
-    if (!key) return;
-    syncResolved[key] = readSync_(key);
+    if (key && keys.indexOf(key) < 0) keys.push(key);
+  });
+  return keys;
+}
+
+/**
+ * גרסת גיבוי מחמירה של readSync_. הקריאה הרגילה מחזירה את המצביע הגולמי
+ * כשקובץ overflow חסר כדי שהאפליקציה תמשיך לעלות; בגיבוי חייבים לדווח
+ * על הכשל, אחרת המשתמש יוריד קובץ שנראה תקין אך חסר בו המידע האמיתי.
+ */
+function exportReadSync_(key) {
+  var sync = table_(SH.SYNC);
+  for (var i = 0; i < sync.rows.length; i++) {
+    if (String(sync.rows[i][0] || '').trim() !== key) continue;
+    var raw = sync.rows[i][1];
+    if (!raw) return null;
+    var parsed;
+    try { parsed = JSON.parse(raw); }
+    catch (parseError) { return raw; }
+    if (parsed && parsed.__overflow) {
+      var content = DriveApp.getFileById(parsed.__overflow).getBlob().getDataAsString();
+      return JSON.parse(content);
+    }
+    return parsed;
+  }
+  return null;
+}
+
+function exportBase_() {
+  return {
+    schemaVersion: EXPORT_SCHEMA_VERSION,
+    codeVersion: CODE_VERSION,
+  };
+}
+
+/** מחזיר מקטע אחד בלבד, כדי שגם גיליון גדול לא יהפוך למחרוזת JSON ענקית. */
+function exportSheetChunk_(sheetName, offsetRaw, limitRaw) {
+  var base = exportBase_();
+  var allowed = exportSheetNames_();
+  if (allowed.indexOf(sheetName) < 0) {
+    base.success = false;
+    base.error = 'לשונית אינה שייכת לאפליקציה: ' + sheetName;
+    return base;
+  }
+
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+  if (!sheet) {
+    base.success = false;
+    base.error = 'הלשונית אינה קיימת: ' + sheetName;
+    return base;
+  }
+
+  var offset = Math.max(parseInt(offsetRaw, 10) || 0, 0);
+  var requestedLimit = parseInt(limitRaw, 10) || EXPORT_MAX_LIMIT;
+  var limit = Math.max(1, Math.min(requestedLimit, EXPORT_MAX_LIMIT));
+  var meta = exportSheetMeta_(sheet);
+  var count = Math.max(Math.min(limit, meta.rowCount - offset), 0);
+  var rows = [];
+  if (count > 0 && meta.headers.length > 0) {
+    rows = exportMatrix_(sheet.getRange(offset + 2, 1, count, meta.headers.length).getValues());
+  }
+  var consumed = offset + rows.length;
+
+  base.success = true;
+  base.sheet = sheetName;
+  base.headers = meta.headers;
+  base.rows = rows;
+  base.offset = offset;
+  base.limit = limit;
+  base.total = meta.rowCount;
+  base.nextOffset = consumed < meta.rowCount ? consumed : null;
+  base.complete = base.nextOffset === null;
+  return base;
+}
+
+/** קורא מפתח סנכרון בודד ומבודד כשל בקובץ overflow שנמחק. */
+function exportSyncValue_(syncKey) {
+  var base = exportBase_();
+  base.syncKey = syncKey;
+  if (exportSyncKeys_().indexOf(syncKey) < 0) {
+    base.success = false;
+    base.error = 'מפתח הסנכרון אינו קיים: ' + syncKey;
+    return base;
+  }
+  try {
+    var data = exportReadSync_(syncKey);
+    base.success = true;
+    base.data = data === undefined ? null : data;
+  } catch (err) {
+    base.success = false;
+    base.error = String(err);
+  }
+  return base;
+}
+
+/**
+ * גיבוי מדורג וקריאה-בלבד.
+ *
+ * ללא פרמטרים מוחזר manifest קטן. תוכן לשונית וערכי sync נמשכים כל אחד
+ * בבקשות נפרדות, ולכן קובץ overflow פגום או לשונית גדולה אינם מפילים את
+ * כל הגיבוי. אין יצירת קובץ, כתיבה ל-Drive או שינוי תאים.
+ */
+function exportAll_(params) {
+  params = params || {};
+  var sheetName = String(params.sheet || '').trim();
+  var syncKey = String(params.syncKey || '').trim();
+  if (sheetName && syncKey) {
+    var invalid = exportBase_();
+    invalid.success = false;
+    invalid.error = 'יש לבקש לשונית או מפתח סנכרון, לא את שניהם יחד';
+    return invalid;
+  }
+  if (sheetName) return exportSheetChunk_(sheetName, params.offset, params.limit);
+  if (syncKey) return exportSyncValue_(syncKey);
+
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheetsOut = {};
+  exportSheetNames_().forEach(function (name) {
+    sheetsOut[name] = exportSheetMeta_(ss.getSheetByName(name));
   });
 
   return {
@@ -1059,8 +1176,9 @@ function exportAll_() {
       name: String(ss.getName ? ss.getName() : ''),
       timeZone: Session.getScriptTimeZone(),
     },
+    maxLimit: EXPORT_MAX_LIMIT,
     sheets: sheetsOut,
-    syncResolved: syncResolved,
+    syncKeys: exportSyncKeys_(),
   };
 }
 
@@ -1156,7 +1274,6 @@ function getIntegrity_() {
 
   // ── יומן ────────────────────────────────────────────────────────────────
   var logIds = {};
-  var chargeIds = {};
   var duplicateLogIds = [];
   var logWithoutId = [];
   var logWithoutName = [];
@@ -1198,8 +1315,10 @@ function getIntegrity_() {
       var orderId = orderIdFromChargeId_(id);
       if (!orderId) malformedCharges.push(id + ' · שורה ' + rowNo);
       else {
-        chargeIds[setKey_(id)] = true;
-        if (!orderIds[setKey_(orderId)]) orphanCharges.push(id + ' · שורה ' + rowNo);
+        // חיוב שנכשל נשמר בכוונה גם אחרי הסרת ההוראה, כתיעוד היסטורי.
+        if (status !== STATUS_FAILED && !orderIds[setKey_(orderId)]) {
+          orphanCharges.push(id + ' · שורה ' + rowNo);
+        }
       }
     }
   });
@@ -1214,34 +1333,6 @@ function getIntegrity_() {
   integrityIssue_(issues, 'log_unknown_status', 'warning', 'סטטוסים לא מוכרים ביומן', unknownStatuses);
   integrityIssue_(issues, 'log_unknown_contact', 'warning', 'שמות ביומן שאינם באנשי הקשר', orphanContactRefs,
                   'ייתכן שהאדם נמחק או ששמו נכתב בצורה אחרת.');
-
-  // ── חיובים חסרים לפי לוח הזמנים ───────────────────────────────────────
-  var missingCharges = [];
-  var today = new Date();
-  hk.rows.forEach(function (row, i) {
-    var id = String(get_(row, hk, 'מזהה') || '').trim();
-    var start = toDate_(get_(row, hk, 'תאריך פתיחה'));
-    var cancel = toDate_(get_(row, hk, 'תאריך ביטול'));
-    var rawPayments = get_(row, hk, 'מספר תשלומים');
-    var unlimited = isUnlimited_(rawPayments);
-    var payments = asNumber_(rawPayments);
-    if (!id || !start || (!unlimited && !payments)) return;
-
-    var billingDay = start.getDate();
-    var cursor = new Date(start.getFullYear(), start.getMonth(), 1);
-    var rounds = unlimited ? 600 : payments;
-    for (var n = 0; n < rounds; n++) {
-      var y = cursor.getFullYear(), m = cursor.getMonth();
-      var chargeDate = new Date(y, m, Math.min(billingDay, daysInMonth_(y, m)));
-      if (cancel && chargeDate >= cancel) break;
-      if (unlimited && chargeDate > today) break;
-      var expectedId = hkChargeId_(id, y, m);
-      if (!chargeIds[setKey_(expectedId)]) missingCharges.push(id + ' · ' + asDate_(chargeDate));
-      cursor.setMonth(cursor.getMonth() + 1);
-    }
-  });
-  integrityIssue_(issues, 'charges_missing', 'error', 'חיובי הוראת קבע חסרים', missingCharges,
-                  'הדוח לא יוצר אותם. יש לבדוק את ההוראה לפני הפעלת השלמה.');
 
   // ── כשלים שמצביעים להוראה שאינה קיימת ────────────────────────────────
   var orphanFailures = [];
@@ -1358,7 +1449,8 @@ function addMeeting_(body) {
  * ההוראה הזו לבין מיילי הסירוב שיגיעו עליה בעתיד. בלעדיו נוצר מזהה
  * פנימי, וכשל שיגיע לא יידע לאיזו הוראה הוא שייך.
  */
-function addStandingOrder_(body) {
+function addStandingOrder_(body, options) {
+  options = options || {};
   var name = standardName(body.name);
   var amount = asNumber_(body.amount);
   var unlimited = !!body.unlimited || isUnlimited_(body.payments);
@@ -1389,8 +1481,8 @@ function addStandingOrder_(body) {
   _contactIndex = null;
   _hkIndex = null;
   _logIds = null;
-  var created = generateStandingOrderCharges();
-  return { success: true, id: id, created: created };
+  var created = options.skipGenerate ? 0 : generateStandingOrderCharges();
+  return { success: true, id: id, created: created, deferredCharges: !!options.skipGenerate };
 }
 
 /**
@@ -2015,14 +2107,64 @@ function ensureContact_(name, phone, address) {
   appendByName_(SH.CONTACTS, { 'שם מלא': name, 'טלפון': phone || '', 'כתובת': address || '' });
 }
 
+/** רכיבי חתימה מקודדים כדי שתווי הפרדה בתוך שם לא ייצרו התנגשות. */
+function importSignature_(kind, parts) {
+  return 'imp:fallback:' + kind + ':' + parts.map(function (part) {
+    return encodeURIComponent(String(part == null ? '' : part));
+  }).join('|');
+}
+
+/** אותו ניקוי שמפעילה אזהרת הכפילויות באפליקציה, בתוספת מפת הכינויים. */
+function importCanonicalName_(value) {
+  function clean(name) {
+    return String(name == null ? '' : name)
+      .replace(/[\u200B-\u200F\u202A-\u202E\uFEFF]/g, '')
+      .replace(/["'`׳״]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+  return clean(standardName(clean(value)));
+}
+
+/** סיומת סידורית יציבה שומרת שתי רשומות זהות אמיתיות באותו קובץ. */
+function nextImportOrdinalId_(counts, base) {
+  var key = setKey_(base);
+  counts[key] = (counts[key] || 0) + 1;
+  return base + '#' + counts[key];
+}
+
+function importDonationId_(donation, counts) {
+  var sourceId = String(donation.id || '').trim();
+  if (sourceId) return 'imp:' + sourceId;
+  var name = importCanonicalName_(donation.name);
+  var date = asDate_(donation.date || '');
+  var agorot = Math.round(asNumber_(donation.amount) * 100);
+  return nextImportOrdinalId_(counts, importSignature_('donation', [name, date, agorot]));
+}
+
+function importOrderId_(order, counts) {
+  var sourceId = String(order.id || '').trim();
+  if (sourceId) return sourceId; // מספר ספק אמיתי חייב להישאר זהה לצורך קישור כשלי חיוב
+  var name = importCanonicalName_(order.name);
+  var startDate = asDate_(order.startDate || '');
+  var agorot = Math.round(asNumber_(order.amount) * 100);
+  var unlimited = !!order.unlimited || isUnlimited_(order.payments);
+  var payments = unlimited ? 'unlimited' : asNumber_(order.payments);
+  return nextImportOrdinalId_(counts, importSignature_('order', [name, startDate, agorot, payments]));
+}
+
 /**
  * ייבוא מרוכז מהאפליקציה (כרטיסי הייבוא עם ה-AI).
  * body.contacts / body.donations / body.standingOrders — מערכים.
- * כל שורה מקבלת מזהה עם קידומת imp: ותווית מקור, כך שאפשר לבטל ייבוא שלם.
+ * מזהה מקור אמיתי נשמר; בהיעדרו נבנית חתימה קנונית ויציבה. תווית `tag`
+ * נשארת רק לצורך ביטול התרומות שנוספו בפעולת הייבוא הנוכחית.
  */
 function importRows_(body) {
   var tag = 'imp' + new Date().getTime();
   var added = { contacts: 0, donations: 0, standingOrders: 0 };
+  var rejected = { donations: [], standingOrders: [] };
+  var donationOrdinals = {};
+  var orderOrdinals = {};
 
   // אנשי הקשר נכתבים בשני מעברים, וזה הכרחי ולא סגנוני:
   //   · ensureContact_ מוסיף שורה ל**תור הכתיבה** (appendByName_), והיא
@@ -2047,10 +2189,18 @@ function importRows_(body) {
     });
   });
 
-  (body.donations || []).forEach(function (d, i) {
-    if (!d || !d.name) return;
+  (body.donations || []).forEach(function (d) {
+    if (!d || !d.name) {
+      rejected.donations.push({
+        id: String(d && d.id || '').trim(),
+        name: String(d && d.name || '').trim() || 'ללא שם',
+        reason: 'חסר שם תורם',
+      });
+      return;
+    }
+    var importId = importDonationId_(d, donationOrdinals);
     var ok = addLogRow_({
-      'מזהה':        d.id ? 'imp:' + d.id : tag + ':' + i,
+      'מזהה':        importId,
       'שם':          standardName(d.name),
       'תאריך תרומה': d.date || '',
       'סכום':        asNumber_(d.amount),
@@ -2059,17 +2209,44 @@ function importRows_(body) {
       'סיכום ותובנות': d.notes || '',
       'מקור':        'ייבוא ' + tag,
     });
-    if (ok) { ensureContact_(standardName(d.name), d.phone, d.address); added.donations++; }
+    if (ok) {
+      ensureContact_(standardName(d.name), d.phone, d.address);
+      added.donations++;
+    } else {
+      rejected.donations.push({
+        id: importId,
+        name: standardName(d.name),
+        reason: 'תרומה במזהה זה כבר קיימת',
+      });
+    }
   });
 
   (body.standingOrders || []).forEach(function (h) {
-    if (!h || !h.name) return;
-    addStandingOrder_(h);
-    added.standingOrders++;
+    if (!h) {
+      rejected.standingOrders.push({ id: '', name: 'ללא שם', reason: 'שורת הוראת קבע ריקה' });
+      return;
+    }
+    var order = {};
+    Object.keys(h).forEach(function (key) { order[key] = h[key]; });
+    order.id = importOrderId_(order, orderOrdinals);
+    var result = addStandingOrder_(order, { skipGenerate: true });
+    if (result.success) {
+      added.standingOrders++;
+    } else {
+      rejected.standingOrders.push({
+        id: order.id,
+        name: standardName(order.name),
+        reason: result.error || 'הוראת הקבע לא נוספה',
+      });
+    }
   });
 
+  // כל ההוראות כבר נשטפו לגיליון בתוך addStandingOrder_. מריצים את המנוע
+  // פעם אחת בלבד במקום פעם לכל הוראה — בלי לשנות את מסלול ההוספה הרגיל.
+  if (added.standingOrders > 0) generateStandingOrderCharges();
+
   flushWrites_();
-  return { success: true, added: added, tag: tag };
+  return { success: true, added: added, rejected: rejected, tag: tag };
 }
 
 /**
