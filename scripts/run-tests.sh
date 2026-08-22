@@ -62,6 +62,7 @@ bundle allDates.ts        "$OUT/alldates.js"
 bundle api.ts             "$OUT/api.js"
 bundle manualDonations.ts "$OUT/md.js"
 bundle nameMerges.ts      "$OUT/nm.js"
+bundle importDupes.ts     "$OUT/dupes.js"
 # version.ts קורא לקבועים ש-vite מזריק בבנייה. בלעדיהם הבדיקה בודקת
 # את הנפילה האחורית במקום את ההתנהגות האמיתית.
 $ESBUILD "$APP/src/lib/version.ts" --bundle --format=cjs --outfile="$OUT/ver.js" \

@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Explain } from './Explain';
-import { Bot, X, Copy, Check, Sparkles, Trash2, Undo2, Download } from 'lucide-react';
+import { Bot, X, Copy, Check, Sparkles, Trash2, Undo2, Download, AlertTriangle } from 'lucide-react';
 import { useAppStore } from '../store/AppContext';
 import { buildHolidayList } from '../lib/holidayList';
 import { getCustomHols, saveCustomHols, apiPost } from '../lib/api';
@@ -108,6 +108,8 @@ const TOPIC_HINTS: Record<string, string> = {
   solicitations: 'טבלת קמפיין: ממי לבקש, כמה, ומה הסטטוס',
 };
 
+import { findDuplicates } from '../lib/importDupes';
+
 /** מה נכתב לגיליון דרך השרת, ומה נשמר בענן האפליקציה */
 const SHEET_SECTIONS = ['contacts', 'donations', 'standingOrders'] as const;
 const APP_SECTIONS = ['events', 'projects', 'holidays', 'solicitations'] as const;
@@ -115,7 +117,7 @@ const ALL_SECTIONS = [...SHEET_SECTIONS, ...APP_SECTIONS];
 
 export function GlobalAIImportModal({ onClose }: { onClose: () => void }) {
   const {
-    holidays, eventsData, homeVisits, donors, holidayExtras, projects,
+    holidays, eventsData, homeVisits, donors, holidayExtras, projects, donations,
     updateHolidayExtras, updateEventsData, updateHomeVisitRoundMeta, updateProjects, refresh,
   } = useAppStore();
   const [step, setStep] = useState<'prompt' | 'review' | 'done'>('prompt');
@@ -212,13 +214,28 @@ export function GlobalAIImportModal({ onClose }: { onClose: () => void }) {
       parts.push('· אם בטבלה שלי יש עמודה כמו "פוטנציאל תרומה" או "צפי" — זה ה-ask. עמודה כמו "כסף ביד" היא תרומה שכבר נכנסה, ואותה כתוב תחת donations ולא כאן.');
       parts.push('· אל תכתוב ב-ask סכום שכבר נתרם. ask הוא מה שעוד מתכוונים לבקש.');
     }
+    // ── מזהה מקור ──────────────────────────────────────────────────────
+    //
+    // בלי זה, ייבוא חוזר של אותו קובץ יוצר כפילות: השרת נופל למזהה שנגזר
+    // מחותמת זמן, והיא חדשה בכל ייבוא. עם מספר קבלה או אישור אמיתי הכתיבה
+    // אידמפוטנטית לחלוטין.
+    //
+    // ההוראה "אל תמציא" אינה מנומסות. מזהה מומצא גרוע ממזהה חסר: הוא
+    // *נראה* יציב, ולכן ייבוא שני של אותו קובץ ייצר מזהה אחר ויכפיל —
+    // בלי שאיש יבחין. כשאין מזהה, השרת יודע לבנות חתימה יציבה בעצמו.
+    if (on('donations') || on('standingOrders')) {
+      parts.push('· אם יש בקובץ מספר קבלה, מספר אישור, מספר עסקה או מספר הוראה — ' +
+        'כתוב אותו בשדה id. **אל תמציא מזהה ואל תמספר שורות מעצמך**: ' +
+        'אם אין מספר כזה בקובץ, פשוט השמט את השדה id לגמרי.');
+    }
+
     if (on('items')) parts.push('· לכל משימה כתוב שיוך (targetKind) אחד מתוך: "holiday", "event", "project", "homeVisit", "contact" (עם שם האדם ב-targetLabel), "standalone". ב-targetLabel כתוב את שם החג/האירוע/הפרויקט — **גם אם הוא כזה שאתה יוצר עכשיו באותה תשובה**.');
 
     // ── הסכימה, רק לנבחרים ────────────────────────────────────────────────
     const schema: Record<string, any> = {};
     if (on('contacts')) schema.contacts = [{ 'שם מלא': 'ישראל ישראלי', 'טלפון': '050-1234567', 'כתובת': 'הרצל 5', 'בן/בת זוג': 'שרה', 'הערות': '' }];
-    if (on('donations')) schema.donations = [{ name: 'ישראל ישראלי', amount: 500, date: '15/05/2026', method: 'מזומן', purpose: 'תרומה כללית', notes: '' }];
-    if (on('standingOrders')) schema.standingOrders = [{ name: 'דוד כהן', amount: 100, startDate: '01/09/2025', payments: 12, phone: '', campaign: '' }];
+    if (on('donations')) schema.donations = [{ id: '12345', name: 'ישראל ישראלי', amount: 500, date: '15/05/2026', method: 'מזומן', purpose: 'תרומה כללית', notes: '' }];
+    if (on('standingOrders')) schema.standingOrders = [{ id: '1866314', name: 'דוד כהן', amount: 100, startDate: '01/09/2025', payments: 12, phone: '', campaign: '' }];
     if (on('events')) schema.events = [{ name: 'סעודת שבת', type: 'shabbat', freq: 'weekly', date: '2026-08-14', time: '19:30' }];
     if (on('projects')) schema.projects = [{ name: 'הדפסת לוח שנה', kind: 'project', goal: 12000, deadline: '2026-09-01', notes: '' }];
     if (on('holidays')) schema.holidays = [{ name: 'יום השנה לסבא', date: '2026-10-05', desc: '' }];
@@ -373,6 +390,25 @@ export function GlobalAIImportModal({ onClose }: { onClose: () => void }) {
   const sheetRowCount = SHEET_SECTIONS.reduce((s, k) => s + rows[k].length, 0);
   const appRowCount = APP_SECTIONS.reduce((s, k) => s + rows[k].length, 0);
   const totalCount = items.length + sheetRowCount + appRowCount;
+
+  // ── מה כבר קיים ביומן ──────────────────────────────────────────────────
+  //
+  // מחושב מחדש בכל שינוי ברשימה, כדי שהסרת שורה תעדכן מיד את הספירה.
+  // ההשוואה מנרמלת תאריך, שם וסכום — בגיליון יושבים שני פורמטים של תאריך
+  // זה לצד זה, והשוואה גולמית הייתה מפספסת בדיוק את מה שהיא מחפשת.
+  const dupes = React.useMemo(
+    () => findDuplicates(
+      rows.donations.map(r => ({ ...r, ...r.data })),
+      donations || []
+    ),
+    [rows.donations, donations]
+  );
+
+  /** מסיר מהרשימה את השורות שכבר קיימות ביומן. */
+  const removeExistingDonations = () => {
+    const drop = new Set(dupes.existing.map((r: any) => r.key));
+    setRows(prev => ({ ...prev, donations: prev.donations.filter(r => !drop.has(r.key)) }));
+  };
 
   const commit = async () => {
     if (totalCount === 0) return;
@@ -671,6 +707,45 @@ export function GlobalAIImportModal({ onClose }: { onClose: () => void }) {
                 עברו על הכל לפני השמירה. אפשר להסיר כל שורה, ולתקן את השיוך של כל משימה.
               </p>
 
+              {/* ── שורות שכבר נמצאות ביומן ──────────────────────────────
+                  זו אזהרה, לא סינון. ההגנה האמיתית מפני כפילות יושבת
+                  בשרת; כאן רק אומרים למשתמש מה הוא עומד לעשות, כדי
+                  שלא יגלה את זה אחרי השמירה. */}
+              {dupes.existing.length > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-[11px] text-amber-900 leading-relaxed">
+                  <div className="font-bold mb-1 flex items-center gap-1.5">
+                    <AlertTriangle size={13} className="shrink-0" />
+                    {dupes.existing.length} מתוך {rows.donations.length} התרומות כבר קיימות ביומן
+                  </div>
+                  <div className="mb-2">
+                    השרת לא יכתוב אותן פעמיים, אז אפשר להמשיך בלי חשש. אם תסיר אותן
+                    כאן, הרשימה שתישמר תהיה קצרה וברורה יותר.
+                  </div>
+                  <div className="max-h-24 overflow-y-auto space-y-0.5 mb-2">
+                    {dupes.existing.slice(0, 12).map((r: any) => (
+                      <div key={r.key} className="opacity-80">
+                        · {r.data.name} · {r.data.date} · ₪{r.data.amount}
+                      </div>
+                    ))}
+                    {dupes.existing.length > 12 && <div className="opacity-60">ועוד {dupes.existing.length - 12}…</div>}
+                  </div>
+                  <button
+                    onClick={removeExistingDonations}
+                    className="bg-amber-100 hover:bg-amber-200 border border-amber-300 rounded-lg px-2.5 py-1 font-bold transition-colors"
+                  >
+                    הסר את {dupes.existing.length} השורות הקיימות
+                  </button>
+                </div>
+              )}
+
+              {dupes.repeatedInFile.length > 0 && (
+                <div className="bg-white border border-[#EDE6D6] rounded-xl p-3 text-[11px] text-gray-600 leading-relaxed">
+                  <b>{dupes.repeatedInFile.length} שורות חוזרות על עצמן בתוך הקובץ.</b> אם אלה
+                  תרומות אמיתיות ונפרדות — הכול בסדר, שתיהן יישמרו. אם זו טעות בקובץ,
+                  כדאי להסיר עכשיו.
+                </div>
+              )}
+
               {/* שורות שנכתבות לגיליון */}
               {ALL_SECTIONS.map(section => rows[section].length > 0 && (
                 <div key={section}>
@@ -785,6 +860,43 @@ export function GlobalAIImportModal({ onClose }: { onClose: () => void }) {
                 {result.holidays > 0 && <div>{result.holidays} חגים ותאריכים</div>}
               </div>
             )}
+
+            {/* ── מה דולג, ולמה ────────────────────────────────────────────
+                מונה אמת לבדו אינו מספיק: מי שייבא חמישים הוראות ורואה
+                שתים־עשרה יחשוב שהייבוא נשבר. מספר קטן ממה שציפית, בלי
+                הסבר, נראה בדיוק כמו באג.
+
+                השדה תוספתי — גיליון שעדיין מריץ קוד ישן פשוט לא מחזיר
+                אותו, והמסך נראה כמו קודם. */}
+            {(() => {
+              const rej = [
+                ...(result.sheet?.rejected?.donations || []),
+                ...(result.sheet?.rejected?.standingOrders || []),
+              ];
+              if (!rej.length) return null;
+              return (
+                <div className="bg-white border border-[#EDE6D6] rounded-xl p-3 text-[11px] text-gray-600 leading-relaxed">
+                  <div className="font-bold text-[#0D1B2A] mb-1.5">
+                    {rej.length} שורות דולגו
+                  </div>
+                  <div className="space-y-1 max-h-40 overflow-y-auto">
+                    {rej.map((r: any, i: number) => (
+                      <div key={(r.id || '') + i} className="flex gap-1.5">
+                        <span className="text-gray-400 shrink-0">·</span>
+                        <span className="min-w-0">
+                          <b className="text-[#0D1B2A]">{r.name || r.id}</b>
+                          {r.reason && <span className="text-gray-500"> — {r.reason}</span>}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-gray-400 mt-2">
+                    דילוג אינו שגיאה: ברוב המקרים השורה כבר קיימת בגיליון,
+                    והמערכת מונעת כפילות.
+                  </p>
+                </div>
+              );
+            })()}
 
             {result.sheet?.tag && !undone && (
               <>
