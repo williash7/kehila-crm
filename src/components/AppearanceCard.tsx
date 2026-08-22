@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Check, ChevronUp, ChevronDown, Eye, EyeOff, RotateCcw, Home, Users, HandCoins } from 'lucide-react';
 import { useAppStore } from '../store/AppContext';
 import {
-  THEMES, FINISHES, NAVS, ICON_STYLES, FONTS,
+  THEMES, FINISHES, SURFACES, ICON_STYLES, FONTS,
   UI_SIZES, DENSITIES, DEFAULT_SETTINGS,
 } from '../lib/settings';
 import { DASH_CARDS, DashCardId, resolveCards, hiddenCards, moveCard, DEFAULT_ORDER } from '../lib/dashboardCards';
@@ -196,10 +196,10 @@ export function AppearanceCard() {
           </p>
 
           <Axis
-            label="סרגל הניווט"
-            options={NAVS}
-            value={settings.nav || 'auto'}
-            onPick={nav => updateSettings({ nav })}
+            label="משטחים כהים — סרגל, פס עליון, כפתורים"
+            options={SURFACES}
+            value={settings.surface || 'auto'}
+            onPick={surface => updateSettings({ surface })}
             cols={4}
           />
 
@@ -253,7 +253,7 @@ export function AppearanceCard() {
             onClick={() => updateSettings({
               theme: DEFAULT_SETTINGS.theme,
               finish: DEFAULT_SETTINGS.finish,
-              nav: DEFAULT_SETTINGS.nav,
+              surface: DEFAULT_SETTINGS.surface,
               icons: DEFAULT_SETTINGS.icons,
               font: DEFAULT_SETTINGS.font,
               uiSize: DEFAULT_SETTINGS.uiSize,

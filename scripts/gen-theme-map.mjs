@@ -24,13 +24,25 @@ import { fileURLToPath } from 'url';
 const SRC = join(dirname(fileURLToPath(import.meta.url)), '..', 'src');
 const OUT = join(SRC, 'theme-map.css');
 
-// הצבעים שהם "הערכה". צבע שאינו כאן (ירוק הצלחה, אדום שגיאה, ירוק וואטסאפ)
-// נשאר כפי שהוא בכוונה — משמעות, לא עיצוב.
-const VAR = {
-  '#0D1B2A': '--c-navy',
-  '#1A2E45': '--c-navy-mid',
-  '#16283D': '--c-navy-mid',
-  '#1A2D44': '--c-navy-mid',
+// ── הצבעים שהם "הערכה", ולאיזה משתנה הם הולכים ──────────────────────────
+//
+// המיפוי הוא **לפי תכונה ולא לפי צבע**, וזה לא פרט טכני אלא הלב של העניין:
+// #0D1B2A מופיע 137 פעם כרקע של משטח כהה (פס עליון, סרגל, כפתור ראשי)
+// ו-282 פעם כצבע הטקסט הרגיל על כרטיס לבן. אותו קוד צבע, שני תפקידים
+// הפוכים.
+//
+// כל עוד שניהם קראו לאותו משתנה, אי אפשר היה להפוך את המשטחים לבהירים —
+// זה היה הופך גם את הטקסט ללבן על לבן. ההפרדה כאן היא מה שמאפשר את
+// ציר "המשטחים הכהים".
+//
+// צבע שאינו כאן (ירוק הצלחה, אדום שגיאה, ירוק וואטסאפ) נשאר כפי שהוא
+// בכוונה — הוא נושא משמעות, לא עיצוב.
+
+const SURFACE = {   // רקעים, מילויים וגרדיאנטים
+  '#0D1B2A': '--c-chrome-bg',
+  '#16283D': '--c-chrome-bg',
+  '#1A2D44': '--c-chrome-bg',
+  '#1A2E45': '--c-chrome-soft',
   '#C9A84C': '--c-gold',
   '#E8C97A': '--c-gold-light',
   '#F5E7C4': '--c-gold-light',
@@ -39,6 +51,33 @@ const VAR = {
   '#FDF6E3': '--c-cream',
   '#EDE6D6': '--c-border',
 };
+
+const INK = {       // טקסט
+  '#0D1B2A': '--c-text',
+  '#1A2E45': '--c-text-dim',
+  '#C9A84C': '--c-gold',
+  '#E8C97A': '--c-chrome-accent',
+  '#F5E7C4': '--c-chrome-accent',
+  '#9B7A2F': '--c-gold-dark',
+  '#FAF6EE': '--c-cream',
+  '#EDE6D6': '--c-border',
+};
+
+const EDGE = {      // גבולות
+  '#0D1B2A': '--c-text',
+  '#1A2E45': '--c-text-dim',
+  '#C9A84C': '--c-gold',
+  '#E8C97A': '--c-gold-light',
+  '#9B7A2F': '--c-gold-dark',
+  '#FAF6EE': '--c-cream',
+  '#EDE6D6': '--c-border',
+};
+
+/** איזו טבלה חלה על קידומת נתונה. */
+const tableFor = prefix =>
+  ['text', 'placeholder', 'decoration', 'caret'].includes(prefix) ? INK
+  : ['border', 'ring', 'outline', 'divide'].includes(prefix) ? EDGE
+  : SURFACE;
 
 // קידומת המחלקה → תכונת ה-CSS שהיא קובעת.
 const PROP = {
@@ -92,7 +131,7 @@ let skippedVariants = new Set();
 for (const m of source.matchAll(CLASS_RE)) {
   const [, variantStr, prefix, hexRaw, alphaRaw] = m;
   const hex = hexRaw.toUpperCase();
-  const v = VAR[hex];
+  const v = tableFor(prefix)[hex];
   if (!v) continue; // צבע סמנטי — לא נוגעים
 
   const variants = variantStr ? variantStr.slice(0, -1).split(':') : [];

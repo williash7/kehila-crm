@@ -780,7 +780,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     el.setAttribute('data-density', settings.density || 'normal');
     el.setAttribute('data-graphics', settings.graphics === false ? 'off' : 'on');
     el.setAttribute('data-finish', settings.finish || 'float');
-    el.setAttribute('data-nav', settings.nav || 'auto');
+    el.setAttribute('data-surface', settings.surface || 'auto');
     el.setAttribute('data-icons', settings.icons || 'thin');
     el.setAttribute('data-font', settings.font || 'classic');
     // צבע סרגל הדפדפן בנייד — אחרת הוא נשאר זהב על ערכה כהה
@@ -798,7 +798,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     // בהגדרות בלי שאיש יעדכן את ה-DOM. הצבע דווקא עבד, כי theme היה ברשימה.
   }, [
     settings.theme, settings.uiSize, settings.density, settings.graphics,
-    settings.finish, settings.nav, settings.icons, settings.font,
+    settings.finish, settings.surface, settings.icons, settings.font,
   ]);
 
   useEffect(() => {

@@ -25,8 +25,12 @@ export interface AppSettings {
   theme: ThemeName;
   /** גימור: פינות, עובי גבול ועומק צל — נעים יחד */
   finish: FinishName;
-  /** סרגל הניווט: כהה, בהיר, או בצבע ההדגשה */
-  nav: NavName;
+  /**
+   * המשטחים הכהים: הסרגל, הפס העליון, הכפתורים הראשיים והכרטיסים הכהים.
+   * כולם יחד — הם ממלאים את אותו תפקיד, וסרגל בהיר לצד פס עליון כחול
+   * הוא לא בחירה אלא אי-עקביות.
+   */
+  surface: SurfaceName;
   /** עובי הקו של האייקונים, וכמה בולט הפריט הפעיל */
   icons: IconsName;
   /** שילוב הגופנים */
@@ -43,7 +47,7 @@ export type ThemeName =
   | 'bordeaux' | 'sky' | 'mono' | 'plum' | 'midnight' | 'jerusalem';
 
 export type FinishName = 'soft' | 'sharp' | 'defined' | 'float';
-export type NavName    = 'auto' | 'dark' | 'light' | 'color';
+export type SurfaceName = 'auto' | 'dark' | 'light' | 'color';
 export type IconsName  = 'thin' | 'normal' | 'bold';
 export type FontName   = 'classic' | 'modern' | 'native';
 
@@ -74,11 +78,11 @@ export const FINISHES: { id: FinishName; label: string; hint: string }[] = [
   { id: 'sharp',   label: 'חד',    hint: 'פינות ישרות, טבלאי' },
 ];
 
-export const NAVS: { id: NavName; label: string; hint: string }[] = [
+export const SURFACES: { id: SurfaceName; label: string; hint: string }[] = [
   { id: 'auto',  label: 'לפי הערכה', hint: 'כל ערכה והמבנה שלה' },
-  { id: 'dark',  label: 'כהה',       hint: 'מנוגד למסך' },
-  { id: 'light', label: 'בהיר',      hint: 'ממשיך את המסך' },
-  { id: 'color', label: 'צבעוני',    hint: 'בצבע ההדגשה' },
+  { id: 'dark',  label: 'כהים',      hint: 'מנוגדים לתוכן' },
+  { id: 'light', label: 'בהירים',    hint: 'ממשיכים את המסך' },
+  { id: 'color', label: 'צבעוניים',  hint: 'בצבע ההדגשה' },
 ];
 
 export const ICON_STYLES: { id: IconsName; label: string; hint: string }[] = [
@@ -132,7 +136,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   holidayVisibility: DEFAULT_VISIBILITY,
   theme: 'classic',
   finish: 'float',
-  nav: 'auto',
+  surface: 'auto',
   icons: 'thin',
   font: 'classic',
   uiSize: 'normal',
@@ -149,6 +153,9 @@ export function loadSettings(): AppSettings {
     return {
       ...DEFAULT_SETTINGS,
       ...raw,
+      // הציר נקרא פעם "nav" ונגע רק בסרגל. מי שכבר בחר בו לא צריך
+      // לגלות שהבחירה נעלמה כי שינינו שם.
+      surface: raw.surface || raw.nav || DEFAULT_SETTINGS.surface,
       visibleCircles: raw.visibleCircles || DEFAULT_SETTINGS.visibleCircles,
       // מיזוג עמוק: קטגוריה שנוספה בגרסה חדשה מקבלת את ברירת המחדל שלה
       // במקום להיעלם כי ההגדרות השמורות לא הכירו אותה.
