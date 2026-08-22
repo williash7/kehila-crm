@@ -292,6 +292,72 @@
   --c-chrome-text:    #4A3A1C;
 }
 
+/* ── משטח, גוון שני, וטקסט שיושב עליו ─────────────────────────────────────
+
+   הגוון השני של הגרדיאנטים נגזר מהמשטח עצמו ולא מוגדר בכל ערכה בנפרד.
+   כך הוא נכון גם כשהמשטח כהה וגם כשהוא בהיר — ובלי שאיש יצטרך לזכור
+   לעדכן שתים־עשרה ערכות. */
+
+[data-theme] {
+  --c-chrome-bg-2: color-mix(in srgb, var(--c-chrome-bg) 86%, var(--c-gold));
+}
+
+/* ── טקסט על משטח כהה ─────────────────────────────────────────────────────
+
+   בתוך המשטחים יש עשרות מחלקות text-white/40, text-white/70 וכדומה. הן
+   נכונות כשהמשטח כהה, ובלתי נראות לחלוטין כשהוא בהיר — וזה בדיוק מה
+   שקרה בערכות "בהיר ונקי", "שחור־לבן" ו"ירושלים", שהמשטח שלהן בהיר
+   מלכתחילה: כרטיס לבן עם טקסט לבן.
+
+   הכלל חל **תמיד**, ולא רק כשנבחר משטח בהיר במפורש. בערכה כהה
+   --c-chrome-text הוא לבן ממילא, ולכן שם זה לא משנה כלום.
+
+   דרגות השקיפות נשמרות דרך color-mix: 45% נשאר 45%, כי ההיררכיה בין
+   כותרת לכיתוב משנה הייתה נעלמת אילו הכול היה קורס לצבע אחד. */
+
+[data-theme] .bg-\[\#0D1B2A\],
+[data-theme] .from-\[\#0D1B2A\] { --chrome-ink: var(--c-chrome-text); }
+[data-theme] .bg-\[\#0D1B2A\] .text-white\/5,
+[data-theme] .from-\[\#0D1B2A\] .text-white\/5 { color: color-mix(in srgb, var(--chrome-ink, #FFF) 5%, transparent); }
+[data-theme] .bg-\[\#0D1B2A\] .text-white\/25,
+[data-theme] .from-\[\#0D1B2A\] .text-white\/25 { color: color-mix(in srgb, var(--chrome-ink, #FFF) 25%, transparent); }
+[data-theme] .bg-\[\#0D1B2A\] .text-white\/30,
+[data-theme] .from-\[\#0D1B2A\] .text-white\/30 { color: color-mix(in srgb, var(--chrome-ink, #FFF) 30%, transparent); }
+[data-theme] .bg-\[\#0D1B2A\] .text-white\/35,
+[data-theme] .from-\[\#0D1B2A\] .text-white\/35 { color: color-mix(in srgb, var(--chrome-ink, #FFF) 35%, transparent); }
+[data-theme] .bg-\[\#0D1B2A\] .text-white\/40,
+[data-theme] .from-\[\#0D1B2A\] .text-white\/40 { color: color-mix(in srgb, var(--chrome-ink, #FFF) 40%, transparent); }
+[data-theme] .bg-\[\#0D1B2A\] .text-white\/45,
+[data-theme] .from-\[\#0D1B2A\] .text-white\/45 { color: color-mix(in srgb, var(--chrome-ink, #FFF) 45%, transparent); }
+[data-theme] .bg-\[\#0D1B2A\] .text-white\/50,
+[data-theme] .from-\[\#0D1B2A\] .text-white\/50 { color: color-mix(in srgb, var(--chrome-ink, #FFF) 50%, transparent); }
+[data-theme] .bg-\[\#0D1B2A\] .text-white\/55,
+[data-theme] .from-\[\#0D1B2A\] .text-white\/55 { color: color-mix(in srgb, var(--chrome-ink, #FFF) 55%, transparent); }
+[data-theme] .bg-\[\#0D1B2A\] .text-white\/60,
+[data-theme] .from-\[\#0D1B2A\] .text-white\/60 { color: color-mix(in srgb, var(--chrome-ink, #FFF) 60%, transparent); }
+[data-theme] .bg-\[\#0D1B2A\] .text-white\/65,
+[data-theme] .from-\[\#0D1B2A\] .text-white\/65 { color: color-mix(in srgb, var(--chrome-ink, #FFF) 65%, transparent); }
+[data-theme] .bg-\[\#0D1B2A\] .text-white\/70,
+[data-theme] .from-\[\#0D1B2A\] .text-white\/70 { color: color-mix(in srgb, var(--chrome-ink, #FFF) 70%, transparent); }
+[data-theme] .bg-\[\#0D1B2A\] .text-white\/75,
+[data-theme] .from-\[\#0D1B2A\] .text-white\/75 { color: color-mix(in srgb, var(--chrome-ink, #FFF) 75%, transparent); }
+[data-theme] .bg-\[\#0D1B2A\] .text-white\/80,
+[data-theme] .from-\[\#0D1B2A\] .text-white\/80 { color: color-mix(in srgb, var(--chrome-ink, #FFF) 80%, transparent); }
+[data-theme] .bg-\[\#0D1B2A\] .text-white,
+[data-theme] .from-\[\#0D1B2A\] .text-white,
+[data-theme] .bg-\[\#0D1B2A\].text-white,
+[data-theme] .from-\[\#0D1B2A\].text-white { color: var(--chrome-ink, #FFF); }
+
+/* אותו דבר לרקעי הלבן-השקוף שבתוך המשטח — כפתורים עגולים, תגיות. */
+[data-theme] .bg-\[\#0D1B2A\] .bg-white\/5,
+[data-theme] .from-\[\#0D1B2A\] .bg-white\/5 { background-color: color-mix(in srgb, var(--chrome-ink, #FFF) 5%, transparent); }
+[data-theme] .bg-\[\#0D1B2A\] .bg-white\/10,
+[data-theme] .from-\[\#0D1B2A\] .bg-white\/10 { background-color: color-mix(in srgb, var(--chrome-ink, #FFF) 10%, transparent); }
+[data-theme] .bg-\[\#0D1B2A\] .bg-white\/15,
+[data-theme] .from-\[\#0D1B2A\] .bg-white\/15 { background-color: color-mix(in srgb, var(--chrome-ink, #FFF) 15%, transparent); }
+[data-theme] .bg-\[\#0D1B2A\] .bg-white\/20,
+[data-theme] .from-\[\#0D1B2A\] .bg-white\/20 { background-color: color-mix(in srgb, var(--chrome-ink, #FFF) 20%, transparent); }
+
 /* ── בסיס הצבע ────────────────────────────────────────────────────────── */
 
 [data-theme] body      { background-color: var(--c-cream); }
@@ -486,13 +552,6 @@ html[data-theme='midnight']  select {
    נכונות כשהמשטח כהה ובלתי נראות כשהוא בהיר. הסלקטור לפי תת-מחרוזת אינו
    יפה, אבל הוא תופס את כולן בכלל אחד במקום לגעת בתשעים רכיבים — ומכיוון
    שהוא מוגבל לצאצאים של משטח, הוא לא יכול לדלוף לשאר המסך. */
-
-[data-surface='light'] .bg-\[\#0D1B2A\] [class*='text-white'],
-[data-surface='light'] .bg-\[\#0D1B2A\][class*='text-white'] { color: var(--c-chrome-dim); }
-[data-surface='light'] .bg-\[\#0D1B2A\] .text-\[\#C9A84C\],
-[data-surface='light'] .bg-\[\#0D1B2A\] .text-\[\#E8C97A\] { color: var(--c-chrome-accent); }
-[data-surface='light'] .bg-\[\#0D1B2A\] .bg-white\/10,
-[data-surface='light'] .bg-\[\#0D1B2A\] .bg-white\/20 { background-color: var(--c-chrome-soft); }
 
 /* המחלקות שהניווט משתמש בהן. שם סמנטי, לא צבע — וזו כל הנקודה:
    "המשטח" יודע להשתנות, "#0D1B2A עם לבן-5%-מעליו" לא. */

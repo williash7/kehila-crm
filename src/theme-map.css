@@ -65,5 +65,5 @@
 [data-theme] .text-\[\#E8C97A\] { color: var(--c-chrome-accent); }
 [data-theme] .text-\[\#E8C97A\]\/60 { color: color-mix(in srgb, var(--c-chrome-accent) 60%, transparent); }
 [data-theme] .text-\[\#E8C97A\]\/70 { color: color-mix(in srgb, var(--c-chrome-accent) 70%, transparent); }
-[data-theme] .to-\[\#1A2E45\] { --tw-gradient-to: var(--c-chrome-soft); }
+[data-theme] .to-\[\#1A2E45\] { --tw-gradient-to: var(--c-chrome-bg-2); }
 [data-theme] .to-\[\#9B7A2F\] { --tw-gradient-to: var(--c-gold-dark); }

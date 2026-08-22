@@ -135,6 +135,69 @@ assert.ok(S.THEMES.length >= 12, 'ציפינו ל-12 ערכות לפחות, יש
     assert.ok(theme.includes(`[data-surface='${v}']`), `חסר מצב משטחים: ${v}`));
 }
 
+// ── טקסט חייב להיות קריא על המשטח שלו ──
+//
+// זה הבאג שנראה במסך: בערכות שהמשטח שלהן בהיר מלכתחילה ("בהיר ונקי",
+// "שחור־לבן", "ירושלים") הכרטיס הפך ללבן — והטקסט הלבן שעליו נעלם.
+{
+  const lum = h => {
+    const [r, g, b] = [1, 3, 5].map(i => {
+      const c = parseInt(h.slice(i, i + 2), 16) / 255;
+      return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  const ratio = (a, b) => {
+    const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p);
+    return (x + 0.05) / (y + 0.05);
+  };
+  const tok = (id, name) => {
+    const m = theme.match(new RegExp(`\\[data-theme='${id}'\\][^{]*\\{([^}]+)\\}`));
+    const g = m[1].match(new RegExp(name + ':\\s*(#[0-9A-Fa-f]{6})'));
+    return g && g[1];
+  };
+
+  S.THEMES.forEach(t => {
+    const bg = tok(t.id, '--c-chrome-bg');
+    const ink = tok(t.id, '--c-chrome-text');
+    const accent = tok(t.id, '--c-chrome-accent');
+    assert.ok(ratio(bg, ink) >= 4.5,
+      `בערכה "${t.label}" הטקסט על המשטח כמעט בלתי נראה (יחס ${ratio(bg, ink).toFixed(1)})`);
+    assert.ok(ratio(bg, accent) >= 3,
+      `בערכה "${t.label}" צבע ההדגשה נבלע במשטח (יחס ${ratio(bg, accent).toFixed(1)})`);
+
+    // וגם הטקסט הרגיל על הכרטיס
+    const card = tok(t.id, '--c-card');
+    const text = tok(t.id, '--c-text');
+    assert.ok(ratio(card, text) >= 4.5,
+      `בערכה "${t.label}" הטקסט על הכרטיס אינו קריא (יחס ${ratio(card, text).toFixed(1)})`);
+  });
+}
+
+// ── הגוון השני של הגרדיאנט הוא צבע, לא שקיפות ──
+//
+// #1A2E45 מופיע כ-to-[#1A2E45] בעשרה גרדיאנטים. מיפוי שלו למשתנה שקיפות
+// (rgba לבן) הפך כל אחד מהם לדהייה ללבן — כרטיס כהה שנמוג באמצע.
+{
+  const map = fs.readFileSync(root + '/src/theme-map.css', 'utf8');
+  const line = map.split('\n').find(l => l.includes('.to-') && l.includes('1A2E45')) || '';
+  assert.ok(line.includes('--c-chrome-bg-2'),
+    'הגוון השני של הגרדיאנט חייב להיות משטח, לא שכבת שקיפות');
+  assert.ok(!line.includes('--c-chrome-soft'),
+    '--c-chrome-soft הוא rgba שקוף — גרדיאנט אליו נמוג ללבן');
+  assert.ok(/--c-chrome-bg-2:\s*color-mix/.test(theme),
+    'הגוון השני חייב להיגזר מהמשטח, אחרת הוא ישבר בערכות בהירות');
+}
+
+// ── הסרגל והפס העליון חולקים טוקן אחד ──
+// אחרת מתקבל סרגל בהיר לצד פס עליון כהה, וזה נראה כמו תקלה.
+{
+  const map = fs.readFileSync(root + '/src/theme-map.css', 'utf8');
+  const bar = map.split('\n').find(l => l.includes('.bg-') && l.includes('0D1B2A') && !l.includes('/')) || '';
+  assert.ok(bar.includes('--c-chrome-bg'), 'הפס העליון אינו קשור לציר המשטחים');
+  assert.ok(/\.nav-bg\s*\{[^}]*--c-chrome-bg/.test(theme), 'הסרגל אינו קשור לציר המשטחים');
+}
+
 // ── הניווט אינו מכיל צבעים קשיחים ──
 // זו הבדיקה שתופסת את הרגרסיה המקורית.
 ['SideNav', 'BottomNav'].forEach(name => {

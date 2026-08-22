@@ -42,7 +42,9 @@ const SURFACE = {   // רקעים, מילויים וגרדיאנטים
   '#0D1B2A': '--c-chrome-bg',
   '#16283D': '--c-chrome-bg',
   '#1A2D44': '--c-chrome-bg',
-  '#1A2E45': '--c-chrome-soft',
+  // הגוון השני של הגרדיאנט. **לא** --c-chrome-soft: זה משתנה שקיפות
+  // (rgba לבן), ומיפוי אליו הפך כל גרדיאנט כהה לדהייה ללבן שקוף.
+  '#1A2E45': '--c-chrome-bg-2',
   '#C9A84C': '--c-gold',
   '#E8C97A': '--c-gold-light',
   '#F5E7C4': '--c-gold-light',
