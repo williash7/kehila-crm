@@ -46,6 +46,7 @@ const goodSync = async key => ({ success: true, data: { key, v: 1 } });
     const seen = [];
     const file = await B.collectBackup(manifest, goodChunk(2), goodSync, p => seen.push(p.ratio));
     ok(file.kind === 'kehila-crm-backup', 'סוג הקובץ');
+    ok(file.success === true, 'הקובץ מצהיר על עצמו כשלם (success === true)');
     ok(file.codeVersion === '2026-08-23b', 'גרסת הסקריפט נשמרת בקובץ');
     ok(file.sheets['אנשי קשר'].rows.length === 3, 'כל שלוש השורות ירדו, בשתי מנות');
     ok(file.sheets['אנשי קשר'].present === true, 'present נשמר כפי שהחוזה דורש');
@@ -145,6 +146,8 @@ const goodSync = async key => ({ success: true, data: { key, v: 1 } });
     ok(/getMockData/.test(api) && !/getMockData/.test(card),
        'הגיבוי אינו נופל לנתוני דמה — גיבוי של דמה נראה כמו גיבוי אמיתי');
     ok(/ISSUE_HELP\[issue\.code\]/.test(card), 'לכל ממצא מוצג מה לעשות איתו');
+    ok(/file\?\.success !== true/.test(card),
+       'המסך מאמת במפורש שהקובץ מצהיר על עצמו כשלם לפני ההורדה');
 
     // ההורדה חייבת להיות **אחרי** האיסוף, אחרת ירד קובץ חלקי.
     const iCollect = card.indexOf('collectBackup');

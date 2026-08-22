@@ -97,6 +97,16 @@ export function BackupCard() {
       );
 
       // ההורדה קורית **רק** אחרי שכל מה שהמניפסט הכריז עליו התקבל.
+      //
+      // הבדיקה המפורשת הזו נראית מיותרת — collectBackup כבר זורקת בכל
+      // כשל — וזו בדיוק הסיבה שהיא כאן: היא שער אחרון לפני כתיבת קובץ
+      // שמישהו יסמוך עליו. אם מישהו ישנה בעתיד את זרימת השגיאות
+      // ב-collectBackup, השורה הזו עדיין תעצור קובץ שאינו מצהיר על עצמו
+      // כשלם.
+      if (file?.success !== true) {
+        throw new BackupIncomplete([{ what: 'הקובץ', error: 'הגיבוי לא סומן כשלם' }]);
+      }
+
       const blob = new Blob([JSON.stringify(file, null, 2)], { type: 'application/json' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);

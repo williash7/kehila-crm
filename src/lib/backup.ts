@@ -53,6 +53,15 @@ export interface Chunk {
 
 export interface BackupFile {
   kind: 'kehila-crm-backup';
+  /**
+   * תמיד `true` בקובץ שירד — וזו בדיוק הנקודה.
+   *
+   * הקובץ נכתב רק אחרי שכל מה שהמניפסט הכריז עליו התקבל, ולכן השדה הזה
+   * הוא **הצהרה בתוך הקובץ עצמו** שהוא שלם. מי שיפתח אותו בעוד שנה, או
+   * כלי שחזור עתידי, יכול לבדוק שורה אחת במקום לספור שורות מול מניפסט
+   * שכבר לא קיים.
+   */
+  success: true;
   schemaVersion: number | string;
   generatedAt: string;
   codeVersion: string;
@@ -102,6 +111,7 @@ export async function collectBackup(
   const limit = Math.max(1, Math.min(hardLimit || cap, cap));
   const out: BackupFile = {
     kind: 'kehila-crm-backup',
+    success: true,
     schemaVersion: manifest.schemaVersion ?? 1,
     generatedAt: manifest.generatedAt || new Date().toISOString(),
     codeVersion: manifest.codeVersion || '',
