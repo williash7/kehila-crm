@@ -28,4 +28,20 @@ assert.ok(!/{renderShabbatCard\(\)}/.test(home),
 DASH_CARDS.forEach(c => assert.ok(
   new RegExp(`case '${c.id}':`).test(home), `אין טיפול בכרטיס ${c.id}`));
 
+// ── הכרטיס "מה דורש טיפול" ──
+// נבנה ככרטיס ולא כמצב בית נפרד, כדי שלא יהיו שתי מערכות תצורה למסך אחד.
+{
+  const home = fs.readFileSync(__dirname + '/../src/components/HomeTab.tsx', 'utf8');
+  const settings = fs.readFileSync(__dirname + '/../src/lib/settings.ts', 'utf8');
+  assert.ok(DASH_CARDS.some(c => c.id === 'focus'), 'הכרטיס רשום ברשימה');
+  assert.ok(DEFAULT_ORDER.includes('focus'), 'ומופיע בברירת המחדל');
+  assert.ok(/buildTodayFocus/.test(home), 'המסך משתמש בחישוב של יוסי');
+  assert.ok(!/homeMode/.test(settings) && !/homeMode/.test(home),
+    'אין הגדרת מצב בית — הכרטיס הוא המנגנון, ושתי מערכות תצורה למסך אחד מייצרות התנגשויות');
+  // הכרטיס חייב להיות ניתן להסתרה כמו כל כרטיס אחר; אם הוא מוצג
+  // מחוץ ל-renderCard, עורך הדשבורד לא ישלוט בו.
+  assert.ok(/case 'focus':/.test(home), 'עובר דרך אותו switch כמו כל הכרטיסים');
+  assert.ok(!/\{renderFocus\(\)\}/.test(home), 'ולא מוצג ישירות מחוץ לרשימה');
+}
+
 console.log('✓ כרטיסי הדשבורד: ' + DASH_CARDS.length + ' כרטיסים, החיבור למסך קיים');

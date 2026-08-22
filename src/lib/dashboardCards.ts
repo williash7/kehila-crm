@@ -11,6 +11,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type DashCardId =
+  | 'focus'
   | 'shabbat' | 'rebbe' | 'tasks' | 'hero' | 'stats'
   | 'quick' | 'holidays' | 'hkReminder' | 'failures' | 'recent';
 
@@ -24,6 +25,19 @@ export interface DashCardMeta {
 }
 
 export const DASH_CARDS: DashCardMeta[] = [
+  // ── למה זה כרטיס ולא "מצב בית" ──────────────────────────────────────────
+  //
+  // ההצעה המקורית הייתה הגדרה נפרדת: מצב "רגיל" מול מצב "לטיפול".
+  // אבל העורך הזה כבר עונה בדיוק על השאלה "מה אני רואה במסך הבית ובאיזה
+  // סדר" — ומצב נוסף היה תשובה שנייה לאותה שאלה.
+  //
+  // וזה לא עניין של טעם: זה מייצר התנגשויות שצריך להכריע בהן. כרטיס
+  // שהוסתר כאן מול אותו מידע שהמצב מציג — מי גובר? הסדר שנקבע כאן מול
+  // הסדר שהמצב כופה — מה קורה כשחוזרים?
+  //
+  // ככרטיס, השאלות האלה לא קיימות. מי שרוצה "רק מה שדורש טיפול" מסתיר
+  // את השאר כאן, ומקבל בדיוק את זה — בלי שנמציא לו מצב.
+  { id: 'focus',      label: 'מה דורש טיפול',    hint: 'כשלים, תודות, משימות ותאריכים', icon: '🎯', column: 'main' },
   { id: 'hero',       label: 'תרומות החודש',      hint: 'הסכום הגדול ופילוח לפי אפיק', icon: '💰', column: 'main' },
   { id: 'stats',      label: 'שלושת המספרים',     hint: 'תרומות, תורמים, הוראות קבע',  icon: '📊', column: 'main' },
   { id: 'tasks',      label: 'סיכום משימות',      hint: 'כמה פתוחות ומה דחוף',         icon: '📋', column: 'main' },
@@ -38,7 +52,7 @@ export const DASH_CARDS: DashCardMeta[] = [
 
 /** הסדר שהיה מקובע בקוד עד היום — ברירת המחדל למי שלא בחר. */
 export const DEFAULT_ORDER: DashCardId[] =
-  ['shabbat', 'rebbe', 'tasks', 'hero', 'stats', 'quick', 'holidays', 'hkReminder', 'failures', 'recent'];
+  ['shabbat', 'rebbe', 'focus', 'tasks', 'hero', 'stats', 'quick', 'holidays', 'hkReminder', 'failures', 'recent'];
 
 /**
  * מנרמל את מה ששמור בהגדרות.

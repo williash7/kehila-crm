@@ -9,6 +9,9 @@ import { ThankYouLetterModal } from './ThankYouLetterModal';
 import { StandingOrdersModal } from './StandingOrdersModal';
 import { getCustomHols } from '../lib/api';
 import { computePersonalDateEvents } from '../lib/personalDates';
+import { buildTodayFocus, FocusTarget, FocusGroupKind } from '../lib/todayFocus';
+import { computeOverdueContacts } from '../lib/contactFocus';
+import { STANDALONE_TASKS_ID } from '../lib/tasks';
 import { parseDdMmYyyy } from '../lib/dateUtils';
 import { CampaignTag } from './CampaignTag';
 import { countHkByStatus, isMonthlyReminderReviewed, markMonthlyReminderReviewed } from '../lib/standingOrders';
@@ -55,6 +58,98 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd }: { setTab: (t: s
     const personalDates = computePersonalDateEvents(visibleDonors, crm, today).filter(e => e.dist <= 7);
     return { openHolidayTasks, openEventTasks, personalDates };
   }, [holidays, holidayExtras, eventsData, visibleDonors, crm]);
+
+  // ── מה דורש טיפול ──────────────────────────────────────────────────────
+  //
+  // כל החישוב יושב ב-todayFocus.ts ואינו כותב כלום. כאן רק אוספים את
+  // הקלט מאותם מקורות שכבר מוצגים במסך — אין מודל נתונים חדש ואין
+  // רשימת משימות מקבילה.
+  const focus = React.useMemo(() => {
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+
+    const buckets: any[] = [];
+    const holidayIds = new Set<string>();
+    holidays.forEach((h: any) => holidayIds.add(h.hebrew || h.title));
+    getCustomHols().forEach((c: any) => holidayIds.add(c.name));
+    holidayIds.forEach(id => {
+      const tasks = holidayExtras[id]?.tasks || [];
+      if (tasks.length) buckets.push({ scope: 'holiday', contextId: id, tasks });
+    });
+    (eventsData || []).forEach((e: any) => {
+      if (e?.tasks?.length) buckets.push({ scope: 'event', contextId: e.id, contextDate: e.date, tasks: e.tasks });
+    });
+    const standalone = holidayExtras[STANDALONE_TASKS_ID]?.tasks || [];
+    if (standalone.length) buckets.push({ scope: 'standalone', contextId: STANDALONE_TASKS_ID, tasks: standalone });
+
+    return buildTodayFocus({
+      today,
+      taskBuckets: buckets,
+      failures,
+      standingOrders: hk,
+      hkExpiringThreshold: settings.hkExpiringThreshold ?? 2,
+      personalDates: computePersonalDateEvents(visibleDonors, crm, today),
+      overdueContacts: computeOverdueContacts(visibleDonors, crm, donations, today),
+    });
+  }, [holidays, holidayExtras, eventsData, failures, hk, settings.hkExpiringThreshold,
+      visibleDonors, crm, donations]);
+
+  /** לחיצה על שורה מובילה למסך שמטפל בה. אין כאן שום פעולה שמשנה נתונים. */
+  const openFocusTarget = (t: FocusTarget) => {
+    if (t.kind === 'contact') setSelectedDonor(t.id);
+    else if (t.kind === 'task') setTab?.('tasks');
+    else if (t.kind === 'hk') setIsHkOpen?.(true);
+    else if (t.kind === 'donation') setTab?.('donations');
+  };
+
+  const FOCUS_ICON: Record<FocusGroupKind, string> = {
+    failures: '⚠️', tasks: '📋', thanks: '💌', hk: '🔄', dates: '📅', contacts: '📞',
+  };
+
+  const renderFocus = () => (
+    <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6]">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="font-['Frank_Ruhl_Libre'] text-lg font-bold text-[#0D1B2A]">מה דורש טיפול</h3>
+        {focus.total > 0 && (
+          <span className="text-[11px] font-bold text-[#9B7A2F] bg-[#C9A84C]/15 px-2 py-0.5 rounded-full">
+            {focus.total}
+          </span>
+        )}
+      </div>
+
+      {focus.total === 0 ? (
+        <div className="text-center py-4">
+          <div className="text-2xl mb-1">✓</div>
+          <div className="text-sm font-bold text-emerald-700">הכול מטופל</div>
+          <div className="text-[11px] text-gray-400 mt-0.5">אין כשלים, תודות פתוחות או משימות שהגיע מועדן.</div>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {focus.groups.map(g => (
+            <section key={g.kind}>
+              <div className="text-[11px] font-bold text-gray-500 mb-1">
+                {FOCUS_ICON[g.kind]} {g.label} ({g.count})
+              </div>
+              <div className="space-y-1">
+                {g.items.map(it => (
+                  <button
+                    key={it.id}
+                    onClick={() => openFocusTarget(it.target)}
+                    className="w-full text-right bg-[#FAF6EE] hover:bg-[#C9A84C]/10 rounded-lg px-2.5 py-1.5 transition-colors"
+                  >
+                    <div className="text-[12px] font-bold text-[#0D1B2A] truncate">{it.label}</div>
+                    {it.sub && <div className="text-[10px] text-gray-500 truncate">{it.sub}</div>}
+                  </button>
+                ))}
+                {g.count > g.items.length && (
+                  <div className="text-[10px] text-gray-400 px-2.5">ועוד {g.count - g.items.length}…</div>
+                )}
+              </div>
+            </section>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 
   // "תרומות אחרונות". המיון עבר ל-parseDdMmYyyy במקום פיצול ידני על '/':
   // תאריך עם נקודות (כך יוצא toLocaleDateString בעברית) או שדה ריק החזירו
@@ -503,6 +598,7 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd }: { setTab: (t: s
 
   const renderCard = (id: DashCardId) => {
     switch (id) {
+      case 'focus':      return renderFocus();
       case 'shabbat':    return renderShabbatCard();
       case 'rebbe':      return renderRebbeCard();
       case 'tasks':      return renderTasksSummary();

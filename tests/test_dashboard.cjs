@@ -3,15 +3,18 @@ function ok(c,m){console.log((c?'  ✓ ':'  ✗ ')+m);if(!c)process.exitCode=1;}
 
 console.log('א. ברירת מחדל:');
 ok(D.resolveCards([]).join() === D.DEFAULT_ORDER.join(), 'מי שלא נגע רואה בדיוק את הסדר הקודם');
-ok(D.resolveCards(null).length === 10, 'null');
-ok(D.resolveCards(undefined).length === 10, 'undefined');
+// נגזר מהרשימה ולא מספר קשיח: כרטיס חדש שנוסף לאפליקציה אינו אמור
+// להפיל בדיקה שלא בודקת אותו כלל.
+const ALL = D.DASH_CARDS.length;
+ok(D.resolveCards(null).length === ALL, 'null');
+ok(D.resolveCards(undefined).length === ALL, 'undefined');
 ok(D.hiddenCards([]).length === 0, 'ואף כרטיס לא מוסתר');
 
 console.log('\nב. בחירה חלקית:');
 const mine = ['hero','tasks','recent'];
 ok(D.resolveCards(mine).join() === 'hero,tasks,recent', 'הסדר נשמר בדיוק');
 console.log('   מוסתרים:', D.hiddenCards(mine).join(', '));
-ok(D.hiddenCards(mine).length === 7, 'השאר מוסתרים');
+ok(D.hiddenCards(mine).length === ALL - mine.length, 'השאר מוסתרים');
 
 console.log('\nג. כרטיס חדש שנוסף לאפליקציה אחרי שסידרת:');
 // המשתמש שמר רשימה ישנה שאינה מכילה כרטיס שנוסף מאוחר יותר
