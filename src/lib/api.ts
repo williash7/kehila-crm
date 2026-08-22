@@ -132,6 +132,50 @@ export async function apiGetAll(): Promise<any | null> {
   return res;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// גיבוי ותקינות — קריאות שאסור להן ליפול על נתוני דמה.
+//
+// apiGet מחזיר getMockData(action) כשמשהו משתבש, וזה נכון לרוב המסכים:
+// עדיף להראות משהו מאשר מסך שבור. אבל **בגיבוי ובדוח תקינות זה מסוכן**:
+// גיבוי של נתוני דמה נראה כמו גיבוי אמיתי, ודוח תקינות על נתוני דמה
+// יגיד "הכול תקין" על גיליון שמעולם לא נבדק.
+//
+// לכן כאן: אין נפילה אחורה. פעולה שאינה מוכרת לגיליון מוחזרת כשגיאה
+// מפורשת, והממשק מבקש לעדכן את הסקריפט.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const NOT_DEPLOYED = 'SCRIPT_NOT_DEPLOYED';
+
+/** קריאה גולמית, בלי נתוני דמה ובלי בליעת שגיאות. */
+async function apiGetStrict(action: string, params: Record<string, any> = {}) {
+  const GS_URL = gsUrl();
+  if (!GS_URL) throw new Error('לא הוגדרה כתובת גיליון');
+
+  const qs = Object.keys(params)
+    .filter(k => params[k] !== undefined && params[k] !== null && params[k] !== '')
+    .map(k => `&${k}=${encodeURIComponent(String(params[k]))}`)
+    .join('');
+
+  const data = await getJson(`${GS_URL}?action=${action}${qs}`);
+  if (data && data.error) {
+    // "פעולה לא מוכרת" פירושו גיליון שטרם נפרס — לא תקלה אמיתית.
+    if (String(data.error).indexOf('פעולה לא מוכרת') >= 0) throw new Error(NOT_DEPLOYED);
+    throw new Error(data.details || data.error);
+  }
+  return data;
+}
+
+/** האם השגיאה פירושה "הסקריפט בגיליון עדיין לא עודכן". */
+export function isNotDeployed(e: any): boolean {
+  return String(e?.message || e) === NOT_DEPLOYED;
+}
+
+export const exportManifest = () => apiGetStrict('exportAll');
+export const exportChunk = (sheet: string, offset: number, limit: number) =>
+  apiGetStrict('exportAll', { sheet, offset, limit });
+export const exportSync = (syncKey: string) => apiGetStrict('exportAll', { syncKey });
+export const fetchIntegrity = () => apiGetStrict('getIntegrity');
+
 export async function apiPost(action: string, data: any) {
   try {
     // חשוב: שולחים כ-text/plain ולא application/json.

@@ -5,6 +5,7 @@ import { GlobalAIImportModal } from './GlobalAIImportModal';
 import { MigrateYahrzeitsModal } from './MigrateYahrzeitsModal';
 import { DatesRescueModal } from './DatesRescueModal';
 import { SystemStatusCard } from './SystemStatusCard';
+import { BackupCard } from './BackupCard';
 import { ALL_CIRCLES, CIRCLE_LABELS, DEFAULT_SETTINGS } from '../lib/settings';
 import { computeMissingAttendanceContacts } from '../lib/backfillContacts';
 import { collectLegacyYahrzeits } from '../lib/family';
@@ -426,6 +427,8 @@ export function SettingsTab() {
         </>)}
 
         {group === 'advanced' && (<>
+        <BackupCard />
+
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6] space-y-3">
           <CardTitle title="ייבוא מידע קיים">
             יש לך רשימת אנשים, קובץ אקסל של תרומות, או דף מודפס? האפליקציה תכין הנחיה

@@ -718,8 +718,8 @@ export function GlobalAIImportModal({ onClose }: { onClose: () => void }) {
                     {dupes.existing.length} מתוך {rows.donations.length} התרומות כבר קיימות ביומן
                   </div>
                   <div className="mb-2">
-                    השרת לא יכתוב אותן פעמיים, אז אפשר להמשיך בלי חשש. אם תסיר אותן
-                    כאן, הרשימה שתישמר תהיה קצרה וברורה יותר.
+                    נראה שהן כבר קיימות ביומן — אפשר להסיר אותן כאן לפני השמירה.
+                    השרת מונע ייבוא חוזר של אותו קובץ.
                   </div>
                   <div className="max-h-24 overflow-y-auto space-y-0.5 mb-2">
                     {dupes.existing.slice(0, 12).map((r: any) => (
