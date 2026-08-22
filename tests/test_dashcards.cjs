@@ -34,7 +34,23 @@ DASH_CARDS.forEach(c => assert.ok(
   const home = fs.readFileSync(__dirname + '/../src/components/HomeTab.tsx', 'utf8');
   const settings = fs.readFileSync(__dirname + '/../src/lib/settings.ts', 'utf8');
   assert.ok(DASH_CARDS.some(c => c.id === 'focus'), 'הכרטיס רשום ברשימה');
-  assert.ok(DEFAULT_ORDER.includes('focus'), 'ומופיע בברירת המחדל');
+  // ── שיפור נכנס בבחירה, לא בהפתעה ──
+  // הכרטיס רשום ולכן זמין בעורך תחת "מוסתרים", אבל מי שלא ביקש אותו
+  // לא מוצא ביום בהיר אחד כרטיס חדש בראש מסך הבית.
+  assert.ok(!DEFAULT_ORDER.includes('focus'),
+    'focus אינו בברירת המחדל — הוא אופציונלי');
+  assert.ok(hiddenCards([]).includes('focus'),
+    'אבל הוא מופיע בעורך כזמין להוספה, ולא נעלם');
+
+  // ── תאריך ההקשר של המשימות ──
+  // משימה בלי מועד משלה יורשת את מועד החג או האירוע. בלי זה היא נראית
+  // כמו משימה בלי תאריך ולא מגיעה לריכוז כשהיא באמת דחופה.
+  assert.ok(/scope: 'holiday'[\s\S]{0,120}contextDate/.test(home),
+    'משימות חג נשלחות עם תאריך החג');
+  assert.ok(/nextEventOccurrence\(e, today\)/.test(home),
+    'משימות אירוע משתמשות במופע הקרוב');
+  assert.ok(!/contextDate: e\.date/.test(home),
+    'ולא ב-e.date — באירוע חוזר זה המופע הראשון, שנמצא בעבר הרחוק');
   assert.ok(/buildTodayFocus/.test(home), 'המסך משתמש בחישוב של יוסי');
   assert.ok(!/homeMode/.test(settings) && !/homeMode/.test(home),
     'אין הגדרת מצב בית — הכרטיס הוא המנגנון, ושתי מערכות תצורה למסך אחד מייצרות התנגשויות');

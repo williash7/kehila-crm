@@ -3,12 +3,20 @@ function ok(c,m){console.log((c?'  ✓ ':'  ✗ ')+m);if(!c)process.exitCode=1;}
 
 console.log('א. ברירת מחדל:');
 ok(D.resolveCards([]).join() === D.DEFAULT_ORDER.join(), 'מי שלא נגע רואה בדיוק את הסדר הקודם');
-// נגזר מהרשימה ולא מספר קשיח: כרטיס חדש שנוסף לאפליקציה אינו אמור
+// נגזר מהרשימה ולא ממספר קשיח: כרטיס חדש שנוסף לאפליקציה אינו אמור
 // להפיל בדיקה שלא בודקת אותו כלל.
 const ALL = D.DASH_CARDS.length;
-ok(D.resolveCards(null).length === ALL, 'null');
-ok(D.resolveCards(undefined).length === ALL, 'undefined');
-ok(D.hiddenCards([]).length === 0, 'ואף כרטיס לא מוסתר');
+const DEF = D.DEFAULT_ORDER.length;
+ok(D.resolveCards(null).length === DEF, 'null');
+ok(D.resolveCards(undefined).length === DEF, 'undefined');
+
+// ── ברירת המחדל אינה "כל הכרטיסים", והפער הזה מכוון ──
+// כרטיס שנוסף לאפליקציה אחרי שהמשתמש כבר עובד איתה נכנס כ**אופציה**
+// ולא כהפתעה בראש מסך הבית. מי שרוצה אותו מוסיף בלחיצה.
+const optIn = D.hiddenCards([]);
+ok(optIn.length === ALL - DEF, `${optIn.length} כרטיסים אופציונליים, לא בברירת המחדל`);
+ok(optIn.every(id => D.DASH_CARDS.some(c => c.id === id)),
+   'וכולם מוכרים לעורך — כלומר זמינים להוספה ולא נעלמים');
 
 console.log('\nב. בחירה חלקית:');
 const mine = ['hero','tasks','recent'];
@@ -46,4 +54,14 @@ ok(main.length + side.length === chosen.length, 'ואף כרטיס לא נפל �
 
 console.log('\nז. לכל כרטיס יש תיאור:');
 ok(D.DASH_CARDS.every(c => c.label && c.hint && c.icon), 'שם, הסבר ואייקון');
-ok(D.DASH_CARDS.length === D.DEFAULT_ORDER.length, 'וברירת המחדל מכסה את כולם');
+// ברירת המחדל כבר אינה מכילה את כל הכרטיסים — יש כרטיסים אופציונליים.
+// אבל הכלל שהבדיקה הזו באמת שמרה עליו עדיין חשוב, ובניסוח נכון יותר:
+// **שום כרטיס לא נשכח.** כל אחד חייב להיות או בברירת המחדל, או ברשימת
+// המוסתרים שבעורך. כרטיס שאינו באף אחת מהן קיים בקוד ובלתי נגיש למשתמש.
+{
+  const reachable = new Set([...D.DEFAULT_ORDER, ...D.hiddenCards([])]);
+  const lost = D.DASH_CARDS.map(c => c.id).filter(id => !reachable.has(id));
+  ok(lost.length === 0,
+     lost.length ? 'כרטיסים שאי אפשר להגיע אליהם: ' + lost.join(', ')
+                 : 'כל כרטיס נגיש — בברירת המחדל או דרך העורך');
+}

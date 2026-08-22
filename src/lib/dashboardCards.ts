@@ -51,8 +51,15 @@ export const DASH_CARDS: DashCardMeta[] = [
 ];
 
 /** הסדר שהיה מקובע בקוד עד היום — ברירת המחדל למי שלא בחר. */
+/**
+ * הסדר שהיה מקובע בקוד עד היום — ברירת המחדל למי שלא בחר.
+ *
+ * **`focus` אינו כאן במכוון.** הוא רשום ב-DASH_CARDS ולכן מופיע בעורך
+ * תחת "מוסתרים", מוכן להוספה בלחיצה — אבל מי שלא ביקש אותו לא מוצא
+ * ביום בהיר אחד כרטיס חדש בראש מסך הבית. שיפור נכנס בבחירה, לא בהפתעה.
+ */
 export const DEFAULT_ORDER: DashCardId[] =
-  ['shabbat', 'rebbe', 'focus', 'tasks', 'hero', 'stats', 'quick', 'holidays', 'hkReminder', 'failures', 'recent'];
+  ['shabbat', 'rebbe', 'tasks', 'hero', 'stats', 'quick', 'holidays', 'hkReminder', 'failures', 'recent'];
 
 /**
  * מנרמל את מה ששמור בהגדרות.
