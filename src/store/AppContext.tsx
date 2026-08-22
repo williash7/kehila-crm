@@ -9,6 +9,9 @@ import {
   getHomeVisitsDataCloud, saveHomeVisitsDataCloud,
   getProjectsCloud, saveProjectsCloud,
   getCustomHols,
+  apiGetAll, readSnapshot,
+  saveCRMData, saveEventsData, saveHolidayExtras,
+  saveHistoryData, saveHomeVisitsData, saveProjects as saveProjectsLocal,
 } from '../lib/api';
 import { Donor, Donation, ReportSummary } from '../types';
 import { annotateRenewals } from '../lib/standingOrders';
@@ -179,6 +182,44 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // בלי זה כל פעולה קטנה — ביטול הוראת קבע, הוספת תרומה — החליפה את כל
   // האפליקציה במסך טעינה וזרקה את המשתמש חזרה לדשבורד. זה נראה כאילו
   // הדפדפן נטען מחדש, והמשתמש איבד את המקום שבו היה.
+  /**
+   * מצייר תמונת מצב שמורה.
+   *
+   * מכוון: זה **לא** מריץ את מיזוג התרומות הידניות ולא את השמות הממוזגים
+   * — אלה נגזרים מהשרת ורצים מיד אחרי, כשהתשובה האמיתית מגיעה. המטרה כאן
+   * צנועה: שיהיה מה להסתכל עליו בשנייה הראשונה.
+   */
+  const applySnapshot = (d: any) => {
+    try {
+      const { merges, crmRest } = extractMerges(d.crm || {});
+      setCrm(applyMergesToCrm(crmRest, merges));
+      setNameMerges(merges);
+      setSummary(d.summary || null);
+      setDonations(d.donations || []);
+      setHk(annotateRenewals(d.hk || []));
+      setFailures(d.failures || []);
+      setEventsData(d.events || []);
+      setHolidayExtras(d.holidayExtras || {});
+      setHistory(d.history || []);
+      setHomeVisits(d.homeVisits?.rounds ? d.homeVisits : { rounds: [] });
+      setProjects(Array.isArray(d.projects) ? d.projects : []);
+      if (d.rebbeDate) setRebbeDate(new Date(d.rebbeDate));
+
+      const map: Record<string, any> = {};
+      (d.donations || []).forEach((x: any) => {
+        if (!x?.name) return;
+        if (!map[x.name]) map[x.name] = { name: x.name, total: 0, donations: [], lastDate: '' };
+        map[x.name].donations.push(x);
+        map[x.name].total += x.amount || 0;
+        if (x.date) map[x.name].lastDate = x.date;
+      });
+      Object.assign(map, d.donors || {});
+      setDonors(prev => (Object.keys(map).length ? map : prev));
+    } catch {
+      // תמונת מצב פגומה אינה סיבה לא לפתוח את האפליקציה
+    }
+  };
+
   const loadAll = async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) {
       setLoading(true);
@@ -187,17 +228,30 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     loadHebcal();
 
-    // Load cloud-synced data in parallel with the main API calls
+    // ── ציור מיידי ממה שהיה בפעם הקודמת ──────────────────────────────────
+    //
+    // הנתונים האלה כמעט תמיד זהים למה שהיה לפני דקה, ולכן ההמתנה להם
+    // כמעט תמיד מיותרת. מציירים אותם מיד, ומרעננים ברקע: מי שפותח את
+    // האפליקציה רואה את הדשבורד שלו במקום מסך טעינה.
+    //
+    // רק בפתיחה הראשונה. רענון יזום ("בדוק שוב") לא צריך להבהב בנתונים
+    // ישנים לפני שהחדשים מגיעים.
+    if (!opts?.silent) {
+      const snap = readSnapshot();
+      if (snap?.data?.summary) {
+        applySnapshot(snap.data);
+        setLoading(false);          // המסך כבר שמיש — הרענון ימשיך ברקע
+      }
+    }
+
     let resolvedCrm: Record<string, any> = extractMerges(getCRMData()).crmRest;
     let resolvedMerges: Record<string, string> = extractMerges(getCRMData()).merges;
-    const cloudLoads = Promise.all([
-      getCRMDataCloud(),
-      getEventsDataCloud(),
-      getHolidayExtrasCloud(),
-      getHistoryDataCloud(),
-      getHomeVisitsDataCloud(),
-      getProjectsCloud(),
-    ]).then(([cloudCrm, cloudEvents, cloudExtras, cloudHistory, cloudHomeVisits, cloudProjects]) => {
+
+    /** מחיל את שש קבוצות הנתונים המסונכרנות. משותף לשני המסלולים. */
+    const applyCloud = (
+      cloudCrm: any, cloudEvents: any, cloudExtras: any,
+      cloudHistory: any, cloudHomeVisits: any, cloudProjects: any
+    ) => {
       const { merges, crmRest } = extractMerges(cloudCrm);
       const cleanedCrm = applyMergesToCrm(crmRest, merges);
       resolvedCrm = cleanedCrm;
@@ -209,17 +263,59 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setHistory(cloudHistory || []);
       setHomeVisits(cloudHomeVisits?.rounds ? cloudHomeVisits : { rounds: [] });
       setProjects(Array.isArray(cloudProjects) ? cloudProjects : []);
-    }).catch(console.error);
+    };
+
+    // ── בקשה אחת, ואם אי אפשר — שתים־עשרה ─────────────────────────────────
+    //
+    // הפתיחה ירתה שתים־עשרה בקשות נפרדות לגיליון. Apps Script מגבילה ריצות
+    // במקביל, ולכן הן יצאו בארבעה גלים של שלוש — וכל גל שילם מחדש את זמן
+    // ההתנעה של הסקריפט. זה היה רוב ה"איטיות": לא חישוב, אלא המתנה.
+    //
+    // getAll מביא את הכול יחד. גיליון שעדיין מריץ קוד ישן לא מכיר את
+    // הפעולה, ואז נופלים חזרה למסלול הישן — האפליקציה עובדת בשני המקרים.
+    const bundle = await apiGetAll().catch(() => null);
+
+    let cloudLoads: Promise<any> = Promise.resolve();
+    if (bundle) {
+      applyCloud(bundle.crm, bundle.events, bundle.holidayExtras,
+                 bundle.history, bundle.homeVisits, bundle.projects);
+      // שומרים גם בעותקים המקומיים, כדי שמסכים שקוראים אותם ישירות
+      // לא יראו נתונים ישנים.
+      saveCRMData(bundle.crm || {});
+      saveEventsData(bundle.events || []);
+      saveHolidayExtras(bundle.holidayExtras || {});
+      saveHistoryData(bundle.history || []);
+      saveHomeVisitsData(bundle.homeVisits || { rounds: [] });
+      saveProjectsLocal(bundle.projects || []);
+    } else {
+      cloudLoads = Promise.all([
+        getCRMDataCloud(),
+        getEventsDataCloud(),
+        getHolidayExtrasCloud(),
+        getHistoryDataCloud(),
+        getHomeVisitsDataCloud(),
+        getProjectsCloud(),
+      ]).then(r => applyCloud(r[0], r[1], r[2], r[3], r[4], r[5])).catch(console.error);
+    }
 
     try {
-      const [sumRes, donRes, failRes, rebbeRes, hkRes, donorsRes] = await Promise.all([
-        apiGet('getSummary'),
-        apiGet('getDonations'),
-        apiGet('getFailures'),
-        apiGet('getRebbe'),
-        apiGet('getHK'),
-        apiGet('getDonors'),
-      ]);
+      const [sumRes, donRes, failRes, rebbeRes, hkRes, donorsRes] = bundle
+        ? [
+            bundle.summary,
+            { donations: bundle.donations },
+            { failures: bundle.failures },
+            { date: bundle.rebbeDate },
+            { hk: bundle.hk },
+            { donors: bundle.donors },
+          ]
+        : await Promise.all([
+            apiGet('getSummary'),
+            apiGet('getDonations'),
+            apiGet('getFailures'),
+            apiGet('getRebbe'),
+            apiGet('getHK'),
+            apiGet('getDonors'),
+          ]);
 
       if (sumRes._error) {
         setApiError(`${sumRes._error}: ${sumRes._details || ''}`);

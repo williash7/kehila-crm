@@ -83,6 +83,55 @@ export async function apiGet(action: string) {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// המטמון של הפתיחה.
+//
+// הנתונים הכבדים — סיכום, תרומות, תורמים, הוראות קבע — נמשכו מהשרת בכל
+// פתיחה, והמסך המתין להם. אבל הם כמעט תמיד זהים למה שהיה לפני דקה, ולכן
+// ההמתנה הזו כמעט תמיד מיותרת.
+//
+// מעכשיו הם נשמרים מקומית: הפתיחה מציירת מיד את מה שהיה, והרענון קורה
+// ברקע. אם משהו השתנה — המסך מתעדכן תוך כדי.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const SNAPSHOT_KEY = 'bundle_snapshot_v1';
+
+export interface Snapshot {
+  savedAt: number;
+  data: any;
+}
+
+export function readSnapshot(): Snapshot | null {
+  try {
+    const raw = localStorage.getItem(SNAPSHOT_KEY);
+    if (!raw) return null;
+    const s = JSON.parse(raw);
+    return s && s.data ? s : null;
+  } catch { return null; }
+}
+
+export function saveSnapshot(data: any) {
+  try {
+    localStorage.setItem(SNAPSHOT_KEY, JSON.stringify({ savedAt: Date.now(), data }));
+  } catch {
+    // המכסה של localStorage מלאה. לא קריטי — רק נאבד את הפתיחה המיידית.
+  }
+}
+
+/**
+ * כל נתוני הפתיחה בבקשה אחת.
+ *
+ * גיליון שעדיין מריץ קוד ישן לא מכיר את הפעולה הזו. במקרה כזה מחזירים
+ * null, והקורא נופל בחזרה לשתים־עשרה הבקשות הנפרדות — כך שהאפליקציה
+ * עובדת גם לפני שהסקריפט עודכן.
+ */
+export async function apiGetAll(): Promise<any | null> {
+  const res = await apiGet('getAll');
+  if (!res || res._error || !res.summary) return null;
+  saveSnapshot(res);
+  return res;
+}
+
 export async function apiPost(action: string, data: any) {
   try {
     // חשוב: שולחים כ-text/plain ולא application/json.
