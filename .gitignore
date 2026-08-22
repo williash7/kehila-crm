@@ -10,3 +10,6 @@ coverage/
 # נוצר אוטומטית מ-google-apps-script/Code.gs בכל build.
 # מקור האמת הוא הקובץ .gs — אל תערוך את הקובץ הזה.
 public/apps-script.txt
+
+# תוצרי אריזה של הבדיקות
+/tmp/

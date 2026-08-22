@@ -11,7 +11,8 @@
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
     "theme": "node scripts/gen-theme-map.mjs",
-    "prebuild": "node scripts/gen-theme-map.mjs"
+    "prebuild": "node scripts/gen-theme-map.mjs",
+    "test": "bash scripts/run-tests.sh"
   },
   "dependencies": {
     "@hebcal/core": "^6.3.3",
