@@ -67,7 +67,8 @@
  *
  * **מעדכנים אותה בכל שינוי מהותי בקובץ.**
  */
-var CODE_VERSION = '2026-08-22a';
+var CODE_VERSION = '2026-08-23a';
+var EXPORT_SCHEMA_VERSION = 1;
 
 // ── שמות הלשוניות ────────────────────────────────────────────────────────────
 var SH = {
@@ -680,6 +681,8 @@ function route_(action, body) {
     case 'ping':             return { ok: true, version: CODE_VERSION,
                                       sheet: SpreadsheetApp.getActiveSpreadsheet().getName() };
     case 'getAll':           return getAll_();
+    case 'exportAll':        return exportAll_();
+    case 'getIntegrity':     return getIntegrity_();
     case 'getSummary':       return getSummary_();
     case 'getDonations':     return { donations: getDonations_() };
     case 'getDonors':        return { donors: getDonors_() };
@@ -976,6 +979,300 @@ function getAll_() {
     history:       attempt(function () { return readSync_('history') || []; }, []),
     homeVisits:    attempt(function () { return readSync_('homeVisits') || { rounds: [] }; }, { rounds: [] }),
     projects:      attempt(function () { return readSync_('projects') || []; }, []),
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  גיבוי ותקינות — קריאה בלבד
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * ערך תא בתוך גיבוי.
+ *
+ * תאריכים נשמרים עם מעטפת טיפוס במקום להפוך למחרוזת רגילה. כך פעולת
+ * שחזור עתידית תוכל להחזיר תאריך כתאריך ולא לנחש לפי צורת הטקסט. שאר
+ * הטיפוסים הבסיסיים נשארים כפי שהם.
+ */
+function exportCell_(value) {
+  if (Object.prototype.toString.call(value) === '[object Date]') {
+    return { __type: 'date', value: value.toISOString() };
+  }
+  if (value === undefined || value === null) return '';
+  return value;
+}
+
+/** מטריצה נקייה ל-JSON, בלי לשנות דבר בגיליון. */
+function exportMatrix_(values) {
+  return (values || []).map(function (row) {
+    return (row || []).map(exportCell_);
+  });
+}
+
+/**
+ * גיבוי מלא של כל הלשוניות שבבעלות האפליקציה.
+ *
+ * `sheets` הוא העותק הנאמן של התאים, כולל עמודות שהמשתמש הוסיף בעצמו.
+ * `syncResolved` הוא שכבה נוספת ונוחה לשחזור: בלשונית הסנכרון תא גדול
+ * עשוי להכיל רק מצביע לקובץ overflow ב-Drive, ולכן כאן מחזירים גם את
+ * התוכן המלא שאליו הוא מצביע.
+ *
+ * אין כאן יצירת קובץ, כתיבה ל-Drive או שינוי תאים. האפליקציה מורידה את
+ * התשובה כקובץ מקומי רק אחרי שהמשתמש לוחץ על כפתור הגיבוי.
+ */
+function exportAll_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheetsOut = {};
+
+  Object.keys(SH).forEach(function (key) {
+    var name = SH[key];
+    var sheet = ss.getSheetByName(name);
+    if (!sheet) {
+      sheetsOut[name] = { present: false, headers: [], rows: [], rowCount: 0 };
+      return;
+    }
+
+    var values = sheet.getDataRange().getValues();
+    var matrix = exportMatrix_(values);
+    sheetsOut[name] = {
+      present: true,
+      headers: matrix.length ? matrix[0] : [],
+      rows: matrix.slice(1),
+      rowCount: Math.max(matrix.length - 1, 0),
+    };
+  });
+
+  var syncResolved = {};
+  var sync = table_(SH.SYNC);
+  sync.rows.forEach(function (row) {
+    var key = String(get_(row, sync, 'מפתח') || row[0] || '').trim();
+    if (!key) return;
+    syncResolved[key] = readSync_(key);
+  });
+
+  return {
+    success: true,
+    schemaVersion: EXPORT_SCHEMA_VERSION,
+    generatedAt: new Date().toISOString(),
+    codeVersion: CODE_VERSION,
+    spreadsheet: {
+      id: String(ss.getId ? ss.getId() : ''),
+      name: String(ss.getName ? ss.getName() : ''),
+      timeZone: Session.getScriptTimeZone(),
+    },
+    sheets: sheetsOut,
+    syncResolved: syncResolved,
+  };
+}
+
+/** מפתח בטוח לאובייקט שמשמש כ-Set. */
+function setKey_(value) {
+  return '$' + String(value == null ? '' : value).trim();
+}
+
+/** מוסיף ממצא מצטבר ומגביל דוגמאות כדי שגיליון פגום לא ינפח את התשובה. */
+function integrityIssue_(issues, code, severity, title, items, details) {
+  if (!items || !items.length) return;
+  issues.push({
+    code: code,
+    severity: severity,
+    title: title,
+    count: items.length,
+    items: items.slice(0, 50),
+    truncated: items.length > 50,
+    details: details || '',
+  });
+}
+
+/**
+ * דוח תקינות על הנתונים החיים — קריאה בלבד.
+ *
+ * הדוח אינו "מתקן" דבר ואינו מפעיל את מנוע החיובים. הוא רק בונה מפות
+ * בזיכרון ומחזיר ממצאים מצטברים. כך אפשר להציג אותו בבטחה גם לפני גיבוי
+ * וגם על גיליון ישן: ממצא שגוי לכל היותר דורש בדיקה אנושית, ולעולם לא
+ * מוחק או משנה נתון.
+ */
+function getIntegrity_() {
+  var issues = [];
+  var contacts = table_(SH.CONTACTS);
+  var log = table_(SH.LOG);
+  var hk = table_(SH.HK);
+  var failures = table_(SH.FAILURES);
+
+  var required = [SH.CONTACTS, SH.LOG, SH.HK, SH.FAILURES, SH.SYNC];
+  var missingSheets = required.filter(function (name) {
+    return !SpreadsheetApp.getActiveSpreadsheet().getSheetByName(name);
+  });
+  integrityIssue_(issues, 'missing_sheets', 'error', 'לשוניות מערכת חסרות', missingSheets,
+                  'יש להריץ setupSheet לפני שימוש באפליקציה.');
+
+  // ── אנשי קשר ───────────────────────────────────────────────────────────
+  var contactNames = {};
+  var duplicateContacts = [];
+  var missingContactNames = [];
+  contacts.rows.forEach(function (row, i) {
+    var name = String(get_(row, contacts, 'שם מלא') || row[0] || '').trim();
+    if (!name) { missingContactNames.push('שורה ' + (i + 2)); return; }
+    var key = setKey_(name);
+    if (contactNames[key]) duplicateContacts.push(name + ' · שורות ' + contactNames[key] + ', ' + (i + 2));
+    else contactNames[key] = i + 2;
+  });
+  integrityIssue_(issues, 'contacts_missing_name', 'error', 'אנשי קשר ללא שם', missingContactNames);
+  integrityIssue_(issues, 'contacts_duplicate_name', 'warning', 'שמות כפולים באנשי הקשר', duplicateContacts,
+                  'ייתכן שאלה אנשים שונים; יש לבדוק לפני מיזוג.');
+
+  // ── הוראות קבע ─────────────────────────────────────────────────────────
+  var orderIds = {};
+  var orderRows = {};
+  var duplicateOrders = [];
+  var invalidOrders = [];
+  var orderWithoutName = [];
+  hk.rows.forEach(function (row, i) {
+    var rowNo = i + 2;
+    var id = String(get_(row, hk, 'מזהה') || '').trim();
+    var name = String(get_(row, hk, 'שם') || '').trim();
+    var amount = asNumber_(get_(row, hk, 'סכום'));
+    var start = toDate_(get_(row, hk, 'תאריך פתיחה'));
+    var rawPayments = get_(row, hk, 'מספר תשלומים');
+    var unlimited = isUnlimited_(rawPayments);
+    var payments = asNumber_(rawPayments);
+
+    if (!id) invalidOrders.push('שורה ' + rowNo + ' · חסר מזהה');
+    else {
+      var key = setKey_(id);
+      if (orderIds[key]) duplicateOrders.push(id + ' · שורות ' + orderIds[key] + ', ' + rowNo);
+      else orderIds[key] = rowNo;
+      orderRows[key] = { id: id, row: row, rowNo: rowNo };
+    }
+    if (!name) orderWithoutName.push((id || 'שורה ' + rowNo));
+    if (!start) invalidOrders.push((id || 'שורה ' + rowNo) + ' · תאריך פתיחה חסר/לא תקין');
+    if (!amount || amount <= 0) invalidOrders.push((id || 'שורה ' + rowNo) + ' · סכום לא תקין');
+    if (!unlimited && (!payments || payments <= 0)) {
+      invalidOrders.push((id || 'שורה ' + rowNo) + ' · מספר תשלומים לא תקין');
+    }
+  });
+  integrityIssue_(issues, 'orders_duplicate_id', 'error', 'מזהי הוראות קבע כפולים', duplicateOrders);
+  integrityIssue_(issues, 'orders_invalid', 'error', 'הוראות קבע עם נתונים לא תקינים', invalidOrders);
+  integrityIssue_(issues, 'orders_missing_name', 'error', 'הוראות קבע ללא שם', orderWithoutName);
+
+  // ── יומן ────────────────────────────────────────────────────────────────
+  var logIds = {};
+  var chargeIds = {};
+  var duplicateLogIds = [];
+  var logWithoutId = [];
+  var logWithoutName = [];
+  var orphanCharges = [];
+  var malformedCharges = [];
+  var invalidAmounts = [];
+  var unknownStatuses = [];
+  var orphanContactRefs = [];
+  var knownStatuses = {};
+  knownStatuses[setKey_('')] = true;
+  knownStatuses[setKey_(STATUS_FAILED)] = true;
+  knownStatuses[setKey_(STATUS_FUTURE)] = true;
+  knownStatuses[setKey_(STATUS_CANCELLED)] = true;
+
+  log.rows.forEach(function (row, i) {
+    var rowNo = i + 2;
+    var id = String(get_(row, log, 'מזהה') || '').trim();
+    var name = String(get_(row, log, 'שם') || '').trim();
+    var status = String(get_(row, log, 'סטטוס') || '').trim();
+    var amountRaw = get_(row, log, 'סכום');
+    var amount = asNumber_(amountRaw);
+    var donationDate = get_(row, log, 'תאריך תרומה');
+    var method = String(get_(row, log, 'אפיק גבייה') || '').trim();
+
+    if (!id) logWithoutId.push('שורה ' + rowNo);
+    else {
+      var key = setKey_(id);
+      if (logIds[key]) duplicateLogIds.push(id + ' · שורות ' + logIds[key] + ', ' + rowNo);
+      else logIds[key] = rowNo;
+    }
+    if (!name) logWithoutName.push((id || 'שורה ' + rowNo));
+    else if (!contactNames[setKey_(name)]) orphanContactRefs.push(name + ' · שורה ' + rowNo);
+    if (!knownStatuses[setKey_(status)]) unknownStatuses.push((id || 'שורה ' + rowNo) + ' · ' + status);
+
+    var looksLikeMoney = !!donationDate || !!method || id.indexOf('hk:') === 0;
+    if (looksLikeMoney && (!amountRaw || amount <= 0)) invalidAmounts.push((id || 'שורה ' + rowNo));
+
+    if (id.indexOf('hk:') === 0) {
+      var orderId = orderIdFromChargeId_(id);
+      if (!orderId) malformedCharges.push(id + ' · שורה ' + rowNo);
+      else {
+        chargeIds[setKey_(id)] = true;
+        if (!orderIds[setKey_(orderId)]) orphanCharges.push(id + ' · שורה ' + rowNo);
+      }
+    }
+  });
+
+  integrityIssue_(issues, 'log_duplicate_id', 'error', 'מזהים כפולים ביומן', duplicateLogIds);
+  integrityIssue_(issues, 'log_missing_id', 'error', 'שורות יומן ללא מזהה', logWithoutId,
+                  'ללא מזהה אי אפשר למנוע כתיבה כפולה.');
+  integrityIssue_(issues, 'log_missing_name', 'error', 'שורות יומן ללא שם', logWithoutName);
+  integrityIssue_(issues, 'charges_orphaned', 'error', 'חיובי הוראת קבע ללא הוראה', orphanCharges);
+  integrityIssue_(issues, 'charges_malformed_id', 'error', 'מזהי חיוב הוראת קבע לא תקינים', malformedCharges);
+  integrityIssue_(issues, 'log_invalid_amount', 'warning', 'רשומות כספיות עם סכום לא תקין', invalidAmounts);
+  integrityIssue_(issues, 'log_unknown_status', 'warning', 'סטטוסים לא מוכרים ביומן', unknownStatuses);
+  integrityIssue_(issues, 'log_unknown_contact', 'warning', 'שמות ביומן שאינם באנשי הקשר', orphanContactRefs,
+                  'ייתכן שהאדם נמחק או ששמו נכתב בצורה אחרת.');
+
+  // ── חיובים חסרים לפי לוח הזמנים ───────────────────────────────────────
+  var missingCharges = [];
+  var today = new Date();
+  hk.rows.forEach(function (row, i) {
+    var id = String(get_(row, hk, 'מזהה') || '').trim();
+    var start = toDate_(get_(row, hk, 'תאריך פתיחה'));
+    var cancel = toDate_(get_(row, hk, 'תאריך ביטול'));
+    var rawPayments = get_(row, hk, 'מספר תשלומים');
+    var unlimited = isUnlimited_(rawPayments);
+    var payments = asNumber_(rawPayments);
+    if (!id || !start || (!unlimited && !payments)) return;
+
+    var billingDay = start.getDate();
+    var cursor = new Date(start.getFullYear(), start.getMonth(), 1);
+    var rounds = unlimited ? 600 : payments;
+    for (var n = 0; n < rounds; n++) {
+      var y = cursor.getFullYear(), m = cursor.getMonth();
+      var chargeDate = new Date(y, m, Math.min(billingDay, daysInMonth_(y, m)));
+      if (cancel && chargeDate >= cancel) break;
+      if (unlimited && chargeDate > today) break;
+      var expectedId = hkChargeId_(id, y, m);
+      if (!chargeIds[setKey_(expectedId)]) missingCharges.push(id + ' · ' + asDate_(chargeDate));
+      cursor.setMonth(cursor.getMonth() + 1);
+    }
+  });
+  integrityIssue_(issues, 'charges_missing', 'error', 'חיובי הוראת קבע חסרים', missingCharges,
+                  'הדוח לא יוצר אותם. יש לבדוק את ההוראה לפני הפעלת השלמה.');
+
+  // ── כשלים שמצביעים להוראה שאינה קיימת ────────────────────────────────
+  var orphanFailures = [];
+  failures.rows.forEach(function (row, i) {
+    var id = String(get_(row, failures, 'מזהה הוראה') || '').trim();
+    if (id && !orderIds[setKey_(id)]) orphanFailures.push(id + ' · שורה ' + (i + 2));
+  });
+  integrityIssue_(issues, 'failures_orphaned', 'warning', 'כשלי חיוב ללא הוראת קבע', orphanFailures);
+
+  var totals = { error: 0, warning: 0, info: 0 };
+  issues.forEach(function (issue) {
+    if (totals[issue.severity] === undefined) totals[issue.severity] = 0;
+    totals[issue.severity] += issue.count;
+  });
+
+  return {
+    success: true,
+    generatedAt: new Date().toISOString(),
+    codeVersion: CODE_VERSION,
+    healthy: totals.error === 0,
+    summary: {
+      errors: totals.error,
+      warnings: totals.warning,
+      info: totals.info,
+      issueGroups: issues.length,
+      contacts: contacts.rows.length,
+      logRows: log.rows.length,
+      standingOrders: hk.rows.length,
+      failures: failures.rows.length,
+    },
+    issues: issues,
   };
 }
 
@@ -2873,4 +3170,3 @@ function onOpen() {
       .addItem('רענון תאריך הכתיבה לרבי', 'refreshRebbeDate'))
     .addToUi();
 }
-
