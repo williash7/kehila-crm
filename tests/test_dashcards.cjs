@@ -51,6 +51,23 @@ DASH_CARDS.forEach(c => assert.ok(
     'משימות אירוע משתמשות במופע הקרוב');
   assert.ok(!/contextDate: e\.date/.test(home),
     'ולא ב-e.date — באירוע חוזר זה המופע הראשון, שנמצא בעבר הרחוק');
+
+  // ── המופע הקרוב, לא הראשון ──
+  // hebcal סורק שנתיים קדימה, ולכן אותו שם חג מופיע פעמיים. שמירת
+  // הראשון שנתקלים בו נותנת לפעמים את החג של השנה הבאה.
+  assert.ok(/buildHolidayList\(holidays, getCustomHols\(\), today\)/.test(home),
+    'תאריכי החגים נלקחים מ-buildHolidayList, שבוחרת את המופע הקרוב ביותר');
+
+  // ── holidayExtras אינו רק חגים ──
+  // הוא משמש גם כארון למשימות עצמאיות ולמשימות של תאריכים אישיים.
+  // בלי ההחרגה, כל משימה עצמאית נכנסה גם כ"חג" וגם בדלי העצמאי —
+  // כלומר הופיעה פעמיים בריכוז.
+  assert.ok(/NOT_A_HOLIDAY/.test(home) &&
+            /STANDALONE_TASKS_ID/.test(home) &&
+            /PERSONAL_DATE_EXTRAS_ID/.test(home),
+    'שני המפתחות המיוחדים מוחרגים מרשימת החגים');
+  assert.ok(!/Object\.keys\(holidayExtras \|\| \{\}\)\.forEach\(k => holidayIds\.add\(k\)\)/.test(home),
+    'ואין מעבר עיוור על כל מפתחות holidayExtras');
   assert.ok(/buildTodayFocus/.test(home), 'המסך משתמש בחישוב של יוסי');
   assert.ok(!/homeMode/.test(settings) && !/homeMode/.test(home),
     'אין הגדרת מצב בית — הכרטיס הוא המנגנון, ושתי מערכות תצורה למסך אחד מייצרות התנגשויות');

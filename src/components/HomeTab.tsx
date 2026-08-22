@@ -9,9 +9,10 @@ import { ThankYouLetterModal } from './ThankYouLetterModal';
 import { StandingOrdersModal } from './StandingOrdersModal';
 import { getCustomHols } from '../lib/api';
 import { computePersonalDateEvents } from '../lib/personalDates';
+import { buildHolidayList } from '../lib/holidayList';
 import { buildTodayFocus, FocusTarget, FocusGroupKind } from '../lib/todayFocus';
 import { computeOverdueContacts } from '../lib/contactFocus';
-import { STANDALONE_TASKS_ID, nextEventOccurrence } from '../lib/tasks';
+import { STANDALONE_TASKS_ID, PERSONAL_DATE_EXTRAS_ID, nextEventOccurrence } from '../lib/tasks';
 import { parseDdMmYyyy } from '../lib/dateUtils';
 import { CampaignTag } from './CampaignTag';
 import { countHkByStatus, isMonthlyReminderReviewed, markMonthlyReminderReviewed } from '../lib/standingOrders';
@@ -74,19 +75,25 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd }: { setTab: (t: s
     // משימה בלי תאריך משלה יורשת את תאריך החג או האירוע שהיא שייכת אליו.
     // בלי זה, "לארגן כיבוד" לשבת הקרובה נראית בדיוק כמו משימה בלי מועד,
     // ולא מגיעה לריכוז כשהיא באמת דחופה.
+    //
+    // buildHolidayList כבר פותרת את הבעיה הקשה כאן: hebcal סורק שנתיים
+    // קדימה, ולכן אותו שם חג מופיע פעמיים. היא בוחרת את המופע **הקרוב
+    // ביותר להיום** — לא הראשון ברשימה, שזה מה שגרסה קודמת עשתה בטעות.
     const holidayDates = new Map<string, string>();
-    holidays.forEach((h: any) => {
-      const name = h.hebrew || h.title;
-      const d = h.date?.split('T')[0];
-      // החג הקרוב ביותר גובר: hebcal מחזיר גם מופעים עתידיים של אותו שם.
-      if (name && d && !holidayDates.has(name)) holidayDates.set(name, d);
-    });
-    getCustomHols().forEach((c: any) => {
-      if (c?.name && c?.date && !holidayDates.has(c.name)) holidayDates.set(c.name, c.date);
-    });
+    buildHolidayList(holidays, getCustomHols(), today)
+      .forEach(h => holidayDates.set(h.name, h.dateStr));
 
-    const holidayIds = new Set<string>([...holidayDates.keys()]);
-    Object.keys(holidayExtras || {}).forEach(k => holidayIds.add(k));
+    // ── ומה שאסור לספור כחג ─────────────────────────────────────────────
+    //
+    // holidayExtras משמש גם כארון למשימות שאינן שייכות לחג: המשימות
+    // העצמאיות והמשימות של תאריכים אישיים. מעבר על כל המפתחות היה מכניס
+    // אותן כאן כ"חג", ואז שוב בדלי העצמאי שמתחת — **כל משימה עצמאית
+    // הייתה מופיעה פעמיים בריכוז.**
+    const NOT_A_HOLIDAY = new Set([STANDALONE_TASKS_ID, PERSONAL_DATE_EXTRAS_ID]);
+    const holidayIds = new Set<string>(holidayDates.keys());
+    Object.keys(holidayExtras || {}).forEach(k => {
+      if (!NOT_A_HOLIDAY.has(k)) holidayIds.add(k);
+    });
 
     holidayIds.forEach(id => {
       const tasks = holidayExtras[id]?.tasks || [];
@@ -106,6 +113,7 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd }: { setTab: (t: s
         tasks: e.tasks,
       });
     });
+
     const standalone = holidayExtras[STANDALONE_TASKS_ID]?.tasks || [];
     if (standalone.length) buckets.push({ scope: 'standalone', contextId: STANDALONE_TASKS_ID, tasks: standalone });
 
