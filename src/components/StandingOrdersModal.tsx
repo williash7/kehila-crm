@@ -31,7 +31,7 @@ function isRecentlyRelevant(h: any, threshold: number): boolean {
 export function StandingOrdersModal({ onClose }: { onClose: () => void }) {
   const { hk, failures, refresh, settings, updateSettings } = useAppStore();
   const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState<'all' | HkStatus | 'errors'>('all');
+  const [filter, setFilter] = useState<'all' | HkStatus | 'errors'>('active');
   const [showSettings, setShowSettings] = useState(false);
   const [showOld, setShowOld] = useState(false);
   const [selectedDonor, setSelectedDonor] = useState<string | null>(null);
@@ -70,10 +70,10 @@ export function StandingOrdersModal({ onClose }: { onClose: () => void }) {
   }
 
   const filterTabs: { id: 'all' | HkStatus | 'errors'; label: string; count: number }[] = [
-    { id: 'all', label: showOld ? 'הכל (כולל ישנות)' : 'הכל', count: list.length },
+    { id: 'active', label: 'פעילות', count: counts.active },
+    { id: 'all', label: showOld ? 'הכל (כולל ישנות)' : 'הכל', count: showOld ? sorted.length : sorted.filter(h => isRecentlyRelevant(h, threshold)).length },
     { id: 'expiring', label: 'מסתיימות בקרוב', count: counts.expiring },
     { id: 'expired', label: 'הסתיימו', count: counts.expired },
-    { id: 'active', label: 'פעילות', count: counts.active },
     { id: 'cancelled', label: 'בוטלו', count: counts.cancelled },
     { id: 'errors', label: 'כשלי חיוב', count: failures.length },
   ];
@@ -164,7 +164,7 @@ export function StandingOrdersModal({ onClose }: { onClose: () => void }) {
 
         {/* הבהרה: מה מוצג ברשימה כברירת מחדל, ומה זה "כשלי חיוב" */}
         <div className="mt-2 text-[10px] text-gray-400 leading-relaxed">
-          כברירת מחדל מוצגות הוראות קבע <b>פעילות</b> או שהסתיימו ב-{RECENT_MONTHS} החודשים האחרונים בלבד.
+          כברירת מחדל מוצגות רק הוראות הקבע <b>הפעילות</b>. דרך המסננים אפשר לראות מסתיימות, שהסתיימו, בוטלו או את הכול.
           "כשלי חיוב" = תורמים שהחיוב האחרון שלהם נכשל (למשל כרטיס פג תוקף) — הסיבה מוצגת ליד השם.
           לחיצה על שם פותחת את כרטיס התורם עם כל היסטוריית התרומות/מפגשים שלו.
         </div>

@@ -82,7 +82,7 @@ export function DonationsTab() {
   const hasActiveFilters = !!(search || dateFrom || dateTo || method || purpose);
 
   // ── הוראות קבע ──────────────────────────────────────────────────────────
-  const [hkFilter, setHkFilter] = useState<'all' | HkStatus | 'errors'>('all');
+  const [hkFilter, setHkFilter] = useState<'all' | HkStatus | 'errors'>('active');
   const [hkSearch, setHkSearch] = useState('');
   const threshold = settings.hkExpiringThreshold ?? 2;
   const failIdx = useMemo(() => indexFailures(failures), [failures]);
@@ -282,10 +282,10 @@ export function DonationsTab() {
             </div>
             <div className="flex gap-1.5 overflow-x-auto pb-3 no-scrollbar">
               {([
-                { id: 'all', label: 'הכל', count: hkList.length },
+                { id: 'active', label: 'פעילות', count: hkCounts.active },
+                { id: 'all', label: 'הכל', count: hk.length },
                 { id: 'expiring', label: 'מסתיימות בקרוב', count: hkCounts.expiring },
                 { id: 'expired', label: 'הסתיימו', count: hkCounts.expired },
-                { id: 'active', label: 'פעילות', count: hkCounts.active },
                 { id: 'cancelled', label: 'בוטלו', count: hkCounts.cancelled },
                 { id: 'renewed', label: 'חודשו', count: hkCounts.renewed },
                 { id: 'errors', label: 'כשלי חיוב', count: failures.length },
