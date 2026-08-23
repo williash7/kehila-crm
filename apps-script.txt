@@ -67,7 +67,7 @@
  *
  * **מעדכנים אותה בכל שינוי מהותי בקובץ.**
  */
-var CODE_VERSION = '2026-08-23b';
+var CODE_VERSION = '2026-08-23e';
 var EXPORT_SCHEMA_VERSION = 1;
 var EXPORT_MAX_LIMIT = 500;
 
@@ -680,7 +680,7 @@ function route_(action, body) {
   // מחכה לאישור, ואין טעם להוסיף לו סריקה באמצע.
   // דוח תקינות הוא אבחון קריאה-בלבד. אסור שקריאתו תתזמן סנכרון רקע
   // שיכתוב לגיליון בזמן שהדוח קורא אותו.
-  if (action.indexOf('get') === 0 && action !== 'getIntegrity') maybeSync_();
+  if (action.indexOf('get') === 0 && action !== 'getIntegrity' && action !== 'getPaymentLedger') maybeSync_();
 
   switch (action) {
     // קריאה
@@ -691,6 +691,7 @@ function route_(action, body) {
     case 'getIntegrity':     return getIntegrity_();
     case 'getSummary':       return getSummary_();
     case 'getDonations':     return { donations: getDonations_() };
+    case 'getPaymentLedger': return { payments: getPaymentLedger_() };
     case 'getDonors':        return { donors: getDonors_() };
     case 'getHK':            return { hk: getHK_() };
     case 'getFailures':      return { failures: getFailures_() };
@@ -701,6 +702,7 @@ function route_(action, body) {
     case 'getHistory':       return { data: readSync_('history') || [] };
     case 'getHomeVisits':    return { data: readSync_('homeVisits') || { rounds: [] } };
     case 'getProjects':      return { data: readSync_('projects') || [] };
+    case 'getFinance':       return { data: readSync_('finance') || null };
     // הגדרות הארגון נשמרות גם בגיליון, כדי שמכשיר נוסף יצטרך רק את
     // כתובת הגיליון ולא יעבור שוב את כל האשף.
     case 'getConfig':        return { data: readSync_('orgConfig') || null };
@@ -712,6 +714,7 @@ function route_(action, body) {
     case 'saveHistory':       writeSync_('history', body.data);       return { success: true };
     case 'saveHomeVisits':    writeSync_('homeVisits', body.data);    return { success: true };
     case 'saveProjects':      writeSync_('projects', body.data);      return { success: true };
+    case 'saveFinance':       writeSync_('finance', body.data);       return { success: true };
     case 'updateRebbe':       writeSync_('rebbeDate', body.date);     return { success: true };
     case 'saveConfig':        writeSync_('orgConfig', body.data);      return { success: true };
 
@@ -732,6 +735,11 @@ function route_(action, body) {
     case 'createHolidayDoc':   return createHolidayDoc_(body);
     case 'importRows':         return importRows_(body);
     case 'undoImport':         return { success: true, deleted: undoImport(String(body.tag || '')) };
+    case 'restoreBegin':       return restoreBegin_(body);
+    case 'restoreSheet':       return restoreSheet_(body);
+    case 'restoreSync':        return restoreSync_(body);
+    case 'restoreFinish':      return restoreFinish_(body);
+    case 'restoreRollback':    return restoreRollback_(body);
 
     default: return { error: 'פעולה לא מוכרת: ' + action };
   }
@@ -784,6 +792,46 @@ function getDonations_() {
       meetPurpose: fmt_(get_(r, t, 'מטרת המפגש')),
       notes:       fmt_(get_(r, t, 'סיכום ותובנות')),
       source:      fmt_(get_(r, t, 'מקור')),
+    });
+  });
+  return out;
+}
+
+/**
+ * היומן הכספי המלא לתצוגת בקרה אופציונלית.
+ *
+ * בניגוד ל-getDonations_, כאן לא מסננים עתידי/נכשל/מבוטל — זו בדיוק
+ * מטרת המסך. הפונקציה קריאה בלבד ואינה משמשת אף סכום הכנסה קיים.
+ * מפגש שאין בו תרומה אינו נכנס גם אם יש לו שם.
+ */
+function getPaymentLedger_() {
+  var t = table_(SH.LOG);
+  var out = [];
+  t.rows.forEach(function (r) {
+    var id = fmt_(get_(r, t, 'מזהה'));
+    var name = fmt_(get_(r, t, 'שם'));
+    var dateValue = get_(r, t, 'תאריך תרומה');
+    var method = fmt_(get_(r, t, 'אפיק גבייה'));
+    var rawStatus = fmt_(get_(r, t, 'סטטוס'));
+    if (!name) return;
+    if (!dateValue && !method && id.indexOf('hk:') !== 0) return;
+
+    var status = rawStatus === STATUS_FAILED ? 'failed'
+      : rawStatus === STATUS_FUTURE ? 'future'
+      : rawStatus === STATUS_CANCELLED ? 'cancelled'
+      : 'received';
+    out.push({
+      id:          id,
+      name:        name,
+      date:        asDate_(dateValue),
+      amount:      asNumber_(get_(r, t, 'סכום')),
+      purpose:     fmt_(get_(r, t, 'ייעוד')),
+      method:      method,
+      notes:       fmt_(get_(r, t, 'סיכום ותובנות')),
+      source:      fmt_(get_(r, t, 'מקור')),
+      status:      status,
+      rawStatus:   rawStatus,
+      orderId:     id.indexOf('hk:') === 0 ? orderIdFromChargeId_(id) : '',
     });
   });
   return out;
@@ -985,6 +1033,7 @@ function getAll_() {
     history:       attempt(function () { return readSync_('history') || []; }, []),
     homeVisits:    attempt(function () { return readSync_('homeVisits') || { rounds: [] }; }, { rounds: [] }),
     projects:      attempt(function () { return readSync_('projects') || []; }, []),
+    finance:       attempt(function () { return readSync_('finance') || null; }, null),
   };
 }
 
@@ -1180,6 +1229,244 @@ function exportAll_(params) {
     sheets: sheetsOut,
     syncKeys: exportSyncKeys_(),
   };
+}
+
+// ── שחזור מבוקר מגיבוי מלא ────────────────────────────────────────────────
+var RESTORE_PREFIX = 'restore:';
+var RESTORE_REQUEST_PREFIX = 'restore-request:';
+var RESTORE_MAX_AGE_MS = 2 * 60 * 60 * 1000;
+var RESTORE_SYNC_KEYS = ['crm', 'events', 'finance', 'history', 'holidayExtras', 'homeVisits',
+                         'orgConfig', 'projects', 'rebbeDate'];
+
+function restoreState_(token) {
+  token = String(token || '').trim();
+  if (!token) throw new Error('חסר מזהה שחזור');
+  var raw = PropertiesService.getScriptProperties().getProperty(RESTORE_PREFIX + token);
+  if (!raw) throw new Error('השחזור אינו קיים או שפג תוקפו');
+  var state = JSON.parse(raw);
+  if (!state.createdAt || Date.now() - state.createdAt > RESTORE_MAX_AGE_MS) {
+    PropertiesService.getScriptProperties().deleteProperty(RESTORE_PREFIX + token);
+    throw new Error('השחזור פג תוקף; התחילו מחדש');
+  }
+  return state;
+}
+
+function saveRestoreState_(state) {
+  PropertiesService.getScriptProperties().setProperty(
+    RESTORE_PREFIX + state.token, JSON.stringify(state));
+}
+
+function withRestoreLock_(fn) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try { return fn(); }
+  finally { lock.releaseLock(); }
+}
+
+function validateRestoreManifest_(manifest) {
+  manifest = manifest || {};
+  if (Number(manifest.schemaVersion) !== EXPORT_SCHEMA_VERSION) {
+    throw new Error('גרסת הגיבוי אינה נתמכת');
+  }
+  if (!Array.isArray(manifest.sheets) || !Array.isArray(manifest.syncKeys)) {
+    throw new Error('מניפסט שחזור אינו שלם');
+  }
+  var allowed = exportSheetNames_();
+  var seen = {};
+  var sheets = {};
+  manifest.sheets.forEach(function (s) {
+    var name = String(s && s.name || '').trim();
+    if (allowed.indexOf(name) < 0 || seen[name]) throw new Error('לשונית אסורה או כפולה: ' + name);
+    seen[name] = true;
+    var rowCount = Number(s.rowCount), headerCount = Number(s.headerCount);
+    if (!Number.isInteger(rowCount) || rowCount < 0 ||
+        !Number.isInteger(headerCount) || headerCount < 0) throw new Error('ספירות לא תקינות: ' + name);
+    if (s.present && headerCount < 1) throw new Error('אין כותרות בלשונית: ' + name);
+    sheets[name] = { present: !!s.present, rowCount: rowCount, headerCount: headerCount,
+                     nextOffset: 0, started: false, done: !s.present };
+  });
+  allowed.forEach(function (name) {
+    if (!seen[name]) throw new Error('לשונית חסרה במניפסט: ' + name);
+  });
+  var sync = {};
+  manifest.syncKeys.forEach(function (key) {
+    key = String(key || '').trim();
+    if (RESTORE_SYNC_KEYS.indexOf(key) < 0 || sync[key] !== undefined) {
+      throw new Error('מפתח סנכרון אסור או כפול: ' + key);
+    }
+    sync[key] = false;
+  });
+  return { sheets: sheets, sync: sync };
+}
+
+/**
+ * עותק Spreadsheet אינו משכפל קובצי overflow שאליהם לשונית הסנכרון מצביעה.
+ * בלי הבידוד הזה writeOverflow_ עלול לעדכן את אותו קובץ שגם עותק הבטיחות
+ * מפנה אליו, ואז ה"גיבוי" כבר אינו המצב הישן. משכפלים כל קובץ ומחליפים
+ * את המצביע בתוך העותק בלבד, לפני שנוגעים בגיליון הפעיל.
+ */
+function isolateSnapshotOverflow_(snapshot) {
+  var syncSheet = snapshot.getSheetByName(SH.SYNC);
+  if (!syncSheet) return;
+  var values = syncSheet.getDataRange().getValues();
+  for (var i = 1; i < values.length; i++) {
+    var raw = values[i][1];
+    if (!raw) continue;
+    var parsed;
+    try { parsed = JSON.parse(raw); } catch (err) { continue; }
+    if (!parsed || !parsed.__overflow) continue;
+    var key = String(values[i][0] || 'data').trim();
+    var copy = DriveApp.getFileById(parsed.__overflow)
+      .makeCopy('kehila-crm-restore-safety-' + key + '-' + Date.now() + '.json');
+    syncSheet.getRange(i + 1, 2).setValue(JSON.stringify({ __overflow: copy.getId() }));
+  }
+}
+
+function restoreBegin_(body) {
+  return withRestoreLock_(function () {
+    var requestId = String(body.reqId || '').trim();
+    var props = PropertiesService.getScriptProperties();
+    var requestKey = RESTORE_REQUEST_PREFIX + requestId;
+    if (requestId) {
+      var previousRaw = props.getProperty(requestKey);
+      if (previousRaw) {
+        try {
+          var previous = JSON.parse(previousRaw);
+          if (previous.createdAt && Date.now() - previous.createdAt <= RESTORE_MAX_AGE_MS) {
+            var previousState = restoreState_(previous.token);
+            return { success: true, token: previousState.token,
+                     snapshotId: previousState.snapshotId,
+                     snapshotName: previousState.snapshotName };
+          }
+        } catch (ignored) {}
+        props.deleteProperty(requestKey);
+      }
+    }
+    var checked = validateRestoreManifest_(body.manifest);
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var stamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH-mm-ss');
+    var snapshot = ss.copy('גיבוי בטיחות לפני שחזור ' + stamp);
+    isolateSnapshotOverflow_(snapshot);
+    var token = Utilities.getUuid();
+    var state = {
+      token: token, createdAt: Date.now(), status: 'active',
+      snapshotId: String(snapshot.getId()), snapshotName: String(snapshot.getName()),
+      sheets: checked.sheets, sync: checked.sync,
+    };
+    saveRestoreState_(state);
+    if (requestId) props.setProperty(requestKey, JSON.stringify({ token: token, createdAt: state.createdAt }));
+    return { success: true, token: token, snapshotId: state.snapshotId,
+             snapshotName: state.snapshotName };
+  });
+}
+
+function restoreCell_(value) {
+  if (value && typeof value === 'object' && value.__type === 'date') {
+    var d = new Date(value.value);
+    if (isNaN(d.getTime())) throw new Error('תאריך פגום בגיבוי');
+    return d;
+  }
+  if (value && typeof value === 'object') throw new Error('ערך תא פגום בגיבוי');
+  // מונע ממחרוזת שהתחילה ב-= להפוך לנוסחה פעילה בזמן setValues.
+  if (typeof value === 'string' && value.charAt(0) === '=') return "'" + value;
+  return value === undefined || value === null ? '' : value;
+}
+
+function restoreSheet_(body) {
+  return withRestoreLock_(function () {
+    var state = restoreState_(body.token);
+    if (state.status !== 'active') throw new Error('השחזור אינו פעיל');
+    var name = String(body.sheet || '').trim();
+    var item = state.sheets[name];
+    if (!item || !item.present) throw new Error('הלשונית אינה חלק מהשחזור: ' + name);
+    var offset = Number(body.offset), total = Number(body.total);
+    var rows = body.rows;
+    if (!Number.isInteger(offset) || offset !== item.nextOffset || total !== item.rowCount) {
+      throw new Error('מקטע לא רציף בלשונית ' + name);
+    }
+    if (!Array.isArray(rows) || rows.length > EXPORT_MAX_LIMIT || offset + rows.length > total) {
+      throw new Error('גודל מקטע אינו תקין בלשונית ' + name);
+    }
+    var headers = body.headers;
+    if (!item.started && (!Array.isArray(headers) || headers.length !== item.headerCount)) {
+      throw new Error('כותרות אינן תואמות בלשונית ' + name);
+    }
+    if (!item.started && !headers.every(function (h) { return typeof h === 'string'; })) {
+      throw new Error('כותרת אינה טקסט בלשונית ' + name);
+    }
+    var matrix = rows.map(function (row) {
+      if (!Array.isArray(row) || row.length !== item.headerCount) {
+        throw new Error('רוחב שורה אינו תואם בלשונית ' + name);
+      }
+      return row.map(restoreCell_);
+    });
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName(name) || ss.insertSheet(name);
+    if (!item.started) {
+      sheet.clearContents();
+      sheet.getRange(1, 1, 1, headers.length).setValues([headers.map(restoreCell_)]);
+      item.started = true;
+    }
+    if (matrix.length) sheet.getRange(offset + 2, 1, matrix.length, item.headerCount).setValues(matrix);
+    item.nextOffset += matrix.length;
+    item.done = item.nextOffset === item.rowCount;
+    saveRestoreState_(state);
+    invalidateTable_(name);
+    return { success: true, sheet: name, nextOffset: item.nextOffset, complete: item.done };
+  });
+}
+
+function restoreSync_(body) {
+  return withRestoreLock_(function () {
+    var state = restoreState_(body.token);
+    if (state.status !== 'active') throw new Error('השחזור אינו פעיל');
+    var key = String(body.key || '').trim();
+    if (state.sync[key] === undefined) throw new Error('מפתח אינו חלק מהשחזור: ' + key);
+    writeSync_(key, body.data);
+    state.sync[key] = true;
+    saveRestoreState_(state);
+    return { success: true, key: key };
+  });
+}
+
+function restoreFinish_(body) {
+  return withRestoreLock_(function () {
+    var state = restoreState_(body.token);
+    if (state.status !== 'active') throw new Error('השחזור אינו פעיל');
+    Object.keys(state.sheets).forEach(function (name) {
+      if (!state.sheets[name].done) throw new Error('השחזור טרם השלים את הלשונית: ' + name);
+    });
+    Object.keys(state.sync).forEach(function (key) {
+      if (!state.sync[key]) throw new Error('השחזור טרם השלים את המפתח: ' + key);
+    });
+    state.status = 'completed';
+    state.completedAt = Date.now();
+    saveRestoreState_(state);
+    return { success: true, snapshotId: state.snapshotId, snapshotName: state.snapshotName };
+  });
+}
+
+function restoreRollback_(body) {
+  return withRestoreLock_(function () {
+    var state = restoreState_(body.token);
+    var source = SpreadsheetApp.openById(state.snapshotId);
+    var target = SpreadsheetApp.getActiveSpreadsheet();
+    exportSheetNames_().forEach(function (name) {
+      var from = source.getSheetByName(name);
+      if (!from) return;
+      var to = target.getSheetByName(name) || target.insertSheet(name);
+      var values = from.getDataRange().getValues();
+      to.clearContents();
+      if (values.length && values[0].length) {
+        to.getRange(1, 1, values.length, values[0].length).setValues(values);
+      }
+    });
+    state.status = 'rolledBack';
+    state.rolledBackAt = Date.now();
+    saveRestoreState_(state);
+    invalidateTable_();
+    return { success: true, snapshotId: state.snapshotId, snapshotName: state.snapshotName };
+  });
 }
 
 /** מפתח בטוח לאובייקט שמשמש כ-Set. */
