@@ -78,6 +78,7 @@ const libBundles = [
   ['lib/importDupes.ts', join(OUT, 'dupes.js')],
   ['lib/backup.ts', join(OUT, 'backup.js')],
   ['lib/backupHistory.ts', join(OUT, 'backupHistory.js')],
+  ['lib/restore.ts', join(OUT, 'restore.js')],
   ['lib/todayFocus.ts', join(OUT, 'todayFocus.js')],
   ['lib/donationFilter.ts', join(OUT, 'df.js')],
 ];

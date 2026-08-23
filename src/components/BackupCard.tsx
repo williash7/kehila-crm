@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
-import { Download, ShieldCheck, AlertTriangle, CheckCircle2, Loader2, RefreshCw } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { Download, ShieldCheck, AlertTriangle, CheckCircle2, Loader2, RefreshCw, Upload } from 'lucide-react';
 import { CardTitle } from './Explain';
 import {
   exportManifest, exportChunk, exportSync, fetchIntegrity, isNotDeployed,
+  restoreBegin, restoreSheet, restoreSync, restoreFinish, restoreRollback,
 } from '../lib/api';
 import {
   collectBackup, backupFileName, backupSummary, BackupIncomplete,
@@ -12,6 +13,10 @@ import {
 import {
   BackupStamp, makeBackupStamp, readBackupStamp, writeBackupStamp,
 } from '../lib/backupHistory';
+import {
+  RestorePlan, RESTORE_CONFIRM_WORD, restoreManifest, sheetChunks, validateBackupForRestore,
+} from '../lib/restore';
+import { useAppStore } from '../store/AppContext';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // גיבוי מלא ובדיקת תקינות.
@@ -78,13 +83,18 @@ function IssueRow({ issue }: { key?: React.Key; issue: Issue }) {
 }
 
 export function BackupCard() {
-  const [busy, setBusy] = useState<'' | 'backup' | 'check'>('');
+  const { refresh } = useAppStore();
+  const restoreFileRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState<'' | 'backup' | 'check' | 'restore'>('');
   const [progress, setProgress] = useState<Progress | null>(null);
   const [error, setError] = useState('');
   const [failures, setFailures] = useState<{ what: string; error: string }[]>([]);
   const [needsDeploy, setNeedsDeploy] = useState(false);
   const [lastBackup, setLastBackup] = useState<BackupStamp | null>(() => readBackupStamp());
   const [report, setReport] = useState<IntegrityReport | null>(null);
+  const [restorePlan, setRestorePlan] = useState<RestorePlan | null>(null);
+  const [restoreConfirm, setRestoreConfirm] = useState('');
+  const [restoreMessage, setRestoreMessage] = useState('');
 
   const reset = () => { setError(''); setFailures([]); setNeedsDeploy(false); };
 
@@ -145,13 +155,68 @@ export function BackupCard() {
     }
   };
 
+  const chooseRestoreFile = async (file: File) => {
+    setRestorePlan(null); setRestoreConfirm(''); setRestoreMessage(''); reset();
+    try {
+      setRestorePlan(validateBackupForRestore(JSON.parse(await file.text())));
+    } catch (e: any) {
+      setRestoreMessage(e?.message || String(e));
+    }
+  };
+
+  const runRestore = async () => {
+    if (!restorePlan || restoreConfirm.trim() !== RESTORE_CONFIRM_WORD) return;
+    reset(); setRestoreMessage(''); setBusy('restore');
+    let token = '';
+    let snapshotName = '';
+    try {
+      const begin = await restoreBegin(restoreManifest(restorePlan));
+      token = begin.token;
+      snapshotName = begin.snapshotName || '';
+      const sheetNames = Object.keys(restorePlan.backup.sheets)
+        .filter(name => restorePlan.backup.sheets[name].present);
+      const chunks = sheetNames.flatMap(name => sheetChunks(restorePlan, name).map(chunk => ({ name, chunk })));
+      const syncEntries = Object.entries(restorePlan.backup.syncResolved);
+      const totalSteps = Math.max(1, chunks.length + syncEntries.length + 1);
+      let done = 0;
+      const tick = (label: string) => setProgress({ ratio: ++done / totalSteps, label });
+
+      for (const { name, chunk } of chunks) {
+        await restoreSheet({ token, sheet: name, ...chunk });
+        tick(`${name} · ${Math.min(chunk.offset + chunk.rows.length, chunk.total)} מתוך ${chunk.total}`);
+      }
+      for (const [key, data] of syncEntries) {
+        await restoreSync({ token, key, data });
+        tick(`נתוני ${key}`);
+      }
+      const finish = await restoreFinish(token);
+      token = ''; // מכאן כשל רענון אינו סיבה להחזיר שחזור שכבר הושלם.
+      tick('השחזור הושלם');
+      setRestoreMessage(`✓ השחזור הושלם. עותק הבטיחות נשמר ב-Drive בשם „${finish.snapshotName || snapshotName}”.`);
+      setRestorePlan(null); setRestoreConfirm('');
+      await refresh();
+    } catch (e: any) {
+      if (isNotDeployed(e)) setNeedsDeploy(true);
+      if (token) {
+        try {
+          const rolled = await restoreRollback(token);
+          setRestoreMessage(`השחזור נעצר והמצב הקודם הוחזר מעותק הבטיחות „${rolled.snapshotName || snapshotName}”. ${e?.message || e}`);
+        } catch (rollbackError: any) {
+          setRestoreMessage(`השחזור נעצר, וגם ההחזרה האוטומטית לא הושלמה. עותק הבטיחות „${snapshotName || 'נוצר ב-Drive'}” נשמר. ${rollbackError?.message || rollbackError}`);
+        }
+      } else if (!isNotDeployed(e)) setRestoreMessage(e?.message || String(e));
+    } finally {
+      setBusy(''); setProgress(null);
+    }
+  };
+
   const issues = sortIssues(report?.issues || []);
 
   return (
     <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6] space-y-3">
-      <CardTitle title="גיבוי ובדיקת נתונים">
-        שתי פעולות שאינן משנות דבר בגיליון. הגיבוי מוריד עותק מלא של כל הנתונים
-        לקובץ אחד במחשב; הבדיקה סורקת את הגיליון ומדווחת על מה שנראה לא תקין.
+      <CardTitle title="גיבוי, שחזור ובדיקת נתונים">
+        הגיבוי והבדיקה אינם משנים דבר בגיליון. השחזור מופעל רק לאחר בחירת קובץ
+        ואישור מפורש, ולפניו נוצר אוטומטית עותק בטיחות מלא ב־Drive.
       </CardTitle>
 
       {needsDeploy && <NeedsDeploy />}
@@ -216,6 +281,75 @@ export function BackupCard() {
           הנתונים יורדים במנות, ולכן זה לוקח כמה שניות. אם משהו לא מתקבל — לא
           יורד קובץ בכלל, כדי שלא יישאר גיבוי חסר שנראה שלם.
         </p>
+      </div>
+
+      {/* ── שחזור מבוקר ── */}
+      <div className="pt-1 border-t border-[#EDE6D6]">
+        <input
+          ref={restoreFileRef}
+          type="file"
+          accept=".json,application/json"
+          className="hidden"
+          onChange={e => {
+            const file = e.target.files?.[0];
+            if (file) chooseRestoreFile(file);
+            e.target.value = '';
+          }}
+        />
+        <button
+          onClick={() => restoreFileRef.current?.click()}
+          disabled={!!busy}
+          className="w-full mt-3 flex items-center justify-center gap-2 border border-[#EDE6D6] hover:border-[#C9A84C] text-[#0D1B2A] text-sm font-bold py-2.5 rounded-xl disabled:opacity-50"
+        >
+          <Upload size={15} /> בחר גיבוי לשחזור
+        </button>
+
+        {restorePlan && (
+          <div className="mt-2 bg-amber-50 border border-amber-200 rounded-xl p-3 text-[11px] text-amber-900 space-y-2">
+            <div className="font-bold">תצוגה מקדימה — עדיין לא השתנה דבר</div>
+            <div>
+              {restorePlan.totalRows.toLocaleString()} שורות · {restorePlan.sheetCount} לשוניות ·{' '}
+              {restorePlan.syncCount} מפתחות נתונים
+              {restorePlan.sourceName ? ` · מתוך „${restorePlan.sourceName}”` : ''}
+            </div>
+            <div>
+              השחזור יחליף את נתוני האפליקציה. לפני הכתיבה ייווצר אוטומטית עותק מלא של
+              הגיליון הנוכחי ב־Drive. לשוניות שאינן שייכות לאפליקציה לא יימחקו.
+            </div>
+            <label className="block">
+              <span className="block mb-1">כדי לאשר, הקלד <b>{RESTORE_CONFIRM_WORD}</b></span>
+              <input
+                value={restoreConfirm}
+                onChange={e => setRestoreConfirm(e.target.value)}
+                className="w-full bg-white border border-amber-300 rounded-lg px-2.5 py-2 text-sm outline-none focus:border-amber-500"
+              />
+            </label>
+            <button
+              onClick={runRestore}
+              disabled={busy === 'restore' || restoreConfirm.trim() !== RESTORE_CONFIRM_WORD}
+              className="w-full bg-red-700 text-white rounded-lg py-2.5 text-sm font-bold disabled:opacity-40"
+            >
+              {busy === 'restore' ? <><Loader2 size={14} className="inline animate-spin ml-1" /> משחזר...</> : 'שחזר את הנתונים'}
+            </button>
+          </div>
+        )}
+
+        {busy === 'restore' && progress && (
+          <div className="mt-2">
+            <div className="h-1.5 bg-[#EDE6D6] rounded-full overflow-hidden">
+              <div className="h-full bg-amber-600" style={{ width: `${Math.round(progress.ratio * 100)}%` }} />
+            </div>
+            <div className="text-[10px] text-gray-500 mt-1">{progress.label}</div>
+          </div>
+        )}
+
+        {restoreMessage && (
+          <div className={`mt-2 rounded-xl p-2.5 text-[11px] border ${
+            restoreMessage.startsWith('✓')
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+              : 'bg-amber-50 border-amber-200 text-amber-900'
+          }`}>{restoreMessage}</div>
+        )}
       </div>
 
       {/* ── בדיקה ── */}

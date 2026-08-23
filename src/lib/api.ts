@@ -176,6 +176,23 @@ export const exportChunk = (sheet: string, offset: number, limit: number) =>
 export const exportSync = (syncKey: string) => apiGetStrict('exportAll', { syncKey });
 export const fetchIntegrity = () => apiGetStrict('getIntegrity');
 
+/** קריאת שחזור מחמירה: אין נתוני דמה ואין הצלחה שקטה על תשובת שגיאה. */
+async function restorePost(action: string, data: any) {
+  const res = await apiPost(action, data);
+  if (!res?.success) {
+    const message = String(res?.details || res?.error || 'פעולת השחזור נכשלה');
+    if (message.indexOf('פעולה לא מוכרת') >= 0) throw new Error(NOT_DEPLOYED);
+    throw new Error(message);
+  }
+  return res;
+}
+
+export const restoreBegin = (manifest: any) => restorePost('restoreBegin', { manifest });
+export const restoreSheet = (data: any) => restorePost('restoreSheet', data);
+export const restoreSync = (data: any) => restorePost('restoreSync', data);
+export const restoreFinish = (token: string) => restorePost('restoreFinish', { token });
+export const restoreRollback = (token: string) => restorePost('restoreRollback', { token });
+
 export async function apiPost(action: string, data: any) {
   try {
     // חשוב: שולחים כ-text/plain ולא application/json.
