@@ -28,6 +28,7 @@ writeSync_('projects', [{ id: 'p1', name: 'פסח' }]);
 writeSync_('events', []);
 writeSync_('history', []);
 writeSync_('homeVisits', { rounds: [] });
+writeSync_('finance', { version: 1, transactions: [] });
 writeSync_('holidayExtras', {});
 writeSync_('rebbeDate', '2026-01-01');
 
@@ -44,11 +45,12 @@ ok(JSON.stringify(all.summary) === JSON.stringify(getSummary_()), 'סיכום');
 ok(JSON.stringify(all.crm) === JSON.stringify(readSync_('crm')), 'כרטיסים');
 ok(JSON.stringify(all.projects) === JSON.stringify(readSync_('projects')), 'פרויקטים');
 ok(all.rebbeDate === readSync_('rebbeDate'), 'תאריך כתיבה לרבי');
+ok(JSON.stringify(all.finance) === JSON.stringify(readSync_('finance')), 'נתוני המרכז הכספי');
 ok(all.version === CODE_VERSION, 'הגרסה נשלחת יחד — בלי בקשת ping נפרדת');
 
 console.log('\nב. כל השדות שהאפליקציה מצפה להם קיימים:');
 ['summary', 'donations', 'donors', 'hk', 'failures', 'rebbeDate',
- 'crm', 'events', 'holidayExtras', 'history', 'homeVisits', 'projects',
+ 'crm', 'events', 'holidayExtras', 'history', 'homeVisits', 'projects', 'finance',
 ].forEach(k => ok(k in all, k));
 
 console.log('\nג. חלק שנכשל אינו מפיל את כל הפתיחה:');

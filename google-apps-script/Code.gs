@@ -67,7 +67,7 @@
  *
  * **מעדכנים אותה בכל שינוי מהותי בקובץ.**
  */
-var CODE_VERSION = '2026-08-23d';
+var CODE_VERSION = '2026-08-23e';
 var EXPORT_SCHEMA_VERSION = 1;
 var EXPORT_MAX_LIMIT = 500;
 
@@ -702,6 +702,7 @@ function route_(action, body) {
     case 'getHistory':       return { data: readSync_('history') || [] };
     case 'getHomeVisits':    return { data: readSync_('homeVisits') || { rounds: [] } };
     case 'getProjects':      return { data: readSync_('projects') || [] };
+    case 'getFinance':       return { data: readSync_('finance') || null };
     // הגדרות הארגון נשמרות גם בגיליון, כדי שמכשיר נוסף יצטרך רק את
     // כתובת הגיליון ולא יעבור שוב את כל האשף.
     case 'getConfig':        return { data: readSync_('orgConfig') || null };
@@ -713,6 +714,7 @@ function route_(action, body) {
     case 'saveHistory':       writeSync_('history', body.data);       return { success: true };
     case 'saveHomeVisits':    writeSync_('homeVisits', body.data);    return { success: true };
     case 'saveProjects':      writeSync_('projects', body.data);      return { success: true };
+    case 'saveFinance':       writeSync_('finance', body.data);       return { success: true };
     case 'updateRebbe':       writeSync_('rebbeDate', body.date);     return { success: true };
     case 'saveConfig':        writeSync_('orgConfig', body.data);      return { success: true };
 
@@ -1031,6 +1033,7 @@ function getAll_() {
     history:       attempt(function () { return readSync_('history') || []; }, []),
     homeVisits:    attempt(function () { return readSync_('homeVisits') || { rounds: [] }; }, { rounds: [] }),
     projects:      attempt(function () { return readSync_('projects') || []; }, []),
+    finance:       attempt(function () { return readSync_('finance') || null; }, null),
   };
 }
 
@@ -1232,7 +1235,7 @@ function exportAll_(params) {
 var RESTORE_PREFIX = 'restore:';
 var RESTORE_REQUEST_PREFIX = 'restore-request:';
 var RESTORE_MAX_AGE_MS = 2 * 60 * 60 * 1000;
-var RESTORE_SYNC_KEYS = ['crm', 'events', 'history', 'holidayExtras', 'homeVisits',
+var RESTORE_SYNC_KEYS = ['crm', 'events', 'finance', 'history', 'holidayExtras', 'homeVisits',
                          'orgConfig', 'projects', 'rebbeDate'];
 
 function restoreState_(token) {

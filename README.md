@@ -93,6 +93,8 @@ src/
   lib/orgConfig.ts            ← לב הגרסה הגנרית: כל מה שהיה פעם קשיח
   lib/posterI18n.ts           ← תרגומי הפוסטר (he / ru / en)
   lib/api.ts                  ← תקשורת עם ה-Apps Script; קורא את הכתובת מ-orgConfig
+  lib/finance.ts              ← תזרים, התחשבנות, ייבוא וחישובי מרכז כספי
+  components/FinanceTab.tsx   ← המרכז הכספי האופציונלי
   components/SetupWizard.tsx  ← אשף ההגדרה הראשוני
 google-apps-script/Code.gs    ← כל צד השרת, כולל setupSheet שבונה את הגיליון
 ```

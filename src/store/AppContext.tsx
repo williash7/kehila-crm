@@ -8,6 +8,7 @@ import {
   getHistoryDataCloud, saveHistoryDataCloud,
   getHomeVisitsDataCloud, saveHomeVisitsDataCloud,
   getProjectsCloud, saveProjectsCloud,
+  getFinanceData, getFinanceDataCloud, saveFinanceData, saveFinanceDataCloud,
   getCustomHols,
   apiGetAll, readSnapshot,
   saveCRMData, saveEventsData, saveHolidayExtras,
@@ -29,6 +30,7 @@ import { computeMissingEventReminders } from '../lib/eventAutoTasks';
 import { Project } from '../lib/projects';
 import { hebcalUrl } from '../lib/orgConfig';
 import { chabadHolidayItems } from '../lib/chabadDates';
+import { FinanceData, emptyFinanceData, normalizeFinanceData } from '../lib/finance';
 
 interface AppState {
   summary: ReportSummary | null;
@@ -53,6 +55,8 @@ interface AppState {
   nameMerges: Record<string, string>;
   settings: AppSettings;
   homeVisits: HomeVisitsData;
+  financeData: FinanceData;
+  updateFinanceData: (data: FinanceData) => Promise<boolean>;
   updateSettings: (partial: Partial<AppSettings>) => void;
   refresh: () => void;
   addManualDonation: (donation: any) => void;
@@ -109,6 +113,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [homeVisits, setHomeVisits] = useState<HomeVisitsData>({ rounds: [] });
+  const [financeData, setFinanceData] = useState<FinanceData>(() => normalizeFinanceData(getFinanceData() || emptyFinanceData()));
   const [settings, setSettings] = useState<AppSettings>(loadSettings());
 
   const updateSettings = (partial: Partial<AppSettings>) => {
@@ -203,6 +208,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setHistory(d.history || []);
       setHomeVisits(d.homeVisits?.rounds ? d.homeVisits : { rounds: [] });
       setProjects(Array.isArray(d.projects) ? d.projects : []);
+      setFinanceData(normalizeFinanceData(d.finance || getFinanceData() || emptyFinanceData()));
       if (d.rebbeDate) setRebbeDate(new Date(d.rebbeDate));
 
       const map: Record<string, any> = {};
@@ -247,10 +253,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     let resolvedCrm: Record<string, any> = extractMerges(getCRMData()).crmRest;
     let resolvedMerges: Record<string, string> = extractMerges(getCRMData()).merges;
 
-    /** מחיל את שש קבוצות הנתונים המסונכרנות. משותף לשני המסלולים. */
+    /** מחיל את קבוצות הנתונים המסונכרנות. משותף לשני מסלולי הטעינה. */
     const applyCloud = (
       cloudCrm: any, cloudEvents: any, cloudExtras: any,
-      cloudHistory: any, cloudHomeVisits: any, cloudProjects: any
+      cloudHistory: any, cloudHomeVisits: any, cloudProjects: any, cloudFinance: any
     ) => {
       const { merges, crmRest } = extractMerges(cloudCrm);
       const cleanedCrm = applyMergesToCrm(crmRest, merges);
@@ -263,6 +269,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setHistory(cloudHistory || []);
       setHomeVisits(cloudHomeVisits?.rounds ? cloudHomeVisits : { rounds: [] });
       setProjects(Array.isArray(cloudProjects) ? cloudProjects : []);
+      setFinanceData(normalizeFinanceData(cloudFinance || emptyFinanceData()));
     };
 
     // ── בקשה אחת, ואם אי אפשר — שתים־עשרה ─────────────────────────────────
@@ -277,8 +284,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     let cloudLoads: Promise<any> = Promise.resolve();
     if (bundle) {
+      // שרת מגרסה קודמת מחזיר getAll תקין בלי השדה החדש. במקרה כזה שומרים
+      // על העותק המקומי ולא דורסים אותו בריק עד שאשר יפרוס את Code.gs החדש.
+      const bundleFinance = bundle.finance === undefined ? getFinanceData() : bundle.finance;
       applyCloud(bundle.crm, bundle.events, bundle.holidayExtras,
-                 bundle.history, bundle.homeVisits, bundle.projects);
+                 bundle.history, bundle.homeVisits, bundle.projects, bundleFinance);
       // שומרים גם בעותקים המקומיים, כדי שמסכים שקוראים אותם ישירות
       // לא יראו נתונים ישנים.
       saveCRMData(bundle.crm || {});
@@ -287,6 +297,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       saveHistoryData(bundle.history || []);
       saveHomeVisitsData(bundle.homeVisits || { rounds: [] });
       saveProjectsLocal(bundle.projects || []);
+      saveFinanceData(bundleFinance || emptyFinanceData());
     } else {
       cloudLoads = Promise.all([
         getCRMDataCloud(),
@@ -295,7 +306,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         getHistoryDataCloud(),
         getHomeVisitsDataCloud(),
         getProjectsCloud(),
-      ]).then(r => applyCloud(r[0], r[1], r[2], r[3], r[4], r[5])).catch(console.error);
+        getFinanceDataCloud(),
+      ]).then(r => applyCloud(r[0], r[1], r[2], r[3], r[4], r[5], r[6])).catch(console.error);
     }
 
     try {
@@ -547,6 +559,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const updateProjects = (data: Project[]) => {
     setProjects(data);
     saveProjectsCloud(data);
+  };
+
+  const updateFinanceData = async (data: FinanceData): Promise<boolean> => {
+    const normalized = normalizeFinanceData(data);
+    setFinanceData(normalized);
+    return saveFinanceDataCloud(normalized);
   };
 
   const updateHistoryEntry = (id: string, data: Partial<HistoryEntry>) => {
@@ -911,7 +929,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       // בלי להחליף את המסך במסך טעינה. הטעינה הראשונה בלבד מציגה אותו.
       loading, loadingText, apiError, crm, holidayExtras, eventsData, history, nameMerges,
       refresh: () => loadAll({ silent: true }),
-      projects, updateProjects,
+      projects, updateProjects, financeData, updateFinanceData,
       addManualDonation, updateCrm, updateCrmMany, updateHolidayExtras, updateEventsData, updateRebbeDate,
       mergeContacts, unmergeContact, settings, updateSettings,
       archiveOccurrence, importTasksFromHistory, updateHistoryEntry, deleteHistoryEntry,

@@ -479,6 +479,35 @@ export async function saveProjectsCloud(data: any[]): Promise<void> {
   apiPost('saveProjects', { data }).catch(console.error);
 }
 
+// ── מרכז כספי ────────────────────────────────────────────────────────────────
+// הנתונים נשמרים גם מקומית לפתיחה מיידית וגם במפתח sync נפרד. AppSettings
+// נשאר מחוץ לענן, ולכן הוספת המרכז אינה מקרבת את סודות Facebook לגיליון.
+
+export function getFinanceData(): any {
+  try { return JSON.parse(localStorage.getItem('finance_data_v1') || 'null'); }
+  catch { return null; }
+}
+
+export function saveFinanceData(data: any) {
+  localStorage.setItem('finance_data_v1', JSON.stringify(data));
+}
+
+export async function getFinanceDataCloud(): Promise<any> {
+  try {
+    const res = await apiGet('getFinance');
+    if (res.data && !res._error) { saveFinanceData(res.data); return res.data; }
+  } catch {}
+  return getFinanceData();
+}
+
+/** שמירה כספית מאושרת: המסך יודע אם הנתונים הגיעו לענן ואינו מציג הצלחה שקרית. */
+export async function saveFinanceDataCloud(data: any): Promise<boolean> {
+  saveFinanceData(data);
+  if (!gsUrl()) return true; // מצב הדגמה: שמירה מקומית היא השמירה היחידה והתקינה
+  const res = await apiPost('saveFinance', { data });
+  return !(res?.error || res?.success === false);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // הודעות שגיאה שאפשר לעשות איתן משהו.
 //

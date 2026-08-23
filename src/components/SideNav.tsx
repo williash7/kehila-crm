@@ -1,5 +1,5 @@
 import React from 'react';
-import { Home, Users, CalendarDays, PieChart, CalendarCheck, Plus, ImageIcon, RefreshCw, Settings, ClipboardList, TrendingUp, HandCoins, History, DoorOpen, Target, BookOpen } from 'lucide-react';
+import { Home, Users, CalendarDays, PieChart, CalendarCheck, Plus, ImageIcon, RefreshCw, Settings, ClipboardList, TrendingUp, HandCoins, History, DoorOpen, Target, BookOpen, WalletCards } from 'lucide-react';
 import { useAppStore } from '../store/AppContext';
 import { getOrg } from '../lib/orgConfig';
 
@@ -11,7 +11,7 @@ interface SideNavProps {
 }
 
 export function SideNav({ currentTab, setTab, onDonationClick, addLabel }: SideNavProps) {
-  const { hebrewDate, effectiveSummary, refresh } = useAppStore();
+  const { hebrewDate, effectiveSummary, refresh, settings } = useAppStore();
 
   const org = getOrg();
   const orgTitle = org.shortName || org.orgName.he;
@@ -24,6 +24,7 @@ export function SideNav({ currentTab, setTab, onDonationClick, addLabel }: SideN
     { id: 'donors',    icon: Users,         label: 'אנשי קשר' },
     { id: 'homevisits',icon: DoorOpen,      label: 'ביקורי בית' },
     { id: 'donations', icon: HandCoins,     label: 'תרומות' },
+    ...(settings.showFinanceCenter ? [{ id: 'finance', icon: WalletCards, label: 'כספים' }] : []),
     { id: 'events',    icon: CalendarCheck, label: 'אירועים' },
     { id: 'projects',  icon: Target,        label: 'פרויקטים' },
     { id: 'calendar',  icon: CalendarDays,  label: 'חגים' },

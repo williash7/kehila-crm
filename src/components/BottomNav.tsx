@@ -1,5 +1,6 @@
 import React from 'react';
-import { Home, Users, CalendarDays, PieChart, CalendarCheck, Settings, ClipboardList, TrendingUp, HandCoins, History, DoorOpen, Target, Image as ImageIcon, BookOpen, CalendarHeart} from 'lucide-react';
+import { Home, Users, CalendarDays, PieChart, CalendarCheck, Settings, ClipboardList, TrendingUp, HandCoins, History, DoorOpen, Target, Image as ImageIcon, BookOpen, CalendarHeart, WalletCards} from 'lucide-react';
+import { useAppStore } from '../store/AppContext';
 
 interface BottomNavProps {
   currentTab: string;
@@ -10,6 +11,7 @@ interface BottomNavProps {
 // בסיידבר של המחשב חייב להיות גם כאן — מסך שאי אפשר להגיע אליו מהטלפון
 // הוא מסך שלא קיים, וזה בדיוק מה שקרה לפרויקטים, לפוסטר ולמדריך.
 export function BottomNav({ currentTab, setTab }: BottomNavProps) {
+  const { settings } = useAppStore();
   const navItems = [
     { id: 'home', icon: Home, label: 'דשבורד' },
     { id: 'tasks', icon: ClipboardList, label: 'משימות' },
@@ -17,6 +19,7 @@ export function BottomNav({ currentTab, setTab }: BottomNavProps) {
     { id: 'donors', icon: Users, label: 'אנשי קשר' },
     { id: 'homevisits', icon: DoorOpen, label: 'ביקורי בית' },
     { id: 'donations', icon: HandCoins, label: 'תרומות' },
+    ...(settings.showFinanceCenter ? [{ id: 'finance', icon: WalletCards, label: 'כספים' }] : []),
     { id: 'events', icon: CalendarCheck, label: 'אירועים' },
     { id: 'projects', icon: Target, label: 'פרויקטים' },
     { id: 'calendar', icon: CalendarDays, label: 'חגים' },

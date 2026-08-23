@@ -296,6 +296,30 @@ export function SettingsTab() {
             </span>
           </button>
         </div>
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6] space-y-3">
+          <CardTitle title="מרכז כספי">
+            מסך נפרד לניהול הוצאות, התחייבויות, תזרים, התחשבנות אישית ותקציבי
+            אירועים. הפעלתו אינה משנה את התרומות, התקציבים או הדוחות הקיימים.
+          </CardTitle>
+          <button
+            type="button"
+            onClick={() => updateSettings({ showFinanceCenter: !settings.showFinanceCenter })}
+            className="w-full flex items-center justify-between gap-3 text-right"
+            aria-pressed={settings.showFinanceCenter}
+          >
+            <span className="min-w-0">
+              <span className="block text-sm font-bold text-[#0D1B2A]">
+                {settings.showFinanceCenter ? 'המרכז הכספי פעיל' : 'הצג מרכז כספי'}
+              </span>
+              <span className="block text-[11px] text-gray-500 mt-0.5">
+                כבוי כברירת מחדל; כשהוא פעיל נוסף פריט „כספים” בניווט
+              </span>
+            </span>
+            <span className={`w-[46px] h-[26px] rounded-full relative transition-colors shrink-0 ${settings.showFinanceCenter ? 'bg-[#C9A84C]' : 'bg-[#EDE6D6]'}`}>
+              <span className={`w-[22px] h-[22px] bg-white rounded-full absolute top-[2px] shadow transition-all ${settings.showFinanceCenter ? 'left-[2px]' : 'right-[2px]'}`} />
+            </span>
+          </button>
+        </div>
         </>)}
 
         {group === 'look' && (<>

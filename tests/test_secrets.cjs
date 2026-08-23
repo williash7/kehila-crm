@@ -29,7 +29,7 @@ const synced = [...new Set(
   [...code.matchAll(/write[Ss]ync_?\w*\(\s*'([a-zA-Z]+)'/g)].map(m => m[1])
 )].sort();
 
-const ALLOWED = ['crm', 'events', 'history', 'holidayExtras',
+const ALLOWED = ['crm', 'events', 'finance', 'history', 'holidayExtras',
                  'homeVisits', 'orgConfig', 'projects', 'rebbeDate'].sort();
 
 console.log('א. המפתחות שמסתנכרנים לגיליון:');

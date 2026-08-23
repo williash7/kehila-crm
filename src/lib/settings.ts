@@ -17,6 +17,7 @@ export interface AppSettings {
   hkExpiringThreshold: number; // כמה חיובים נותרו כדי לסמן הוראת קבע כ"מסתיימת בקרוב"
   donationsSinceDate: string; // ISO "yyyy-MM-dd" — מציגים סכומי תרומות רק מתאריך זה ואילך. '' = כל הזמנים.
   showPaymentStatuses: boolean; // מציג טאב בקרה נפרד; אינו משנה סכומים או נתונים
+  showFinanceCenter: boolean; // מרכז כספי נפרד; כבוי כברירת מחדל כדי לשמור על ממשק נקי
   defaultTaskView: 'grouped' | 'flat' | 'calendar'; // תצוגת ברירת המחדל שנפתחת בטאב משימות
   holidayVisibility: HolidayVisibility; // אילו חגים ותאריכים מוצגים בלוח
 
@@ -134,6 +135,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   hkExpiringThreshold: 2,
   donationsSinceDate: '',
   showPaymentStatuses: false,
+  showFinanceCenter: false,
   defaultTaskView: 'grouped',
   holidayVisibility: DEFAULT_VISIBILITY,
   theme: 'classic',
