@@ -14,7 +14,7 @@ import {
   saveHistoryData, saveHomeVisitsData, saveProjects as saveProjectsLocal,
 } from '../lib/api';
 import { Donor, Donation, ReportSummary } from '../types';
-import { annotateRenewals } from '../lib/standingOrders';
+import { annotateRenewals, ChargeFailure, HkEntry } from '../lib/standingOrders';
 import { mergeManualDonations } from '../lib/manualDonations';
 import { extractMerges, applyMergesToCrm, mergeCrmPair, coalesceDonorsByMerges, resolveCanonicalName, MERGES_KEY } from '../lib/nameMerges';
 import { AppSettings, loadSettings, saveSettings, filterDonorsBySettings } from '../lib/settings';
@@ -36,8 +36,8 @@ interface AppState {
   donations: Donation[];
   donors: Record<string, Donor>;
   visibleDonors: Record<string, Donor>; // מסונן לפי הגדרות תצוגה + total מחושב לפי donationsSinceDate
-  hk: any[];
-  failures: any[];
+  hk: HkEntry[];
+  failures: ChargeFailure[];
   rebbeDate: Date | null;
   shabbat: any;
   holidays: any[];
@@ -87,8 +87,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [summary, setSummary] = useState<ReportSummary | null>(null);
   const [donations, setDonations] = useState<Donation[]>([]);
   const [donors, setDonors] = useState<Record<string, Donor>>({});
-  const [hk, setHk] = useState<any[]>([]);
-  const [failures, setFailures] = useState<any[]>([]);
+  const [hk, setHk] = useState<HkEntry[]>([]);
+  const [failures, setFailures] = useState<ChargeFailure[]>([]);
   const [rebbeDate, setRebbeDate] = useState<Date | null>(null);
 
   // Hebcal states

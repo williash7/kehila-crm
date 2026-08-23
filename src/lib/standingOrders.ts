@@ -27,7 +27,9 @@ export interface HkEntry {
   renewedBy?: string;
   /** הקמפיין שההוראה משויכת אליו — מה שמקשר אותה לפרויקט */
   campaign?: string;
-  [key: string]: any;
+  phone?: string;
+  email?: string;
+  notes?: string;
 }
 
 export type HkStatus = 'renewed' | 'cancelled' | 'expired' | 'expiring' | 'active';
@@ -80,14 +82,22 @@ export const HK_STATUS_COLOR: Record<HkStatus, string> = {
 // תורם שנכשל לו כרטיס בהוראה אחת נראה כאילו כל ההוראות שלו תקועות.
 // נפילה לשם נשמרת רק לרשומות ישנות שאין בהן מספר הוראה.
 
-export interface FailureIndex {
-  byOrder: Record<string, any>;
-  byName: Record<string, any>;
+export interface ChargeFailure {
+  date: string;
+  name: string;
+  order?: string;
+  amount: string | number;
+  reason?: string;
 }
 
-export function indexFailures(failures: any[]): FailureIndex {
-  const byOrder: Record<string, any> = {};
-  const byName: Record<string, any> = {};
+export interface FailureIndex {
+  byOrder: Record<string, ChargeFailure>;
+  byName: Record<string, ChargeFailure>;
+}
+
+export function indexFailures(failures: ChargeFailure[]): FailureIndex {
+  const byOrder: Record<string, ChargeFailure> = {};
+  const byName: Record<string, ChargeFailure> = {};
   (failures || []).forEach(f => {
     const order = String(f?.order || '').trim();
     if (order) byOrder[order] = f;
@@ -96,7 +106,7 @@ export function indexFailures(failures: any[]): FailureIndex {
   return { byOrder, byName };
 }
 
-export function openFailureFor(hk: HkEntry, idx: FailureIndex): any | null {
+export function openFailureFor(hk: HkEntry, idx: FailureIndex): ChargeFailure | null {
   if (hk.cancelDate) return null;
   // ── הוראה שחודשה: הסירובים שלה הם היסטוריה ──────────────────────────────
   //

@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { EmptyState } from './EmptyState';
 import { useAppStore } from '../store/AppContext';
 import { RefreshCw, Search, HandCoins, AlertTriangle, ChevronDown, X, Mail, MessageSquare, Pencil, Check, User, Trash2 } from 'lucide-react';
-import { getHkStatus, sortHkList, countHkByStatus, openFailureFor, indexFailures, HK_STATUS_LABEL, HK_STATUS_COLOR, HkStatus } from '../lib/standingOrders';
+import { ChargeFailure, getHkStatus, sortHkList, countHkByStatus, openFailureFor, indexFailures, HK_STATUS_LABEL, HK_STATUS_COLOR, HkEntry, HkStatus } from '../lib/standingOrders';
 import { parseDdMmYyyy } from '../lib/dateUtils';
 import { ProfileModal } from './ProfileModal';
 import { CancelHkDialog, ChangeHkAmountDialog, RenewHkDialog, EditHkDialog, CancelHkButton } from './CancelHkDialog';
@@ -13,26 +13,28 @@ import { apiPost, explainApiError} from '../lib/api';
 import { activeProjects } from '../lib/projects';
 import { ThankYouLetterModal } from './ThankYouLetterModal';
 import { PaymentLedgerView } from './PaymentLedgerView';
+import { Donation } from '../types';
 
 type MainTab = 'donations' | 'hk' | 'errors' | 'payments';
 
 const EDIT_METHODS = ['🔗 קישור ישיר', '💵 מזומן', '🏦 העברה בנקאית', '📱 ביט/פייבוקס', '🔄 הוראת קבע', '🌐 אתר תרומות'];
+type DonationEditFields = Omit<Partial<Donation>, 'amount'> & { amount?: number | string };
 
 export function DonationsTab() {
   const { donations, hk, failures, settings, refresh, crm, projects } = useAppStore();
   const openProjects = activeProjects(projects);
   const [mainTab, setMainTab] = useState<MainTab>('donations');
   const [selectedDonor, setSelectedDonor] = useState<string | null>(null);
-  const [selectedDonation, setSelectedDonation] = useState<any | null>(null);
+  const [selectedDonation, setSelectedDonation] = useState<Donation | null>(null);
   const [showThankYou, setShowThankYou] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
-  const [editFields, setEditFields] = useState<Record<string, any>>({});
+  const [editFields, setEditFields] = useState<DonationEditFields>({});
   const [editBusy, setEditBusy] = useState(false);
   const [editError, setEditError] = useState('');
-  const [cancelTarget, setCancelTarget] = useState<any | null>(null);
-  const [amountTarget, setAmountTarget] = useState<any | null>(null);
-  const [renewTarget, setRenewTarget] = useState<any | null>(null);
-  const [editTarget, setEditTarget] = useState<any | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<HkEntry | null>(null);
+  const [amountTarget, setAmountTarget] = useState<HkEntry | null>(null);
+  const [renewTarget, setRenewTarget] = useState<HkEntry | null>(null);
+  const [editTarget, setEditTarget] = useState<HkEntry | null>(null);
   const [addHkOpen, setAddHkOpen] = useState(false);
 
   // ── תרומות ──────────────────────────────────────────────────────────────
@@ -215,7 +217,7 @@ export function DonationsTab() {
               <div className="divide-y divide-[#EDE6D6]">
                 {pagedDonations.length === 0 ? (
                   <EmptyState icon="🔍" title="אין תרומות שתואמות לסינון" hint="נסה להרחיב את טווח התאריכים או לנקות את המסננים." />
-                ) : pagedDonations.map((d: any, i: number) => (
+                ) : pagedDonations.map((d: Donation, i: number) => (
                   <div key={i} onClick={() => { setSelectedDonation(d); setIsEditing(false); }} className="px-4 py-2.5 hover:bg-[#FAF6EE] transition-colors cursor-pointer md:grid md:grid-cols-[1fr_6rem_6rem_9rem_1fr] md:items-center">
                     <div className="flex justify-between items-center md:contents">
                       <div className="flex items-center gap-1.5">
@@ -356,7 +358,7 @@ export function DonationsTab() {
           <div className="space-y-2">
             {failures.length === 0 ? (
               <EmptyState icon="✓" tone="good" title="אין שגיאות חיוב" hint="כל החיובים בחודש האחרון עברו בהצלחה." />
-            ) : failures.map((f: any, i: number) => (
+            ) : failures.map((f: ChargeFailure, i: number) => (
               <div key={i} onClick={() => setSelectedDonor(f.name)} className="bg-red-50 rounded-xl p-3 shadow-sm border border-red-100 flex items-center justify-between cursor-pointer">
                 <div>
                   <div className="font-bold text-red-900 text-sm">{f.name}</div>
@@ -460,13 +462,13 @@ export function DonationsTab() {
                   <div>
                     <label className="block text-[10px] text-gray-500 uppercase font-bold mb-1.5">סכום</label>
                     <input type="number" value={editFields.amount ?? ''}
-                      onChange={e => setEditFields((f: any) => ({ ...f, amount: e.target.value }))}
+                      onChange={e => setEditFields(f => ({ ...f, amount: e.target.value }))}
                       className="w-full bg-gray-50 border border-[#EDE6D6] rounded-xl p-3 text-sm outline-none focus:border-[#C9A84C]" />
                   </div>
                   <div>
                     <label className="block text-[10px] text-gray-500 uppercase font-bold mb-1.5">תאריך</label>
                     <input type="text" dir="ltr" placeholder="dd/mm/yyyy" value={editFields.date || ''}
-                      onChange={e => setEditFields((f: any) => ({ ...f, date: e.target.value }))}
+                      onChange={e => setEditFields(f => ({ ...f, date: e.target.value }))}
                       className="w-full bg-gray-50 border border-[#EDE6D6] rounded-xl p-3 text-sm outline-none focus:border-[#C9A84C]" />
                   </div>
                 </div>
@@ -476,7 +478,7 @@ export function DonationsTab() {
                   <div className="grid grid-cols-2 gap-1.5">
                     {EDIT_METHODS.map(m => (
                       <button key={m} type="button"
-                        onClick={() => setEditFields((f: any) => ({ ...f, method: m }))}
+                        onClick={() => setEditFields(f => ({ ...f, method: m }))}
                         className={`text-xs font-bold py-2 rounded-lg border transition-colors ${
                           editFields.method === m ? 'bg-[#0D1B2A] text-[#C9A84C] border-[#0D1B2A]' : 'bg-white text-gray-600 border-[#EDE6D6]'
                         }`}>
@@ -494,7 +496,7 @@ export function DonationsTab() {
                     <div className="flex flex-wrap gap-1.5 mb-2">
                       {openProjects.map(p => (
                         <button key={p.id} type="button"
-                          onClick={() => setEditFields((f: any) => ({ ...f, purpose: f.purpose === p.purposeTag ? '' : p.purposeTag }))}
+                          onClick={() => setEditFields(f => ({ ...f, purpose: f.purpose === p.purposeTag ? '' : p.purposeTag }))}
                           className={`text-xs font-bold px-2.5 py-1.5 rounded-lg transition-colors ${
                             editFields.purpose === p.purposeTag ? 'bg-[#0D1B2A] text-[#C9A84C]' : 'bg-[#C9A84C]/10 text-[#9B7A2F]'
                           }`}>
@@ -504,7 +506,7 @@ export function DonationsTab() {
                     </div>
                   )}
                   <input type="text" value={editFields.purpose || ''}
-                    onChange={e => setEditFields((f: any) => ({ ...f, purpose: e.target.value }))}
+                    onChange={e => setEditFields(f => ({ ...f, purpose: e.target.value }))}
                     className="w-full bg-gray-50 border border-[#EDE6D6] rounded-xl p-3 text-sm outline-none focus:border-[#C9A84C]" />
                 </div>
 
@@ -512,7 +514,7 @@ export function DonationsTab() {
                   <label className="block text-[10px] text-gray-500 uppercase font-bold mb-1.5">הערות</label>
                   <textarea
                     value={editFields.notes || ''}
-                    onChange={e => setEditFields((f: any) => ({ ...f, notes: e.target.value }))}
+                    onChange={e => setEditFields(f => ({ ...f, notes: e.target.value }))}
                     rows={3}
                     className="w-full bg-gray-50 border border-[#EDE6D6] rounded-xl p-3 text-sm outline-none focus:border-[#C9A84C] resize-none"
                     placeholder="הוסף הערה..."
