@@ -85,6 +85,7 @@ const libBundles = [
   ['lib/donationFilter.ts', join(OUT, 'df.js')],
   ['lib/finance.ts', join(OUT, 'finance.js')],
   ['lib/activities.ts', join(OUT, 'activities.js')],
+  ['lib/history.ts', join(OUT, 'history.js')],
   ['lib/dataOnboarding.ts', join(OUT, 'dataOnboarding.js')],
   ['lib/navigation.ts', join(OUT, 'navigation.js')],
 ];

@@ -748,12 +748,12 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
 
              <button
                onClick={() => {
-                 if (!confirm(`להעביר את "${currentTasksEvent.name}" להיסטוריה? הנוכחות והמשימות הנוכחיות יישמרו בהיסטוריה ויתאפסו כדי להתחיל נקי בפעם הבאה (עם אפשרות לייבא משימות בחזרה).`)) return;
+                 if (!confirm(`לסכם את "${currentTasksEvent.name}" ולהעביר להיסטוריה? הנוכחות, התקציב והמשימות יישמרו, ושם אפשר להוסיף סיכום ותובנות לפעם הבאה.`)) return;
                  archiveOccurrence({ type: 'event', id: currentTasksEvent.id, name: currentTasksEvent.name });
                }}
                className="w-full flex items-center justify-center gap-1.5 bg-[#0D1B2A]/5 text-[#0D1B2A]/70 text-xs font-bold py-2 rounded-xl mb-3 shrink-0 hover:bg-[#0D1B2A]/10 transition-colors"
              >
-               <Archive size={13} /> סמן מופע זה כהסתיים והעבר להיסטוריה
+               <Archive size={13} /> סכם מופע זה והעבר להיסטוריה
              </button>
 
              <div className="space-y-3">

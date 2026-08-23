@@ -21,7 +21,7 @@ import { extractMerges, applyMergesToCrm, mergeCrmPair, coalesceDonorsByMerges, 
 import { AppSettings, loadSettings, saveSettings, filterDonorsBySettings } from '../lib/settings';
 import { logAction } from '../lib/score';
 import { computeSummarySince, computeDonorTotalSince } from '../lib/donationFilter';
-import { HistoryEntry, buildHistoryEntry, countAttendance, sumBudget, findLatestHistoryFor, tasksFromHistory } from '../lib/history';
+import { HistoryEntry, buildHistoryEntry, countAttendance, sumBudget, findLatestHistoryFor, tasksFromHistory, historyEntryFingerprint } from '../lib/history';
 import { STANDALONE_TASKS_ID, createHomeVisitTask, createHolidayReminderTask, createEventReminderTask, createThankYouTask, computeMissingThankYouTasks, backfillEventTaskDates } from '../lib/tasks';
 import { HomeVisitEntry, HomeVisitRound, HomeVisitsData, moveEntry } from '../lib/homeVisits';
 import { buildHolidayList } from '../lib/holidayList';
@@ -72,6 +72,7 @@ interface AppState {
   archiveOccurrence: (params: { type: 'holiday' | 'event'; id: string; name: string; occurrenceDate?: string }) => void;
   importTasksFromHistory: (params: { type: 'holiday' | 'event'; id: string; name: string }) => boolean;
   updateHistoryEntry: (id: string, data: Partial<HistoryEntry>) => void;
+  addHistoryEntries: (entries: HistoryEntry[]) => number;
   deleteHistoryEntry: (id: string) => void;
   startHomeVisitRound: (entries: HomeVisitEntry[]) => void;
   markHomeVisitDone: (roundId: string, name: string) => void;
@@ -578,6 +579,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
+  // מוסיף סיכומי עבר ידניים או כאלה שחולצו בעזרת AI. טביעת התוכן מונעת
+  // מאותו סיכום להיכנס שוב אם המשתמש הדביק פעמיים את אותו פלט.
+  const addHistoryEntries = (entries: HistoryEntry[]): number => {
+    const known = new Set(history.map(historyEntryFingerprint));
+    const unique = entries.filter(entry => {
+      const key = historyEntryFingerprint(entry);
+      if (known.has(key)) return false;
+      known.add(key);
+      return true;
+    });
+    if (!unique.length) return 0;
+    setHistory(prev => {
+      const next = [...prev, ...unique];
+      saveHistoryDataCloud(next);
+      return next;
+    });
+    logAction('history_archive', unique.length);
+    return unique.length;
+  };
+
   // מוחק רשומת היסטוריה לצמיתות — לשימוש כשמשהו הועבר להיסטוריה בטעות.
   // לא משחזר משימות/נוכחות חזרה למופע החי (זה כבר קיים בנפרד — "ייבוא משימות
   // מההיסטוריה" בכרטיס החג/אירוע החי).
@@ -609,7 +630,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       updateHolidayExtras(id, {
         tasks: [],
         attendance: {},
-        insights: { good: '', improve: '', plan: '' },
+        insights: { summary: '', good: '', improve: '', plan: '' },
         lastYear: { donors: attCount || extra.lastYear?.donors || '', amount: budgetSums.actualIncome || extra.lastYear?.amount || '' },
       });
     } else {
@@ -935,7 +956,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       projects, updateProjects, financeData, updateFinanceData,
       addManualDonation, updateCrm, updateCrmMany, updateHolidayExtras, updateEventsData, updateRebbeDate,
       mergeContacts, unmergeContact, settings, updateSettings,
-      archiveOccurrence, importTasksFromHistory, updateHistoryEntry, deleteHistoryEntry,
+      archiveOccurrence, importTasksFromHistory, updateHistoryEntry, addHistoryEntries, deleteHistoryEntry,
       homeVisits, startHomeVisitRound, markHomeVisitDone, unmarkHomeVisitDone, createHomeVisitTaskForEntry,
       updateHomeVisitEntry, reorderHomeVisitEntries, archiveHomeVisitRound, deleteHomeVisitRound,
       removeHomeVisitEntry, addHomeVisitEntries, updateHomeVisitRoundMeta,

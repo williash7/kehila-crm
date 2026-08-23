@@ -61,7 +61,7 @@ export function HolidayModal({ holiday, onClose, backLabel }: { holiday: any, on
   const days = Math.ceil((hDate.getTime() - today.getTime()) / 86400000);
   const dateLabel = isNaN(hDate.getTime()) ? '' : hDate.toLocaleDateString('he-IL', { day: 'numeric', month: 'long', year: 'numeric' });
 
-  const [insightForm, setInsightForm] = useState(extra.insights || { good: '', improve: '', plan: '' });
+  const [insightForm, setInsightForm] = useState({ summary: '', good: '', improve: '', plan: '', ...(extra.insights || {}) });
   const [lastYearForm, setLastYearForm] = useState(extra.lastYear || { donors: '', amount: '' });
   const [reminderForm, setReminderForm] = useState({ title: '', days: '7', wa: false });
   const [budgetForm, setBudgetForm] = useState<{expenses: any[], income: any[]}>(extra.budget || { expenses: [], income: [] });
@@ -391,8 +391,9 @@ ${(exps.length > 0 || incs.length > 0) ? section('💰 תקציב',
     </tr>
   </table>`) : ''}
 
-${(insights.good || insights.improve || insights.plan) ? section('📝 תובנות וסיכום',
-  `${insights.good ? `<div class="insight-block"><div class="lbl">✅ מה עבד טוב</div>${insights.good}</div>` : ''}
+${(insights.summary || insights.good || insights.improve || insights.plan) ? section('📝 תובנות וסיכום',
+  `${insights.summary ? `<div class="insight-block"><div class="lbl">📌 מה היה בפועל</div>${insights.summary}</div>` : ''}
+   ${insights.good ? `<div class="insight-block"><div class="lbl">✅ מה עבד טוב</div>${insights.good}</div>` : ''}
    ${insights.improve ? `<div class="insight-block"><div class="lbl">📈 מה לשפר</div>${insights.improve}</div>` : ''}
    ${insights.plan ? `<div class="insight-block"><div class="lbl">🗓️ תוכנית לשנה הבאה</div>${insights.plan}</div>` : ''}`) : ''}
 
@@ -453,12 +454,12 @@ ${docs.length > 0 ? section('📄 מסמכים מקושרים',
             המשימות החיות כדי שהמופע הבא (השנה הבאה) יתחיל נקי */}
         <button
           onClick={() => {
-            if (!confirm(`להעביר את "${holiday.name}" להיסטוריה? המשימות הנוכחיות יישמרו בהיסטוריה ויתאפסו כדי שאפשר יהיה לתכנן מחדש לשנה הבאה (עם אפשרות לייבא אותן בחזרה).`)) return;
+            if (!confirm(`לסכם את "${holiday.name}" ולהעביר להיסטוריה? הנוכחות, התקציב, המשימות והתובנות יישמרו לפעם הבאה.`)) return;
             archiveOccurrence({ type: 'holiday', id, name: holiday.name, occurrenceDate: holiday.dateStr });
           }}
           className="w-full flex items-center justify-center gap-1.5 bg-[#0D1B2A]/5 text-[#0D1B2A]/70 text-xs font-bold py-2 rounded-xl mb-4 hover:bg-[#0D1B2A]/10 transition-colors"
         >
-          <Archive size={13} /> סמן חג זה כהסתיים והעבר להיסטוריה
+          <Archive size={13} /> סכם חג זה והעבר להיסטוריה
         </button>
 
         <div className="bg-gradient-to-br from-[#2D1B69] to-[#4A2E8C] rounded-2xl p-4 text-white mb-5 flex items-center gap-4 relative overflow-hidden">
@@ -490,6 +491,10 @@ ${docs.length > 0 ? section('📄 מסמכים מקושרים',
           {isAddingReminder && (
              <div className="bg-white rounded-xl p-4 shadow-sm mb-3 border border-[#EDE6D6]">
                <div className="space-y-3">
+                 <div>
+                   <label className="block text-[11px] font-bold text-gray-500 uppercase mb-1 flex items-center gap-1.5">📌 מה היה בפועל?</label>
+                   <textarea value={insightForm.summary} onChange={e => setInsightForm({...insightForm, summary: e.target.value})} rows={3} className="w-full bg-white border border-[#EDE6D6] rounded-lg px-3 py-2 text-sm outline-none focus:border-[#C9A84C] resize-none" placeholder="תיאור קצר של החג או הפעילות..."></textarea>
+                 </div>
                  <div>
                    <label className="block text-[11px] font-bold text-gray-500 uppercase mb-1">כותרת התזכורת</label>
                    <input value={reminderForm.title} onChange={e => setReminderForm({...reminderForm, title: e.target.value})} type="text" className="w-full bg-white border border-[#EDE6D6] rounded-lg px-3 py-2 text-sm outline-none focus:border-[#C9A84C]" placeholder="שלח הזמנות, הכן עלון..." />
@@ -1044,10 +1049,19 @@ ${docs.length > 0 ? section('📄 מסמכים מקושרים',
              </div>
           ) : (
             <div className="bg-white rounded-xl shadow-sm p-4 border border-[#EDE6D6] space-y-3">
-              {extra.insights?.good || extra.insights?.improve || extra.insights?.plan ? (
+              {extra.insights?.summary || extra.insights?.good || extra.insights?.improve || extra.insights?.plan ? (
                 <>
-                  {extra.insights?.good && (
+                  {extra.insights?.summary && (
                     <div className="flex gap-3">
+                      <span className="text-lg">📌</span>
+                      <div>
+                        <div className="text-[10px] text-gray-500 font-bold uppercase tracking-wide">מה היה בפועל</div>
+                        <div className="text-sm font-medium text-[#0D1B2A] mt-0.5 whitespace-pre-wrap">{extra.insights.summary}</div>
+                      </div>
+                    </div>
+                  )}
+                  {extra.insights?.good && (
+                    <div className={`flex gap-3 ${extra.insights?.summary ? 'pt-3 border-t border-[#EDE6D6]' : ''}`}>
                       <span className="text-lg">✅</span>
                       <div>
                         <div className="text-[10px] text-gray-500 font-bold uppercase tracking-wide">מה עבד טוב </div>

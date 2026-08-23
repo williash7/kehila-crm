@@ -14,8 +14,18 @@ export interface HistoryEntry {
   tasks: any[];
   attendance: Record<string, Record<string, boolean>>;
   budget: { expenses: any[]; income: any[] };
-  insights: { good: string; improve: string; plan: string };
+  insights: HistoryInsights;
 }
+
+export interface HistoryInsights {
+  /** תיאור חופשי של מה שהיה בפועל, לפני המסקנות. */
+  summary: string;
+  good: string;
+  improve: string;
+  plan: string;
+}
+
+export const emptyHistoryInsights = (): HistoryInsights => ({ summary: '', good: '', improve: '', plan: '' });
 
 // כמה אנשים נכחו בסה"כ (איחוד לפי שם על פני כל תאריכי הנוכחות שנשמרו למופע זה)
 export function countAttendance(attendance: Record<string, Record<string, boolean>> | undefined): number {
@@ -46,7 +56,7 @@ export function buildHistoryEntry(params: {
   tasks?: any[];
   attendance?: Record<string, Record<string, boolean>>;
   budget?: { expenses: any[]; income: any[] };
-  insights?: { good: string; improve: string; plan: string };
+  insights?: Partial<HistoryInsights>;
 }): HistoryEntry {
   return {
     id: `hist_${params.type}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
@@ -57,8 +67,16 @@ export function buildHistoryEntry(params: {
     tasks: params.tasks || [],
     attendance: params.attendance || {},
     budget: params.budget || { expenses: [], income: [] },
-    insights: params.insights || { good: '', improve: '', plan: '' },
+    insights: { ...emptyHistoryInsights(), ...(params.insights || {}) },
   };
+}
+
+/** מזהה תוכני לייבוא חוזר: אינו תלוי במזהה האקראי או בזמן השמירה. */
+export function historyEntryFingerprint(entry: Pick<HistoryEntry, 'type' | 'name' | 'occurrenceDate' | 'insights'>): string {
+  const norm = (value: unknown) => String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  // כשיש תאריך הוא מזהה את המופע; ניסוח מעט שונה של אותו סיכום AI לא צריך
+  // ליצור עותק נוסף. בלי תאריך משתמשים בתוכן הסיכום כדי לאפשר כמה מופעים.
+  return [entry.type, norm(entry.name), entry.occurrenceDate || norm(entry.insights?.summary)].join('|');
 }
 
 // מוצא את רשומת ההיסטוריה האחרונה עבור אותו שם (אותו חג/אירוע), לצורך ייבוא משימות

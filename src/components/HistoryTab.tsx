@@ -1,23 +1,27 @@
 import React, { useState, useMemo } from 'react';
 import { EmptyState } from './EmptyState';
 import { useAppStore } from '../store/AppContext';
-import { History, Users, Wallet, ChevronDown, Lightbulb, X, Plus, Trash2, CheckCircle2, RotateCcw } from 'lucide-react';
-import { countAttendance, sumBudget, HistoryEntry } from '../lib/history';
+import { History, Users, Wallet, ChevronDown, Lightbulb, X, Plus, Trash2, CheckCircle2, RotateCcw, Bot } from 'lucide-react';
+import { countAttendance, sumBudget, HistoryEntry, emptyHistoryInsights } from '../lib/history';
 import { STANDALONE_TASKS_ID, PERSONAL_DATE_EXTRAS_ID } from '../lib/tasks';
+import { PastOccurrenceSummaryModal } from './PastOccurrenceSummaryModal';
+import { GlobalAIImportModal } from './GlobalAIImportModal';
 
 const COMPLETED_TASKS_PAGE = 15;
 
 export function HistoryTab() {
   const {
-    history, updateHistoryEntry, deleteHistoryEntry, visibleDonors,
+    history, updateHistoryEntry, addHistoryEntries, deleteHistoryEntry, visibleDonors,
     holidayExtras, eventsData, updateHolidayExtras, updateEventsData, unmarkHomeVisitDone,
   } = useAppStore();
   const [filter, setFilter] = useState<'all' | 'holiday' | 'event'>('all');
   const [openId, setOpenId] = useState<string | null>(null);
-  const [forms, setForms] = useState<Record<string, { good: string; improve: string; plan: string }>>({});
+  const [forms, setForms] = useState<Record<string, ReturnType<typeof emptyHistoryInsights>>>({});
   const [attNameInput, setAttNameInput] = useState<Record<string, string>>({});
   const [newAttDate, setNewAttDate] = useState('');
   const [showAllCompleted, setShowAllCompleted] = useState(false);
+  const [manualSummaryOpen, setManualSummaryOpen] = useState(false);
+  const [aiSummaryOpen, setAiSummaryOpen] = useState(false);
 
   // משימות שהושלמו (done:true) מכל שלושת מקורות המשימות — נשארות במקום
   // המקורי שלהן (לא מועברות/משוכפלות לשום מקום), רק נאספות כאן לתצוגה +
@@ -95,7 +99,7 @@ export function HistoryTab() {
   );
   const list = filter === 'all' ? sorted : sorted.filter(h => h.type === filter);
 
-  const getForm = (h: typeof history[number]) => forms[h.id] || h.insights || { good: '', improve: '', plan: '' };
+  const getForm = (h: typeof history[number]) => forms[h.id] || { ...emptyHistoryInsights(), ...(h.insights || {}) };
 
   const saveInsights = (id: string) => {
     const form = forms[id];
@@ -162,13 +166,22 @@ export function HistoryTab() {
         </div>
         <div className="flex-1 px-3 md:px-0">
           <div className="font-['Frank_Ruhl_Libre'] text-lg font-bold text-[#C9A84C]">היסטוריה</div>
-          <div className="text-[11px] text-white/45 mt-[1px]">חגים ואירועים שסומנו כהסתיימו</div>
+          <div className="text-[11px] text-white/45 mt-[1px]">סיכומי עבר ותובנות לפעם הבאה</div>
         </div>
       </div>
 
       <div className="p-4 md:p-6">
         <div className="bg-white rounded-xl p-3.5 border border-[#EDE6D6] shadow-sm mb-4 text-[11px] text-gray-500 leading-relaxed">
-          כדי להעביר חג או אירוע לכאן, פתחו אותו ולחצו על <b>"סמן כהסתיים והעבר להיסטוריה"</b>. הפעולה שומרת תמונת מצב (נוכחות, תקציב, משימות) ומרוקנת את המשימות של המופע החי כדי שהשנה הבאה תתחיל נקי — אפשר לייבא בחזרה את אותן משימות בלחיצת כפתור. נוכחות ותקציב ניתנים לעריכה גם כאן, אחרי ההעברה.
+          כאן נשמר הזיכרון של כל פעילות או חג: מה היה, מי הגיע, כמה נכנס ויצא, מה הצליח ומה כדאי לשנות בפעם הבאה. אפשר לסכם מופע מתוך הפעילות עצמה, להוסיף סיכום ישן ידנית או לקלוט מסמך אחד או כמה מסמכים בעזרת AI.
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 mb-4">
+          <button onClick={() => setManualSummaryOpen(true)} className="flex items-center justify-center gap-1.5 bg-[#0D1B2A] text-[#E8C97A] rounded-xl py-2.5 text-xs font-bold shadow-sm">
+            <Plus size={14} /> הוסף סיכום ידני
+          </button>
+          <button onClick={() => setAiSummaryOpen(true)} className="flex items-center justify-center gap-1.5 bg-purple-50 text-purple-700 border border-purple-200 rounded-xl py-2.5 text-xs font-bold">
+            <Bot size={14} /> קלוט סיכומים עם AI
+          </button>
         </div>
 
         {/* משימות שהושלמו — נשארות במקומן המקורי, רק נאספות כאן עם אפשרות "בטל ביצוע" */}
@@ -230,7 +243,7 @@ export function HistoryTab() {
           <EmptyState
             icon="📚"
             title="עדיין אין היסטוריה"
-            hint="בסיום חג או אירוע יש כפתור 'העבר להיסטוריה' — הוא שומר תמונת מצב של המשימות, הנוכחות והתקציב לשנה הבאה."
+            hint="אפשר להוסיף סיכום ישן ידנית או בעזרת AI, ובסיום פעילות ללחוץ 'סכם והעבר להיסטוריה'."
           />
         ) : (
           <div className="space-y-3">
@@ -281,6 +294,17 @@ export function HistoryTab() {
                         <Lightbulb size={14} /> תובנות והערות לקראת השנה הבאה
                       </div>
                       <div className="space-y-2">
+                        <div>
+                          <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">מה היה בפועל</label>
+                          <textarea
+                            value={form.summary}
+                            onChange={e => setForms(prev => ({ ...prev, [h.id]: { ...form, summary: e.target.value } }))}
+                            onBlur={() => saveInsights(h.id)}
+                            rows={3}
+                            className="w-full bg-white border border-[#EDE6D6] rounded-lg px-3 py-2 text-sm outline-none focus:border-[#C9A84C]"
+                            placeholder="תיאור קצר של הפעילות ומה קרה..."
+                          />
+                        </div>
                         <div>
                           <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">מה עבד טוב</label>
                           <textarea
@@ -434,6 +458,22 @@ export function HistoryTab() {
           </div>
         )}
       </div>
+      {manualSummaryOpen && (
+        <PastOccurrenceSummaryModal
+          onClose={() => setManualSummaryOpen(false)}
+          onSave={entry => addHistoryEntries([entry])}
+          nameOptions={[
+            ...(eventsData as any[]).map(event => event.name),
+            ...history.map(entry => entry.name),
+          ]}
+        />
+      )}
+      {aiSummaryOpen && (
+        <GlobalAIImportModal
+          initialTopics={['history']}
+          onClose={() => setAiSummaryOpen(false)}
+        />
+      )}
     </div>
   );
 }
