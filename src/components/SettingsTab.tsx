@@ -18,6 +18,7 @@ import { HolidayCategory, CATEGORY_LABEL, CATEGORY_HINT, groupHolidayNames } fro
 import { isSignedIn, signOut, currentAccount, isGoogleLoginAvailable } from '../lib/googleAuth';
 import { deleteConfigFromDrive } from '../lib/driveConfig';
 import { DataOnboardingWizard } from './DataOnboardingWizard';
+import { NavigationSettingsCard } from './NavigationSettingsCard';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // קבוצות ההגדרות.
@@ -26,13 +27,14 @@ import { DataOnboardingWizard } from './DataOnboardingWizard';
 // לאותו מקום, ואין סיבה שיגלול אליו כל פעם מחדש.
 // ─────────────────────────────────────────────────────────────────────────────
 
-type SettingsGroup = 'general' | 'look' | 'who' | 'advanced';
+type SettingsGroup = 'organization' | 'navigation' | 'appearance' | 'people' | 'data';
 
 const SETTINGS_GROUPS: { id: SettingsGroup; label: string; icon: string }[] = [
-  { id: 'general',  label: 'כללי',    icon: '⚙️' },
-  { id: 'look',     label: 'מראה',    icon: '🎨' },
-  { id: 'who',      label: 'מי מוצג', icon: '👥' },
-  { id: 'advanced', label: 'מתקדם',   icon: '🔧' },
+  { id: 'organization', label: 'ארגון',       icon: '🏠' },
+  { id: 'navigation',   label: 'ניווט',       icon: '🧭' },
+  { id: 'appearance',   label: 'מראה',        icon: '🎨' },
+  { id: 'people',       label: 'אנשים',       icon: '👥' },
+  { id: 'data',         label: 'מידע וכלים',  icon: '🧰' },
 ];
 
 const GROUP_KEY = 'settings_group';
@@ -40,9 +42,13 @@ const GROUP_KEY = 'settings_group';
 export function SettingsTab() {
   const [group, setGroup] = useState<SettingsGroup>(() => {
     try {
-      const saved = localStorage.getItem(GROUP_KEY) as SettingsGroup | null;
-      return SETTINGS_GROUPS.some(g => g.id === saved) ? saved! : 'general';
-    } catch { return 'general'; }
+      const stored = localStorage.getItem(GROUP_KEY) || '';
+      const legacy: Record<string, SettingsGroup> = {
+        general: 'organization', look: 'appearance', who: 'people', advanced: 'data',
+      };
+      const saved = (legacy[stored] || stored) as SettingsGroup;
+      return SETTINGS_GROUPS.some(g => g.id === saved) ? saved : 'organization';
+    } catch { return 'organization'; }
   });
   React.useEffect(() => { try { localStorage.setItem(GROUP_KEY, group); } catch {} }, [group]);
 
@@ -174,11 +180,12 @@ export function SettingsTab() {
           שלושה-עשר כרטיסים בטור אחד הפכו את ההגדרות למסך שגוללים בו ומקווים.
           החלוקה כאן היא לפי **השאלה שהביאה אותך הנה**: להגדיר את הארגון,
           לשנות איך זה נראה, לקבוע מי מופיע ברשימות, או לעשות משהו נדיר. */}
-      <div className="px-4 md:px-6 pt-4 flex gap-1.5 overflow-x-auto">
+      <div className="sticky top-[60px] z-40 px-4 md:px-6 py-3 flex gap-1.5 overflow-x-auto bg-[#FAF6EE]/95 backdrop-blur border-b border-[#EDE6D6]">
         {SETTINGS_GROUPS.map(g => (
           <button
             key={g.id}
             onClick={() => setGroup(g.id)}
+            aria-current={group === g.id ? 'page' : undefined}
             className={`shrink-0 px-3.5 py-2 rounded-full text-xs font-bold border transition-colors ${
               group === g.id
                 ? 'bg-[#0D1B2A] text-[#C9A84C] border-[#0D1B2A]'
@@ -191,7 +198,7 @@ export function SettingsTab() {
       </div>
 
       <div className="p-4 md:p-6 max-w-2xl space-y-5">
-        {group === 'general' && (<>
+        {group === 'organization' && (<>
         {/* התשובה ל"האם הכול מעודכן?" — ראשונה, כי זו השאלה הראשונה
             שנשאלת כשמשהו לא מתנהג כמצופה */}
         <SystemStatusCard />
@@ -335,8 +342,12 @@ export function SettingsTab() {
         </div>
         </>)}
 
-        {group === 'look' && (<>
+        {group === 'appearance' && (<>
         <AppearanceCard />
+        </>)}
+
+        {group === 'navigation' && (<>
+        <NavigationSettingsCard />
         {/* אילו חגים מוצגים בלוח */}
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6]">
           <h3 className="font-['Frank_Ruhl_Libre'] text-lg font-bold text-[#0D1B2A] mb-1">חגים ותאריכים בלוח</h3>
@@ -435,7 +446,7 @@ export function SettingsTab() {
         </div>
         </>)}
 
-        {group === 'who' && (<>
+        {group === 'people' && (<>
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6]">
           <div className="text-sm text-gray-600">
             מציג <span className="font-bold text-[#0D1B2A]">{visible}</span> מתוך <span className="font-bold text-[#0D1B2A]">{total}</span> אנשי קשר
@@ -487,7 +498,7 @@ export function SettingsTab() {
         </div>
         </>)}
 
-        {group === 'advanced' && (<>
+        {group === 'data' && (<>
         <BackupCard />
 
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6] space-y-3">

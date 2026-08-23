@@ -1,4 +1,8 @@
 import { HolidayVisibility, DEFAULT_VISIBILITY } from './holidayFilter';
+import {
+  DEFAULT_BOTTOM_NAV_ORDER, DEFAULT_BOTTOM_NAV_PRIMARY, NavItemId,
+  normalizeBottomNavOrder, normalizeBottomNavPrimary,
+} from './navigation';
 
 // הגדרות תצוגה גלובליות: אילו אנשי קשר להציג ברחבי האפליקציה (רשימת אנשי
 // קשר, המלצות ליצירת קשר בדשבורד, הזמנות לחג, נוכחות באירועים, טבלת
@@ -42,6 +46,10 @@ export interface AppSettings {
   graphics: boolean;
   /** אילו כרטיסים מוצגים בדשבורד, ובאיזה סדר. ריק = ברירת המחדל. */
   dashboardCards: string[];
+  /** סדר כל המסכים בניווט הטלפון; מי שלא נבחר לסרגל מופיע תחת „עוד”. */
+  bottomNavOrder: NavItemId[];
+  /** עד ארבעה מסכים שמופיעים ישירות בסרגל התחתון. */
+  bottomNavPrimary: NavItemId[];
 }
 
 export type ThemeName =
@@ -147,6 +155,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   density: 'normal',
   graphics: true,
   dashboardCards: [],
+  bottomNavOrder: [...DEFAULT_BOTTOM_NAV_ORDER],
+  bottomNavPrimary: [...DEFAULT_BOTTOM_NAV_PRIMARY],
 };
 
 const STORAGE_KEY = 'app_settings_v1';
@@ -154,6 +164,7 @@ const STORAGE_KEY = 'app_settings_v1';
 export function loadSettings(): AppSettings {
   try {
     const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+    const bottomNavOrder = normalizeBottomNavOrder(raw.bottomNavOrder);
     return {
       ...DEFAULT_SETTINGS,
       ...raw,
@@ -161,6 +172,8 @@ export function loadSettings(): AppSettings {
       // לגלות שהבחירה נעלמה כי שינינו שם.
       surface: raw.surface || raw.nav || DEFAULT_SETTINGS.surface,
       visibleCircles: raw.visibleCircles || DEFAULT_SETTINGS.visibleCircles,
+      bottomNavOrder,
+      bottomNavPrimary: normalizeBottomNavPrimary(raw.bottomNavPrimary, bottomNavOrder),
       // מיזוג עמוק: קטגוריה שנוספה בגרסה חדשה מקבלת את ברירת המחדל שלה
       // במקום להיעלם כי ההגדרות השמורות לא הכירו אותה.
       holidayVisibility: {
