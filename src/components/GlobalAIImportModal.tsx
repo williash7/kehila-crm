@@ -9,6 +9,7 @@ import { normalizeActivity } from '../lib/activities';
 import { stampCreated, STANDALONE_TASKS_ID } from '../lib/tasks';
 import { getOrg } from '../lib/orgConfig';
 import { buildHistoryEntry } from '../lib/history';
+import { importAIFinanceTransactions } from '../lib/finance';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ייבוא דרך בינה מלאכותית — לכל סוגי המידע.
@@ -87,6 +88,7 @@ const PREVIEW_FIELDS: Record<string, string[]> = {
   holidays: ['name', 'date', 'desc'],
   solicitations: ['project', 'name', 'ask', 'status', 'notes'],
   history: ['type', 'name', 'occurrenceDate', 'summary', 'attendees', 'expenses', 'income', 'good', 'improve', 'plan'],
+  finance: ['kind', 'status', 'title', 'amount', 'date', 'category', 'repeatMonths', 'scopeType', 'scopeName', 'method', 'notes'],
 };
 
 const SECTION_LABELS: Record<string, string> = {
@@ -98,6 +100,7 @@ const SECTION_LABELS: Record<string, string> = {
   holidays: '📅 חגים ותאריכים',
   solicitations: '📊 רשימת התרמה לקמפיין',
   history: '📚 סיכומי פעילויות וחגים שעברו',
+  finance: '💳 הכנסות והוצאות שוטפות',
 };
 
 /**
@@ -120,13 +123,14 @@ const TOPIC_HINTS: Record<string, string> = {
   holidays: 'תאריכים בלוח השנה',
   solicitations: 'טבלת קמפיין: ממי לבקש, כמה, ומה הסטטוס',
   history: 'סיכומים, נוכחות, עלויות ותובנות מאירועים שכבר היו',
+  finance: 'שכירות, חשמל, קניות, משכורת והכנסות שאינן תרומות',
 };
 
 import { findDuplicates } from '../lib/importDupes';
 
 /** מה נכתב לגיליון דרך השרת, ומה נשמר בענן האפליקציה */
 const SHEET_SECTIONS = ['contacts', 'donations', 'standingOrders'] as const;
-const APP_SECTIONS = ['events', 'projects', 'holidays', 'solicitations', 'history'] as const;
+const APP_SECTIONS = ['events', 'projects', 'holidays', 'solicitations', 'history', 'finance'] as const;
 const ALL_SECTIONS = [...SHEET_SECTIONS, ...APP_SECTIONS];
 
 interface GlobalAIImportModalProps {
@@ -140,8 +144,8 @@ interface GlobalAIImportModalProps {
 
 export function GlobalAIImportModal({ onClose, saveImmediately = false, onImported, initialTopics }: GlobalAIImportModalProps) {
   const {
-    holidays, eventsData, homeVisits, donors, holidayExtras, projects, donations, history,
-    updateHolidayExtras, updateEventsData, updateHomeVisitRoundMeta, updateProjects, addHistoryEntries, refresh,
+    holidays, eventsData, homeVisits, donors, holidayExtras, projects, donations, history, financeData,
+    updateHolidayExtras, updateEventsData, updateHomeVisitRoundMeta, updateProjects, addHistoryEntries, updateFinanceData, refresh,
   } = useAppStore();
   const [step, setStep] = useState<'prompt' | 'review' | 'done'>('prompt');
   const [prompt, setPrompt] = useState('');
@@ -197,13 +201,15 @@ export function GlobalAIImportModal({ onClose, saveImmediately = false, onImport
     parts.push('אל תייצר שום סוג אחר, גם אם נראה לך שהוא מסתתר בקובץ. אם משהו בקובץ אינו שייך לסוגים האלה — התעלם ממנו.');
 
     // ההבחנה נחוצה רק כשיותר מאחד מהמבלבלים נבחר
-    const confusing = ['events', 'holidays', 'projects', 'history', 'items'].filter(on);
+    const confusing = ['donations', 'events', 'holidays', 'projects', 'history', 'finance', 'items'].filter(on);
     if (confusing.length > 1) {
       parts.push('\nההבחנה בין אלה שמתבלבלים הכי הרבה:');
       if (on('events')) parts.push('· **פעילות** = התכנסות עם שעה ומקום. activityKind הוא recurring לפעילות קבועה או special לאירוע מיוחד. פעילות חג נוצרת מתוך החג.');
       if (on('holidays')) parts.push('· **חג** = תאריך בלוח השנה. אף אחד לא "מגיע לחנוכה" — מגיעים למסיבה שבחנוכה.');
       if (on('projects')) parts.push('· **קמפיין** = גיוס כסף מאנשים מול יעד בשקלים. הוא יכול לממן פעילות אחת או כמה פעילויות.');
       if (on('history')) parts.push('· **סיכום עבר** = תיעוד של פעילות או חג שכבר התקיימו. אין ליצור ממנו פעילות חדשה; משייכים אותו בשם לפעילות או לחג הקיימים.');
+      if (on('donations')) parts.push('· **תרומה** = כסף מתורם ונשמר ביומן התרומות. אין להעתיק אותה גם לתנועות הכספיות.');
+      if (on('finance')) parts.push('· **תנועה כספית שוטפת** = הכנסה שאינה תרומה או הוצאה כמו שכירות, חשמל, משכורת וקניות. היא יכולה להיות כללית בלי שיוך לאירוע.');
       if (on('items')) parts.push('· אם משהו הוא רק דבר לעשות ולא אחד מאלה — הוא **משימה**.');
     }
 
@@ -214,11 +220,12 @@ export function GlobalAIImportModal({ onClose, saveImmediately = false, onImport
       ctx.push(`אנשי קשר קיימים (אם שם במידע שלי הוא אחד מהם — כתוב אותו בדיוק כך): ${contactNames.slice(0, 150).join(', ')}`);
     }
     if (on('holidays') && holidayOptions.length) ctx.push(`חגים קרובים: ${holidayOptions.map(h => h.label).join(', ')}`);
-    if ((on('events') || on('items') || on('history')) && eventsData.length) ctx.push(`פעילויות קיימות: ${(eventsData as any[]).map(e => e.name).join(', ')}`);
+    if ((on('events') || on('items') || on('history') || on('finance')) && eventsData.length) ctx.push(`פעילויות קיימות: ${(eventsData as any[]).map(e => e.name).join(', ')}`);
     if (on('history') && history.length) ctx.push(`שמות שכבר מופיעים בהיסטוריה: ${Array.from(new Set(history.map(h => h.name))).join(', ')}`);
-    if ((on('projects') || on('items') || on('solicitations') || on('donations')) && projects.length) {
+    if ((on('projects') || on('items') || on('solicitations') || on('donations') || on('finance')) && projects.length) {
       ctx.push(`קמפיינים קיימים: ${(projects as any[]).map(p => p.name).join(', ')}`);
     }
+    if (on('finance') && financeData.categories.length) ctx.push(`קטגוריות כספיות קיימות: ${financeData.categories.join(', ')}`);
     if (on('items') && roundOptions.length) ctx.push(`מערכי ביקורי בית פעילים: ${roundOptions.map(r => r.label).join(', ')}`);
     if (ctx.length) {
       parts.push('\nהקשר קיים אצלי, כדי שתשייך אליו במקום להמציא שמות חדשים:');
@@ -228,7 +235,7 @@ export function GlobalAIImportModal({ onClose, saveImmediately = false, onImport
 
     // ── כללים, גם הם לפי הנבחר ────────────────────────────────────────────
     parts.push('\nכללים שחשוב לשמור עליהם:');
-    parts.push('· תאריכים בפורמט dd/MM/yyyy בלבד. אם התאריך במקור חלקי או לא ברור — השאר את השדה ריק, אל תנחש.');
+    parts.push('· ביומן תרומות והוראות קבע תאריכים הם dd/MM/yyyy; בפעילויות, חגים, סיכומי עבר וכספים הם yyyy-MM-dd, כפי שמופיע בדוגמאות. אם התאריך במקור חלקי או לא ברור — השאר את השדה ריק, אל תנחש.');
     parts.push('· סכומים כמספר בלבד, בלי ₪ ובלי פסיקים.');
     parts.push('· אל תמציא נתונים שלא כתובים אצלי. שדה שאין לו מקור — פשוט אל תכלול אותו.');
     if (on('donations')) parts.push('· "אפיק גבייה" (method) הוא אחד מ: מזומן, ביט/פייבוקס, העברה בנקאית, קישור ישיר, הוראת קבע, צ\'ק.');
@@ -245,6 +252,13 @@ export function GlobalAIImportModal({ onClose, saveImmediately = false, onImport
       parts.push('· בסיכום עבר: type הוא event לפעילות/אירוע או holiday לחג; name הוא שם הפעילות או החג; occurrenceDate בפורמט yyyy-MM-dd.');
       parts.push('· attendees היא רשימת שמות של מי שהגיע. expenses ו-income הן רשימות של שורות {name, planned, actual}; כל סכום הוא מספר. אל תחשב או תנחש סכומים שלא מופיעים במקור.');
       parts.push('· summary מתאר בקצרה מה היה בפועל. good = מה הצליח, improve = מה לשפר, plan = המלצות לפעם הבאה. אפשר להחזיר כמה סיכומים, אחד לכל מופע או שנה.');
+    }
+    if (on('finance')) {
+      parts.push('· בתנועה כספית: kind הוא income להכנסה נוספת, expense להוצאה מכספי הפעילות, personal_expense להוצאה ששילמתי מכיסי, cash_income למזומן שנכנס אליי, salary למשכורת מתוך המזומן שאצלי, settlement_to_me כשהפעילות החזירה לי כסף, או settlement_to_org כשהחזרתי כסף לפעילות.');
+      parts.push('· status הוא actual אם כבר בוצע, committed להתחייבות ודאית שטרם שולמה, או expected לצפי שעדיין אינו ודאי. שכירות עתידית שסוכמה היא expense עם status: committed.');
+      parts.push('· scopeType הוא general לשוטף שאינו שייך ליעד, event לפעילות, holiday לחג או project לקמפיין. בשוטף כמו שכירות כתוב general והשאר scopeName ריק.');
+      parts.push('· repeatMonths הוא מספר החודשים הכולל ליצירה חודשית, למשל 12 לשכירות לשנה. אם זו תנועה חד-פעמית כתוב 1. date הוא מועד התשלום הראשון בפורמט yyyy-MM-dd.');
+      parts.push('· תרומות מתורמים שייכות ל-donations בלבד ואסור להעתיק אותן גם ל-finance. finance מיועד להכנסות אחרות ולהוצאות, כדי לא לספור כסף פעמיים.');
     }
     // ── מזהה מקור ──────────────────────────────────────────────────────
     //
@@ -287,6 +301,10 @@ export function GlobalAIImportModal({ onClose, saveImmediately = false, onImport
       improve: 'להתחיל הרשמה מוקדם יותר',
       plan: 'לסגור אולם וקייטרינג חודשיים מראש',
     }];
+    if (on('finance')) schema.finance = [
+      { kind: 'expense', status: 'committed', title: 'שכירות בית חב״ד', amount: 4500, date: '2026-09-01', category: 'שכירות', repeatMonths: 12, scopeType: 'general', scopeName: '', method: 'העברה בנקאית', notes: '' },
+      { kind: 'income', status: 'expected', title: 'החזר הוצאות', amount: 1200, date: '2026-09-15', category: 'פעילות שוטפת', repeatMonths: 1, scopeType: 'general', scopeName: '', method: '', notes: '' },
+    ];
     if (on('items')) schema.items = [
       ...(on('holidays') ? [{ text: 'משימה הקשורה לחג', targetKind: 'holiday', targetLabel: 'שם החג' }] : []),
       ...(on('events') ? [{ text: 'לארגן כיבוד', targetKind: 'event', targetLabel: 'סעודת שבת' }] : []),
@@ -342,6 +360,19 @@ export function GlobalAIImportModal({ onClose, saveImmediately = false, onImport
         good: h.insights?.good || '',
         improve: h.insights?.improve || '',
         plan: h.insights?.plan || '',
+      })),
+      finance: financeData.transactions.map(tx => ({
+        kind: tx.kind,
+        status: tx.status,
+        title: tx.title,
+        amount: tx.amount,
+        date: tx.date,
+        category: tx.category,
+        repeatMonths: 1,
+        scopeType: tx.scopeType || 'general',
+        scopeName: tx.scopeName || '',
+        method: tx.method || '',
+        notes: tx.notes || '',
       })),
       items: Object.entries(holidayExtras).flatMap(([id, extra]: any) =>
         (extra?.tasks || []).filter((t: any) => !t.done).map((t: any) => ({
@@ -400,6 +431,7 @@ export function GlobalAIImportModal({ onClose, saveImmediately = false, onImport
       holidays: pick(parsed.holidays, 'name', 'newhol'),
       solicitations: pick(parsed.solicitations, 'name', 'sol'),
       history: pick(parsed.history, 'name', 'hist'),
+      finance: pick(parsed.finance, 'title', 'fin'),
     };
 
     // ── משימות ──────────────────────────────────────────────────────────
@@ -610,6 +642,11 @@ export function GlobalAIImportModal({ onClose, saveImmediately = false, onImport
     });
     const savedHistoryCount = importedHistory.length ? addHistoryEntries(importedHistory) : 0;
 
+    // הכנסות והוצאות שוטפות נשמרות במרכז הכספי. תנועות חוזרות מורחבות
+    // לחודשים נפרדים, כך ששכירות עתידית משפיעה מיד על תחזית התזרים.
+    const financeImport = importAIFinanceTransactions(financeData, rows.finance.map(r => r.data));
+    if (financeImport.added > 0) await updateFinanceData(financeImport.data);
+
     // ── משימות: נשמרות מקומית, בדיוק כמו קודם ────────────────────────────
     const byHoliday = new Map<string, ParsedItem[]>();
     const byEvent = new Map<string, ParsedItem[]>();
@@ -679,7 +716,8 @@ export function GlobalAIImportModal({ onClose, saveImmediately = false, onImport
 
     setSaving(false);
     setResult({ tasks: items.length, sheet: sheetResult,
-      events: newEvents.length, projects: newProjects.length, holidays: rows.holidays.length, history: savedHistoryCount });
+      events: newEvents.length, projects: newProjects.length, holidays: rows.holidays.length,
+      history: savedHistoryCount, finance: financeImport.added, financeSkipped: financeImport.skipped });
     setStep('done');
     onImported?.();
     if (sheetRowCount > 0) refresh();
@@ -971,6 +1009,8 @@ export function GlobalAIImportModal({ onClose, saveImmediately = false, onImport
                 {result.projects > 0 && <div>{result.projects} קמפיינים</div>}
                 {result.holidays > 0 && <div>{result.holidays} חגים ותאריכים</div>}
                 {result.history > 0 && <div>{result.history} סיכומי פעילויות וחגים שעברו</div>}
+                {result.finance > 0 && <div>{result.finance} תנועות במרכז הכספי</div>}
+                {result.financeSkipped > 0 && <div className="text-amber-700">{result.financeSkipped} תנועות כספיות דולגו כי היו כפולות או שחסר בהן תאריך, תיאור או סכום</div>}
               </div>
             )}
 

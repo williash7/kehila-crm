@@ -92,7 +92,21 @@ assert.strictEqual(F.importFinanceRows(base, parsed).transactions.length, 2);
 const exported = F.financeCsv(base, donations);
 assert.ok(exported.includes('ישראל ישראלי') || exported.includes('"א"'), 'ייצוא מלא כולל גם תרומות שנקראות אוטומטית');
 
-console.log('ה. המרכז אופציונלי והשרת כולל אותו בגיבוי:');
+console.log('ה. AI קולט שכירות חודשית והכנסה שוטפת בלי אירוע:');
+const aiImport = F.importAIFinanceTransactions(base, [
+  { kind: 'expense', status: 'committed', title: 'שכירות בית חב״ד', amount: 4500, date: '2026-09-01', category: 'שכירות', repeatMonths: 3, scopeType: 'general' },
+  { kind: 'income', status: 'expected', title: 'החזר הוצאות', amount: 1200, date: '2026-09-15', category: 'פעילות שוטפת', repeatMonths: 1, scopeType: 'general' },
+]);
+assert.strictEqual(aiImport.added, 4);
+assert.deepStrictEqual(aiImport.data.transactions.filter(x => x.title.includes('שכירות')).map(x => x.date).sort(), ['2026-09-01', '2026-10-01', '2026-11-01']);
+assert.ok(aiImport.data.transactions.every(x => x.scopeType === 'general'));
+const aiAgain = F.importAIFinanceTransactions(aiImport.data, [
+  { kind: 'expense', status: 'committed', title: 'שכירות בית חב״ד', amount: 4500, date: '2026-09-01', category: 'שכירות', repeatMonths: 3, scopeType: 'general' },
+]);
+assert.strictEqual(aiAgain.added, 0);
+assert.strictEqual(aiAgain.skipped, 3, 'ייבוא חוזר אינו מכפיל את חודשי השכירות');
+
+console.log('ו. המרכז אופציונלי והשרת כולל אותו בגיבוי:');
 const fs = require('fs');
 const settings = require('/tmp/settings.js');
 assert.strictEqual(settings.DEFAULT_SETTINGS.showFinanceCenter, false);
@@ -103,5 +117,9 @@ const app = fs.readFileSync('src/App.tsx', 'utf8');
 assert.ok(app.includes("activeTab === 'finance'"));
 const context = fs.readFileSync('src/store/AppContext.tsx', 'utf8');
 assert.ok(/bundle\.finance === undefined \? getFinanceData\(\)/.test(context), 'שרת ישן אינו דורס נתונים כספיים מקומיים');
+const aiUi = fs.readFileSync('src/components/GlobalAIImportModal.tsx', 'utf8');
+const financeUi = fs.readFileSync('src/components/FinanceTab.tsx', 'utf8');
+assert.ok(/הכנסות והוצאות שוטפות/.test(aiUi) && /schema\.finance/.test(aiUi));
+assert.ok(/קלוט הכנסות והוצאות עם AI/.test(financeUi) && /initialTopics=\{\['finance'\]\}/.test(financeUi));
 
 console.log('✓ חוזה המרכז הכספי תקין');

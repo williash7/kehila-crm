@@ -2,7 +2,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle, ArrowDownLeft, ArrowUpRight, CalendarClock, CheckCircle2,
   Download, FileUp, Landmark, Pencil, Plus, Printer, RefreshCw, Save, Settings,
-  ShieldCheck, SlidersHorizontal, Undo2, WalletCards, X,
+  ShieldCheck, SlidersHorizontal, Undo2, WalletCards, X, Bot,
 } from 'lucide-react';
 import { useAppStore } from '../store/AppContext';
 import {
@@ -13,6 +13,7 @@ import {
 } from '../lib/finance';
 import { sumBudget } from '../lib/history';
 import { Donation } from '../types';
+import { GlobalAIImportModal } from './GlobalAIImportModal';
 
 type Pane = 'overview' | 'transactions' | 'scopes' | 'import' | 'settings';
 type BudgetSource = { id?: string; title?: string; name?: string; budget?: { expenses?: unknown[]; income?: unknown[] } };
@@ -49,6 +50,7 @@ export function FinanceTab() {
   const [editing, setEditing] = useState<Partial<FinanceTransaction> | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveState, setSaveState] = useState<'idle' | 'ok' | 'error'>('idle');
+  const [aiImportOpen, setAiImportOpen] = useState(false);
 
   const persist = async (next: FinanceData) => {
     setSaving(true); setSaveState('idle');
@@ -131,7 +133,7 @@ export function FinanceTab() {
       {pane === 'overview' && <Overview summary={summary} data={data} onAdd={begin} onSettings={() => setPane('settings')} transactions={data.transactions} />}
       {pane === 'transactions' && <Transactions data={data} onAdd={begin} onEdit={setEditing} onCancel={async id => persist(cancelTransaction(data, id))} />}
       {pane === 'scopes' && <Scopes scopes={scopes} budgets={existingBudgets} onAdd={() => begin('expense', 'committed')} />}
-      {pane === 'import' && <ImportAndReports data={data} donations={donations} persist={persist} />}
+      {pane === 'import' && <ImportAndReports data={data} donations={donations} persist={persist} onAI={() => setAiImportOpen(true)} />}
       {pane === 'settings' && <FinanceSettings data={data} persist={persist} />}
 
       {editing && (
@@ -151,6 +153,7 @@ export function FinanceTab() {
           }}
         />
       )}
+      {aiImportOpen && <GlobalAIImportModal initialTopics={['finance']} onClose={() => setAiImportOpen(false)} />}
     </div>
   );
 }
@@ -268,7 +271,7 @@ function Scopes({ scopes, budgets, onAdd }: { scopes: ReturnType<typeof summariz
   </div>;
 }
 
-function ImportAndReports({ data, donations, persist }: { data: FinanceData; donations: Donation[]; persist: (data: FinanceData) => Promise<boolean> }) {
+function ImportAndReports({ data, donations, persist, onAI }: { data: FinanceData; donations: Donation[]; persist: (data: FinanceData) => Promise<boolean>; onAI: () => void }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [rows, setRows] = useState<ParsedFinanceRow[]>([]);
   const [error, setError] = useState('');
@@ -289,6 +292,8 @@ function ImportAndReports({ data, donations, persist }: { data: FinanceData; don
     <section className="bg-white border border-[#EDE6D6] rounded-2xl p-4 space-y-3">
       <h2 className="font-bold text-[#0D1B2A] flex items-center gap-2"><FileUp size={17} /> ייבוא תנועות</h2>
       <p className="text-xs text-gray-500">הקובץ נקרא במכשיר. CSV, TSV או JSON; קובץ Excel אפשר לשמור תחילה כ־CSV.</p>
+      <button onClick={onAI} className="w-full flex items-center justify-center gap-2 bg-purple-50 text-purple-700 border border-purple-200 rounded-xl py-2.5 text-sm font-bold"><Bot size={15} /> קלוט הכנסות והוצאות עם AI</button>
+      <div className="flex items-center gap-2 text-[10px] text-gray-400"><span className="h-px bg-[#EDE6D6] flex-1" /><span>או קובץ בנק מסודר</span><span className="h-px bg-[#EDE6D6] flex-1" /></div>
       <label className="block text-xs font-bold text-gray-600">בקובץ עם עמודת סכום אחת, סכום חיובי הוא
         <select value={positiveMeans} onChange={e => setPositiveMeans(e.target.value as 'income' | 'expense')} className="mr-2 border border-[#EDE6D6] rounded-lg px-2 py-1"><option value="income">הכנסה</option><option value="expense">הוצאה</option></select>
       </label>

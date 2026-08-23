@@ -98,6 +98,27 @@ export interface ParsedFinanceRow {
   warning?: string;
 }
 
+export interface AIFinanceTransaction {
+  kind?: FinanceKind;
+  status?: FinanceStatus;
+  title?: string;
+  amount?: number | string;
+  date?: string;
+  category?: string;
+  method?: string;
+  scopeType?: FinanceScopeType;
+  scopeName?: string;
+  notes?: string;
+  /** מספר חודשים כולל החודש הראשון. 1 = תנועה חד-פעמית. */
+  repeatMonths?: number;
+}
+
+export interface AIFinanceImportResult {
+  data: FinanceData;
+  added: number;
+  skipped: number;
+}
+
 export const DEFAULT_FINANCE_CATEGORIES = [
   'פעילות שוטפת', 'אירועים וחגים', 'שכירות', 'חשמל וארנונה', 'פרסום',
   'ציוד ואחזקה', 'עזרה למשפחות', 'רכב ונסיעות', 'משכורת', 'קופת צדקה',
@@ -468,6 +489,72 @@ function addMonths(iso: string, count: number): string {
   const last = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
   d.setDate(Math.min(day, last));
   return d.toISOString().slice(0, 10);
+}
+
+const aiFinanceFingerprint = (value: Partial<FinanceTransaction>): string => {
+  const text = (x: unknown) => String(x || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  return [
+    value.kind || 'expense', value.status || 'actual', normalizeDate(value.date || ''),
+    number(value.amount).toFixed(2), text(value.title), text(value.category),
+    value.scopeType || 'general', text(value.scopeName),
+  ].join('|');
+};
+
+/**
+ * קולט תנועות שחולצו משיחה עם AI אל המרכז הכספי.
+ * החזרה החודשית מורחבת לרשומות אמיתיות לפי חודש, ולכן התחזית והדוחות אינם
+ * תלויים במנגנון מיוחד. טביעת תוכן מונעת ייבוא חוזר של אותה שכירות/הכנסה.
+ */
+export function importAIFinanceTransactions(dataInput: unknown, rowsInput: unknown): AIFinanceImportResult {
+  const data = normalizeFinanceData(dataInput);
+  const rows = Array.isArray(rowsInput) ? rowsInput : [];
+  const known = new Set(data.transactions.map(aiFinanceFingerprint));
+  const accepted: FinanceTransaction[] = [];
+  let skipped = 0;
+
+  rows.forEach(rawValue => {
+    const raw = rawValue && typeof rawValue === 'object' ? rawValue as AIFinanceTransaction : {};
+    const title = String(raw.title || '').trim();
+    const amount = Math.abs(number(raw.amount));
+    const date = normalizeDate(raw.date || '');
+    if (!title || !amount || !date) { skipped++; return; }
+    const kind: FinanceKind = isKind(raw.kind) ? raw.kind : 'expense';
+    const status: FinanceStatus = isStatus(raw.status) ? raw.status : 'actual';
+    const repeatMonths = Math.min(120, Math.max(1, Math.round(number(raw.repeatMonths) || 1)));
+    try {
+      const expanded = saveTransaction(emptyFinanceData(), {
+        kind,
+        status,
+        title,
+        amount,
+        date,
+        category: String(raw.category || (kind === 'income' ? 'אחר' : 'פעילות שוטפת')).trim(),
+        method: String(raw.method || '').trim(),
+        scopeType: isScope(raw.scopeType) ? raw.scopeType : 'general',
+        scopeName: String(raw.scopeName || '').trim(),
+        notes: String(raw.notes || '').trim(),
+        source: 'import',
+      }, repeatMonths).transactions;
+      expanded.forEach(tx => {
+        const key = aiFinanceFingerprint(tx);
+        if (known.has(key)) { skipped++; return; }
+        known.add(key);
+        accepted.push(tx);
+      });
+    } catch {
+      skipped++;
+    }
+  });
+
+  const categories = Array.from(new Set([
+    ...data.categories,
+    ...accepted.map(tx => tx.category).filter(Boolean),
+  ]));
+  return {
+    data: normalizeFinanceData({ ...data, categories, transactions: [...accepted, ...data.transactions] }),
+    added: accepted.length,
+    skipped,
+  };
 }
 
 function parseDelimited(text: string, delimiter: string): string[][] {
