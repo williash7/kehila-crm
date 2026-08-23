@@ -48,7 +48,7 @@ export interface AppSettings {
   dashboardCards: string[];
   /** סדר כל המסכים בניווט הטלפון; מי שלא נבחר לסרגל מופיע תחת „עוד”. */
   bottomNavOrder: NavItemId[];
-  /** עד ארבעה מסכים שמופיעים ישירות בסרגל התחתון. */
+  /** המסכים שמופיעים ישירות בסרגל התחתון; אין מגבלת כמות. */
   bottomNavPrimary: NavItemId[];
 }
 

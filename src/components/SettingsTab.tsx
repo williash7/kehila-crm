@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAppStore } from '../store/AppContext';
-import { Settings as SettingsIcon, RotateCcw, History, Loader2, ChevronDown, Bot, Rocket } from 'lucide-react';
+import { Settings as SettingsIcon, RotateCcw, History, Loader2, ChevronDown, ChevronRight, Bot, Rocket } from 'lucide-react';
 import { GlobalAIImportModal } from './GlobalAIImportModal';
 import { MigrateYahrzeitsModal } from './MigrateYahrzeitsModal';
 import { DatesRescueModal } from './DatesRescueModal';
@@ -21,36 +21,23 @@ import { DataOnboardingWizard } from './DataOnboardingWizard';
 import { NavigationSettingsCard } from './NavigationSettingsCard';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// קבוצות ההגדרות.
-//
-// הקבוצה הנבחרת נשמרת בזיכרון של הדפדפן: מי שנכנס להגדרות בדרך כלל חוזר
-// לאותו מקום, ואין סיבה שיגלול אליו כל פעם מחדש.
+// בפתיחה מוצגות קטגוריות בלבד. לחיצה נכנסת לעמוד ההגדרות הרלוונטי,
+// וכפתור חזרה מחזיר למסך הקטגוריות — בלי רשימה ארוכה ובלי לשוניות צפופות.
 // ─────────────────────────────────────────────────────────────────────────────
 
 type SettingsGroup = 'organization' | 'navigation' | 'appearance' | 'people' | 'data';
 
-const SETTINGS_GROUPS: { id: SettingsGroup; label: string; icon: string }[] = [
-  { id: 'organization', label: 'ארגון',       icon: '🏠' },
-  { id: 'navigation',   label: 'ניווט',       icon: '🧭' },
-  { id: 'appearance',   label: 'מראה',        icon: '🎨' },
-  { id: 'people',       label: 'אנשים',       icon: '👥' },
-  { id: 'data',         label: 'מידע וכלים',  icon: '🧰' },
+const SETTINGS_GROUPS: { id: SettingsGroup; label: string; icon: string; hint: string }[] = [
+  { id: 'organization', label: 'ארגון',      icon: '🏠', hint: 'פרטי הארגון, חיבור, תרומות וכספים' },
+  { id: 'navigation',   label: 'ניווט',      icon: '🧭', hint: 'הסרגל בטלפון, לוח שנה ותצוגת משימות' },
+  { id: 'appearance',   label: 'מראה',       icon: '🎨', hint: 'צבעים, סגנון, גודל וכרטיסי הדשבורד' },
+  { id: 'people',       label: 'אנשים',      icon: '👥', hint: 'מעגלי קרבה ומי יוצג ברחבי האפליקציה' },
+  { id: 'data',         label: 'מידע וכלים', icon: '🧰', hint: 'גיבוי, ייבוא, אבחון וחיבורים מתקדמים' },
 ];
 
-const GROUP_KEY = 'settings_group';
-
 export function SettingsTab() {
-  const [group, setGroup] = useState<SettingsGroup>(() => {
-    try {
-      const stored = localStorage.getItem(GROUP_KEY) || '';
-      const legacy: Record<string, SettingsGroup> = {
-        general: 'organization', look: 'appearance', who: 'people', advanced: 'data',
-      };
-      const saved = (legacy[stored] || stored) as SettingsGroup;
-      return SETTINGS_GROUPS.some(g => g.id === saved) ? saved : 'organization';
-    } catch { return 'organization'; }
-  });
-  React.useEffect(() => { try { localStorage.setItem(GROUP_KEY, group); } catch {} }, [group]);
+  const [group, setGroup] = useState<SettingsGroup | null>(null);
+  const currentGroup = SETTINGS_GROUPS.find(item => item.id === group);
 
   const { settings, updateSettings, donors, visibleDonors, eventsData, holidayExtras, donations, crm, refresh, holidays, summary } = useAppStore();
   const org = getOrg();
@@ -176,28 +163,35 @@ export function SettingsTab() {
         </button>
       </div>
 
-      {/* ── קבוצות ─────────────────────────────────────────────────────────
-          שלושה-עשר כרטיסים בטור אחד הפכו את ההגדרות למסך שגוללים בו ומקווים.
-          החלוקה כאן היא לפי **השאלה שהביאה אותך הנה**: להגדיר את הארגון,
-          לשנות איך זה נראה, לקבוע מי מופיע ברשימות, או לעשות משהו נדיר. */}
-      <div className="sticky top-[60px] z-40 px-4 md:px-6 py-3 flex gap-1.5 overflow-x-auto bg-[#FAF6EE]/95 backdrop-blur border-b border-[#EDE6D6]">
-        {SETTINGS_GROUPS.map(g => (
-          <button
-            key={g.id}
-            onClick={() => setGroup(g.id)}
-            aria-current={group === g.id ? 'page' : undefined}
-            className={`shrink-0 px-3.5 py-2 rounded-full text-xs font-bold border transition-colors ${
-              group === g.id
-                ? 'bg-[#0D1B2A] text-[#C9A84C] border-[#0D1B2A]'
-                : 'bg-white text-gray-500 border-[#EDE6D6] hover:border-[#C9A84C]'
-            }`}
-          >
-            {g.icon} {g.label}
-          </button>
-        ))}
-      </div>
-
       <div className="p-4 md:p-6 max-w-2xl space-y-5">
+        {group === null ? (
+          <div>
+            <div className="mb-4">
+              <h2 className="font-['Frank_Ruhl_Libre'] text-xl font-bold text-[#0D1B2A]">מה ברצונך להגדיר?</h2>
+              <p className="text-xs text-gray-500 mt-1">בחר קטגוריה. במסך הבא יופיעו רק ההגדרות ששייכות אליה.</p>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-3">
+              {SETTINGS_GROUPS.map(item => (
+                <button key={item.id} onClick={() => setGroup(item.id)} className="bg-white rounded-2xl border border-[#EDE6D6] p-4 text-right shadow-sm hover:border-[#C9A84C] transition-colors flex items-center gap-3">
+                  <span className="w-11 h-11 rounded-xl bg-[#FAF6EE] flex items-center justify-center text-xl shrink-0">{item.icon}</span>
+                  <span className="flex-1 min-w-0">
+                    <span className="block font-['Frank_Ruhl_Libre'] text-lg font-bold text-[#0D1B2A]">{item.label}</span>
+                    <span className="block text-[11px] text-gray-500 leading-relaxed mt-0.5">{item.hint}</span>
+                  </span>
+                  <ChevronRight size={17} className="text-gray-300 shrink-0" />
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (<>
+        <div className="sticky top-[60px] z-40 bg-[#FAF6EE]/95 backdrop-blur border-b border-[#EDE6D6] -mx-4 md:-mx-6 px-4 md:px-6 py-3 flex items-center gap-3">
+          <button onClick={() => setGroup(null)} className="w-9 h-9 rounded-full bg-white border border-[#EDE6D6] flex items-center justify-center text-[#0D1B2A] shrink-0" aria-label="חזרה לקטגוריות"><ChevronRight size={18} /></button>
+          <div>
+            <div className="font-['Frank_Ruhl_Libre'] text-lg font-bold text-[#0D1B2A]">{currentGroup?.icon} {currentGroup?.label}</div>
+            <div className="text-[10px] text-gray-500">{currentGroup?.hint}</div>
+          </div>
+        </div>
+
         {group === 'organization' && (<>
         {/* התשובה ל"האם הכול מעודכן?" — ראשונה, כי זו השאלה הראשונה
             שנשאלת כשמשהו לא מתנהג כמצופה */}
@@ -630,6 +624,7 @@ export function SettingsTab() {
             <div className="text-[11px] text-green-600 font-bold">✓ פייסבוק מוגדר ומוכן לפרסום</div>
           )}
         </div>
+        </>)}
         </>)}
 
         {wizardOpen && (

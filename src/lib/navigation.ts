@@ -21,7 +21,6 @@ export type NavItemId = typeof NAV_ITEMS[number]['id'];
 
 export const DEFAULT_BOTTOM_NAV_ORDER: NavItemId[] = NAV_ITEMS.map(item => item.id);
 export const DEFAULT_BOTTOM_NAV_PRIMARY: NavItemId[] = ['home', 'tasks', 'donors', 'donations'];
-export const MAX_BOTTOM_NAV_PRIMARY = 4;
 
 const KNOWN_IDS = new Set<string>(DEFAULT_BOTTOM_NAV_ORDER);
 
@@ -33,13 +32,12 @@ export function normalizeBottomNavOrder(raw: unknown): NavItemId[] {
   return Array.from(new Set([...selected, ...DEFAULT_BOTTOM_NAV_ORDER]));
 }
 
-/** עד ארבעה פריטים ישירים; כל השאר נשארים בתפריט „עוד”. */
+/** כל פריט שנבחר מופיע ישירות; כל השאר נשארים בתפריט „עוד”. */
 export function normalizeBottomNavPrimary(raw: unknown, order?: NavItemId[]): NavItemId[] {
   const normalizedOrder = order || normalizeBottomNavOrder(undefined);
   const requested = Array.isArray(raw) ? raw : DEFAULT_BOTTOM_NAV_PRIMARY;
   const allowed = new Set<string>(normalizedOrder);
-  return Array.from(new Set(requested.filter((id): id is NavItemId => typeof id === 'string' && allowed.has(id))))
-    .slice(0, MAX_BOTTOM_NAV_PRIMARY);
+  return Array.from(new Set(requested.filter((id): id is NavItemId => typeof id === 'string' && allowed.has(id))));
 }
 
 export function availableNavigationItems(showFinanceCenter: boolean) {

@@ -52,7 +52,7 @@ export function BottomNav({ currentTab, setTab }: BottomNavProps) {
 
   return (
     <>
-      {moreOpen && (
+      {moreOpen && hidden.length > 0 && (
         <>
           <button aria-label="סגור את תפריט עוד" onClick={() => setMoreOpen(false)} className="md:hidden fixed inset-0 z-40 bg-black/35" />
           <div className="md:hidden fixed bottom-[78px] left-1/2 -translate-x-1/2 z-50 w-[calc(100%-24px)] max-w-[406px] max-h-[62vh] overflow-y-auto bg-white rounded-2xl shadow-2xl border border-[#EDE6D6] p-3" dir="rtl">
@@ -79,21 +79,23 @@ export function BottomNav({ currentTab, setTab }: BottomNavProps) {
         </>
       )}
 
-      <nav className="md:hidden fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] nav-bg nav-border flex py-2 pb-6 z-50 border-t">
+      <nav className="md:hidden fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] nav-bg nav-border flex overflow-x-auto no-scrollbar py-2 pb-6 z-50 border-t">
         {primary.map(item => {
           const Icon = ICONS[item.id];
           const isActive = currentTab === item.id;
           return (
-            <button key={item.id} onClick={() => navigate(item.id)} className={`flex-1 min-w-0 flex flex-col items-center gap-1 p-1 cursor-pointer bg-transparent border-none text-[10px] font-medium transition-colors ${isActive ? 'nav-text-strong' : 'nav-text opacity-70'}`}>
+            <button key={item.id} onClick={() => navigate(item.id)} className={`shrink-0 w-[58px] flex flex-col items-center gap-1 p-1 cursor-pointer bg-transparent border-none text-[10px] font-medium transition-colors ${isActive ? 'nav-text-strong' : 'nav-text opacity-70'}`}>
               <Icon size={20} className={`transition-transform ${isActive ? 'scale-110' : ''}`} />
               <span className="truncate max-w-full px-0.5">{item.label}</span>
             </button>
           );
         })}
-        <button onClick={() => setMoreOpen(open => !open)} aria-expanded={moreOpen} className={`flex-1 min-w-0 flex flex-col items-center gap-1 p-1 cursor-pointer bg-transparent border-none text-[10px] font-medium transition-colors ${moreOpen || activeInMore ? 'nav-text-strong' : 'nav-text opacity-70'}`}>
-          <MoreHorizontal size={20} className={moreOpen || activeInMore ? 'scale-110' : ''} />
-          עוד
-        </button>
+        {hidden.length > 0 && (
+          <button onClick={() => setMoreOpen(open => !open)} aria-expanded={moreOpen} className={`shrink-0 w-[58px] flex flex-col items-center gap-1 p-1 cursor-pointer bg-transparent border-none text-[10px] font-medium transition-colors ${moreOpen || activeInMore ? 'nav-text-strong' : 'nav-text opacity-70'}`}>
+            <MoreHorizontal size={20} className={moreOpen || activeInMore ? 'scale-110' : ''} />
+            עוד
+          </button>
+        )}
       </nav>
     </>
   );
