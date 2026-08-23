@@ -84,6 +84,7 @@ const libBundles = [
   ['lib/todayFocus.ts', join(OUT, 'todayFocus.js')],
   ['lib/donationFilter.ts', join(OUT, 'df.js')],
   ['lib/finance.ts', join(OUT, 'finance.js')],
+  ['lib/activities.ts', join(OUT, 'activities.js')],
 ];
 for (const [source, outfile] of libBundles) await bundle(source, outfile);
 

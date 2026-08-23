@@ -36,7 +36,7 @@ export function AIPlanningAssistant({ title, contextLines, includeBudget, includ
     parts.push('\nאשמח שתעזור לי לגבש:');
     parts.push('1. רשימת משימות מעשיות להכנה (הזמנות, רכש, לוגיסטיקה, תוכן, ניקיון וכו׳)');
     if (includeBudget) parts.push('2. הצעה לסעיפי תקציב (הכנסות והוצאות צפויות) עם סכום משוער בש"ח לכל סעיף');
-    if (includeReminders) parts.push('3. תזכורות — כמה ימים לפני האירוע כדאי להתחיל כל דבר');
+    if (includeReminders) parts.push('3. תזכורות — כמה ימים לפני הפעילות כדאי להתחיל כל דבר');
     parts.push('\nבוא נשוחח על זה קודם ותשאל אותי שאלות אם צריך. כשנסיים ונגיע לתוכנית סופית, אנא סכם הכל בבלוק קוד JSON יחיד, בדיוק במבנה הבא (רק שדות שרלוונטיים, בלי טקסט נוסף בתוך הבלוק):');
     parts.push('```json');
     const schema: any = { tasks: ['משימה 1', 'משימה 2'] };

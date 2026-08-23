@@ -27,7 +27,8 @@ import { HomeVisitEntry, HomeVisitRound, HomeVisitsData, moveEntry } from '../li
 import { buildHolidayList } from '../lib/holidayList';
 import { computeMissingHolidayReminders } from '../lib/holidayAutoTasks';
 import { computeMissingEventReminders } from '../lib/eventAutoTasks';
-import { Project } from '../lib/projects';
+import { Project, normalizeProjects } from '../lib/projects';
+import { Activity, normalizeActivities } from '../lib/activities';
 import { hebcalUrl } from '../lib/orgConfig';
 import { chabadHolidayItems } from '../lib/chabadDates';
 import { FinanceData, emptyFinanceData, normalizeFinanceData } from '../lib/finance';
@@ -49,7 +50,7 @@ interface AppState {
   apiError: string | null;
   crm: Record<string, any>;
   holidayExtras: Record<string, any>;
-  eventsData: any[];
+  eventsData: Activity[];
   projects: Project[];
   history: HistoryEntry[];
   nameMerges: Record<string, string>;
@@ -109,7 +110,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [crm, setCrm] = useState<Record<string, any>>(initialCrm.crmRest);
   const [nameMerges, setNameMerges] = useState<Record<string, string>>(initialCrm.merges);
   const [holidayExtras, setHolidayExtras] = useState<Record<string, any>>({});
-  const [eventsData, setEventsData] = useState<any[]>([]);
+  const [eventsData, setEventsData] = useState<Activity[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [homeVisits, setHomeVisits] = useState<HomeVisitsData>({ rounds: [] });
@@ -203,11 +204,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setDonations(d.donations || []);
       setHk(annotateRenewals(d.hk || []));
       setFailures(d.failures || []);
-      setEventsData(d.events || []);
+      setEventsData(normalizeActivities(d.events));
       setHolidayExtras(d.holidayExtras || {});
       setHistory(d.history || []);
       setHomeVisits(d.homeVisits?.rounds ? d.homeVisits : { rounds: [] });
-      setProjects(Array.isArray(d.projects) ? d.projects : []);
+      setProjects(normalizeProjects(d.projects));
       setFinanceData(normalizeFinanceData(d.finance || getFinanceData() || emptyFinanceData()));
       if (d.rebbeDate) setRebbeDate(new Date(d.rebbeDate));
 
@@ -264,11 +265,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       resolvedMerges = merges;
       setCrm(cleanedCrm);
       setNameMerges(merges);
-      setEventsData(cloudEvents);
+      setEventsData(normalizeActivities(cloudEvents));
       setHolidayExtras(cloudExtras);
       setHistory(cloudHistory || []);
       setHomeVisits(cloudHomeVisits?.rounds ? cloudHomeVisits : { rounds: [] });
-      setProjects(Array.isArray(cloudProjects) ? cloudProjects : []);
+      setProjects(normalizeProjects(cloudProjects));
       setFinanceData(normalizeFinanceData(cloudFinance || emptyFinanceData()));
     };
 
@@ -552,13 +553,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   };
 
   const updateEventsData = (data: any[]) => {
-    setEventsData(data);
-    saveEventsDataCloud(data);
+    const normalized = normalizeActivities(data);
+    setEventsData(normalized);
+    saveEventsDataCloud(normalized);
   };
 
   const updateProjects = (data: Project[]) => {
-    setProjects(data);
-    saveProjectsCloud(data);
+    const normalized = normalizeProjects(data);
+    setProjects(normalized);
+    saveProjectsCloud(normalized);
   };
 
   const updateFinanceData = async (data: FinanceData): Promise<boolean> => {

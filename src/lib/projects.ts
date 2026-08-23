@@ -222,6 +222,8 @@ export interface Project {
   purposeTag: string;
   holidayId?: string;
   eventId?: string;
+  /** פעילויות שהקמפיין מממן. מערך מאפשר קמפיין אחד לכמה פעילויות ולהפך. */
+  activityIds?: string[];
   budget: Budget;
   tasks: any[];
   solicitations: Solicitation[];
@@ -233,7 +235,7 @@ export function emptyProject(name = ''): Project {
   return {
     id: `proj_${Date.now()}`,
     name: name.trim(),
-    kind: 'project',
+    kind: 'campaign',
     goal: '',
     status: 'active',
     purposeTag: name.trim(),
@@ -242,6 +244,23 @@ export function emptyProject(name = ''): Project {
     solicitations: [],
     createdAt: new Date().toISOString(),
   };
+}
+
+/** פרויקטים ישנים מוצגים כקמפיינים בלי למחוק את השדות או התקציב שלהם. */
+export function normalizeProjects(raw: any): Project[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(Boolean).map((project: any) => ({
+    ...emptyProject(String(project?.name || '')),
+    ...project,
+    kind: 'campaign' as const,
+    activityIds: Array.from(new Set([
+      ...(Array.isArray(project?.activityIds) ? project.activityIds : []),
+      ...(project?.eventId ? [project.eventId] : []),
+    ].filter(Boolean))),
+    budget: project?.budget || emptyBudget(),
+    tasks: project?.tasks || [],
+    solicitations: project?.solicitations || [],
+  }));
 }
 
 function num(v: any): number {

@@ -32,8 +32,8 @@ const ADD_LABELS: Record<string, string> = {
   home: 'תרומה',
   donors: 'איש קשר',
   tasks: 'משימה',
-  events: 'אירוע',
-  projects: 'פרויקט',
+  events: 'פעילות',
+  projects: 'קמפיין',
   calendar: 'חג מותאם',
   homevisits: 'מערך ביקורים',
 };
@@ -143,4 +143,3 @@ export default function App() {
     </AppProvider>
   );
 }
-

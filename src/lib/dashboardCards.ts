@@ -13,7 +13,8 @@
 export type DashCardId =
   | 'focus'
   | 'shabbat' | 'rebbe' | 'tasks' | 'hero' | 'stats'
-  | 'quick' | 'holidays' | 'hkReminder' | 'failures' | 'recent';
+  | 'quick' | 'holidays' | 'hkReminder' | 'failures' | 'recent'
+  | 'activities' | 'activityReadiness' | 'activityFunding' | 'campaigns';
 
 export interface DashCardMeta {
   id: DashCardId;
@@ -38,6 +39,10 @@ export const DASH_CARDS: DashCardMeta[] = [
   // ככרטיס, השאלות האלה לא קיימות. מי שרוצה "רק מה שדורש טיפול" מסתיר
   // את השאר כאן, ומקבל בדיוק את זה — בלי שנמציא לו מצב.
   { id: 'focus',      label: 'מה דורש טיפול',    hint: 'כשלים, תודות, משימות ותאריכים', icon: '🎯', column: 'main' },
+  { id: 'activities', label: 'פעילויות קרובות',  hint: 'הפעילויות הבאות במקום אחד',       icon: '📅', column: 'main' },
+  { id: 'activityReadiness', label: 'מוכנות לפעילויות', hint: 'משימות פתוחות ואחוז מוכנות', icon: '✅', column: 'main' },
+  { id: 'activityFunding', label: 'מימון פעילויות', hint: 'תקציב מול תרומות מקושרות',       icon: '💵', column: 'main' },
+  { id: 'campaigns',  label: 'מצב קמפיינים',      hint: 'גויס, צפוי וכמה חסר',             icon: '🎯', column: 'main' },
   { id: 'hero',       label: 'תרומות החודש',      hint: 'הסכום הגדול ופילוח לפי אפיק', icon: '💰', column: 'main' },
   { id: 'stats',      label: 'שלושת המספרים',     hint: 'תרומות, תורמים, הוראות קבע',  icon: '📊', column: 'main' },
   { id: 'tasks',      label: 'סיכום משימות',      hint: 'כמה פתוחות ומה דחוף',         icon: '📋', column: 'main' },

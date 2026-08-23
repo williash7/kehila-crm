@@ -19,11 +19,14 @@ import { countHkByStatus, isMonthlyReminderReviewed, markMonthlyReminderReviewed
 import { HDate } from '@hebcal/core';
 import { DASH_CARDS, DashCardId, resolveCards } from '../lib/dashboardCards';
 import { toCanonicalHebrewString } from '../lib/hebrewDates';
+import { ACTIVITY_KIND_LABEL, activityDonations, activityReadiness, upcomingActivities } from '../lib/activities';
+import { projectProgress } from '../lib/projects';
+import { sumBudgetLines } from '../lib/holidayEvents';
 
 const FAILURE_WINDOW_DAYS = 30;
 
 export function HomeTab({ setTab, onDonationClick, onQuickAdd }: { setTab: (t: string) => void, onDonationClick: () => void, onQuickAdd: (tab: string) => void }) {
-  const { summary, effectiveSummary, donations, failures, hk, rebbeDate, crm, visibleDonors, shabbat, holidays, hebrewDate, updateRebbeDate, holidayExtras, eventsData, settings } = useAppStore();
+  const { summary, effectiveSummary, donations, failures, hk, rebbeDate, crm, visibleDonors, shabbat, holidays, hebrewDate, updateRebbeDate, holidayExtras, eventsData, settings, projects } = useAppStore();
   const [selectedDonor, setSelectedDonor] = useState<string | null>(null);
   const [selectedHoliday, setSelectedHoliday] = useState<any | null>(null);
   const [isRebbeEditOpen, setIsRebbeEditOpen] = useState(false);
@@ -56,9 +59,10 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd }: { setTab: (t: s
     });
     let openEventTasks = 0;
     eventsData.forEach((e: any) => { openEventTasks += (e.tasks || []).filter((t: any) => !t.done).length; });
+    const openCampaignTasks = projects.reduce((sum, project) => sum + (project.tasks || []).filter((t: any) => !t.done).length, 0);
     const personalDates = computePersonalDateEvents(visibleDonors, crm, today).filter(e => e.dist <= 7);
-    return { openHolidayTasks, openEventTasks, personalDates };
-  }, [holidays, holidayExtras, eventsData, visibleDonors, crm]);
+    return { openHolidayTasks, openEventTasks, openCampaignTasks, personalDates };
+  }, [holidays, holidayExtras, eventsData, projects, visibleDonors, crm]);
 
   // ── מה דורש טיפול ──────────────────────────────────────────────────────
   //
@@ -114,6 +118,16 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd }: { setTab: (t: s
       });
     });
 
+    projects.forEach(project => {
+      if (!(project.tasks || []).length) return;
+      buckets.push({
+        scope: 'event',
+        contextId: project.id,
+        contextDate: project.deadline ? new Date(`${project.deadline}T00:00`) : null,
+        tasks: project.tasks,
+      });
+    });
+
     const standalone = holidayExtras[STANDALONE_TASKS_ID]?.tasks || [];
     if (standalone.length) buckets.push({ scope: 'standalone', contextId: STANDALONE_TASKS_ID, tasks: standalone });
 
@@ -126,7 +140,7 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd }: { setTab: (t: s
       personalDates: computePersonalDateEvents(visibleDonors, crm, today),
       overdueContacts: computeOverdueContacts(visibleDonors, crm, donations, today),
     });
-  }, [holidays, holidayExtras, eventsData, failures, hk, settings.hkExpiringThreshold,
+  }, [holidays, holidayExtras, eventsData, projects, failures, hk, settings.hkExpiringThreshold,
       visibleDonors, crm, donations]);
 
   /** לחיצה על שורה מובילה למסך שמטפל בה. אין כאן שום פעולה שמשנה נתונים. */
@@ -204,7 +218,7 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd }: { setTab: (t: s
   // ── Render helpers ──────────────────────────────────────────────────────────
 
   const renderTasksSummary = () => {
-    const total = tasksSummary.openHolidayTasks + tasksSummary.openEventTasks + tasksSummary.personalDates.length;
+    const total = tasksSummary.openHolidayTasks + tasksSummary.openEventTasks + tasksSummary.openCampaignTasks + tasksSummary.personalDates.length;
     return (
       <div
         onClick={() => setTab('tasks')}
@@ -217,7 +231,7 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd }: { setTab: (t: s
               {total === 0 ? 'אין משימות פתוחות כרגע' : `${total} משימות פתוחות`}
             </div>
             <div className="text-[11px] text-gray-500 mt-0.5 truncate">
-              {tasksSummary.openHolidayTasks} חגים · {tasksSummary.openEventTasks} אירועים · {tasksSummary.personalDates.length} ימי הולדת/יארצייט השבוע
+              {tasksSummary.openHolidayTasks} חגים · {tasksSummary.openEventTasks} פעילויות · {tasksSummary.openCampaignTasks} קמפיינים · {tasksSummary.personalDates.length} תאריכים השבוע
             </div>
           </div>
         </div>
@@ -436,7 +450,7 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd }: { setTab: (t: s
           <ClipboardList size={24} className="text-[#0D1B2A]" /><span className="text-[10px] font-semibold text-[#0D1B2A]">הוספת משימה</span>
         </button>
         <button onClick={() => onQuickAdd('events')} className="bg-white rounded-xl p-3 flex flex-col items-center gap-1 shadow-sm active:scale-95 transition-transform">
-          <Calendar size={24} className="text-[#0D1B2A]" /><span className="text-[10px] font-semibold text-[#0D1B2A]">יצירת אירוע</span>
+          <Calendar size={24} className="text-[#0D1B2A]" /><span className="text-[10px] font-semibold text-[#0D1B2A]">יצירת פעילות</span>
         </button>
       </div>
     </div>
@@ -623,6 +637,91 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd }: { setTab: (t: s
     );
   };
 
+  const renderUpcomingActivities = () => {
+    const rows = upcomingActivities(eventsData, new Date(), 30).slice(0, 5);
+    return (
+      <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6]">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="font-['Frank_Ruhl_Libre'] text-lg font-bold text-[#0D1B2A]">📅 פעילויות קרובות</h2>
+          <button onClick={() => setTab('events')} className="text-xs font-bold text-[#9B7A2F]">לניהול</button>
+        </div>
+        {rows.length === 0 ? <div className="text-xs text-gray-400">אין פעילות ב־30 הימים הקרובים.</div> : (
+          <div className="space-y-2">
+            {rows.map(({ activity, date }) => (
+              <button key={activity.id} onClick={() => setTab('events')} className="w-full flex items-center gap-3 text-right bg-[#FAF6EE] rounded-xl px-3 py-2.5">
+                <span className="text-xl">{activity.activityKind === 'recurring' ? '🔁' : activity.activityKind === 'holiday' ? '🕯️' : '✨'}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-bold text-[#0D1B2A] truncate">{activity.name}</div>
+                  <div className="text-[10px] text-gray-500">{ACTIVITY_KIND_LABEL[activity.activityKind]}{activity.location ? ` · ${activity.location}` : ''}</div>
+                </div>
+                <div className="text-xs font-bold text-[#9B7A2F] shrink-0">{date.toLocaleDateString('he-IL')}</div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderActivityReadiness = () => {
+    const rows = upcomingActivities(eventsData, new Date(), 45)
+      .map(x => ({ ...x, readiness: activityReadiness(x.activity) }))
+      .filter(x => x.readiness.openTasks > 0)
+      .sort((a, b) => a.readiness.percent - b.readiness.percent)
+      .slice(0, 5);
+    return (
+      <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6]">
+        <h2 className="font-['Frank_Ruhl_Libre'] text-lg font-bold text-[#0D1B2A] mb-3">✅ מוכנות לפעילויות</h2>
+        {rows.length === 0 ? <div className="text-xs text-emerald-700 bg-emerald-50 rounded-xl p-3">אין כרגע משימות הכנה פתוחות לפעילות קרובה.</div> : rows.map(({ activity, readiness }) => (
+          <button key={activity.id} onClick={() => setTab('events')} className="w-full text-right mb-2 last:mb-0">
+            <div className="flex justify-between text-xs mb-1"><span className="font-bold text-[#0D1B2A]">{activity.name}</span><span className="text-gray-500">{readiness.openTasks} פתוחות · {readiness.percent}%</span></div>
+            <div className="h-2 bg-[#EDE6D6] rounded-full overflow-hidden"><div className="h-full bg-purple-500" style={{ width: `${readiness.percent}%` }} /></div>
+          </button>
+        ))}
+      </div>
+    );
+  };
+
+  const renderActivityFunding = () => {
+    const rows = upcomingActivities(eventsData, new Date(), 60).map(({ activity }) => {
+      const linkedCampaigns = projects.filter(project => (project.activityIds || []).includes(activity.id));
+      const linked = activityDonations(activity, donations, linkedCampaigns.map(project => project.purposeTag));
+      const income = linked.reduce((sum, donation) => sum + (Number(donation.amount) || 0), 0);
+      const planned = sumBudgetLines(activity.budget?.expenses || [], 'planned');
+      return { activity, income, planned, gap: Math.max(0, planned - income), shared: linkedCampaigns.length > 0 };
+    }).filter(row => row.planned > 0).slice(0, 5);
+    return (
+      <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6]">
+        <h2 className="font-['Frank_Ruhl_Libre'] text-lg font-bold text-[#0D1B2A] mb-3">💵 מימון פעילויות</h2>
+        {rows.length === 0 ? <div className="text-xs text-gray-400">כשתזין תקציב לפעילות, יופיע כאן כמה מכוסה.</div> : (
+          <div className="space-y-2">
+            {rows.map(row => (
+              <button key={row.activity.id} onClick={() => setTab('events')} className="w-full flex items-center justify-between bg-[#FAF6EE] rounded-xl p-3 text-right">
+                <div><div className="text-xs font-bold text-[#0D1B2A]">{row.activity.name}</div><div className="text-[10px] text-gray-500">תקציב ₪{row.planned.toLocaleString()} · מקושר ₪{row.income.toLocaleString()}{row.shared ? ' · כולל קמפיין משותף' : ''}</div></div>
+                <span className={`text-xs font-bold ${row.gap > 0 ? 'text-amber-700' : 'text-emerald-700'}`}>{row.gap > 0 ? `חסר ₪${row.gap.toLocaleString()}` : 'מכוסה'}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderCampaigns = () => {
+    const rows = projects.filter(project => project.status !== 'closed').map(project => ({ project, progress: projectProgress(project, donations, hk) })).slice(0, 5);
+    return (
+      <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6]">
+        <div className="flex items-center justify-between mb-3"><h2 className="font-['Frank_Ruhl_Libre'] text-lg font-bold text-[#0D1B2A]">🎯 מצב קמפיינים</h2><button onClick={() => setTab('projects')} className="text-xs font-bold text-[#9B7A2F]">לניהול</button></div>
+        {rows.length === 0 ? <div className="text-xs text-gray-400">אין קמפיינים פעילים.</div> : rows.map(({ project, progress }) => (
+          <button key={project.id} onClick={() => setTab('projects')} className="w-full text-right mb-2 last:mb-0 bg-[#FAF6EE] rounded-xl p-3">
+            <div className="flex justify-between text-xs"><span className="font-bold text-[#0D1B2A]">{project.name}</span><span className="text-[#9B7A2F]">{progress.percent}%</span></div>
+            <div className="text-[10px] text-gray-500 mt-1">נכנס ₪{progress.raised.toLocaleString()} · צפוי ₪{progress.pledged.toLocaleString()} · חסר ₪{progress.gap.toLocaleString()}</div>
+          </button>
+        ))}
+      </div>
+    );
+  };
+
   // ── Main render ─────────────────────────────────────────────────────────────
   //
   // סדר הכרטיסים מגיע מההגדרות. מי שלא נגע מקבל את הסדר המקורי, ומי
@@ -635,6 +734,10 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd }: { setTab: (t: s
   const renderCard = (id: DashCardId) => {
     switch (id) {
       case 'focus':      return renderFocus();
+      case 'activities': return renderUpcomingActivities();
+      case 'activityReadiness': return renderActivityReadiness();
+      case 'activityFunding': return renderActivityFunding();
+      case 'campaigns': return renderCampaigns();
       case 'shabbat':    return renderShabbatCard();
       case 'rebbe':      return renderRebbeCard();
       case 'tasks':      return renderTasksSummary();

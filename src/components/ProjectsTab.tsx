@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { EmptyState } from './EmptyState';
 import { useAppStore } from '../store/AppContext';
-import { Plus, X, Target, Wallet, Users, Trash2, Search, CheckCircle2, MessageSquare} from 'lucide-react';
+import { Plus, X, Target, Wallet, Users, Trash2, Search, CheckCircle2, MessageSquare, ClipboardList, Check} from 'lucide-react';
 import { FullScreenView } from './FullScreenView';
 import { AddHkDialog } from './AddHkDialog';
 import { BudgetEditor, emptyBudget } from './BudgetEditor';
@@ -13,6 +13,9 @@ import {
   breakdownFor, BreakdownMetric, BREAKDOWN_LABEL, BREAKDOWN_HINT,
 } from '../lib/projects';
 import { logAction } from '../lib/score';
+import { stampCreated } from '../lib/tasks';
+import { TaskDetailsPanel } from './TaskDetailsPanel';
+import { AIPlanningAssistant } from './AIPlanningAssistant';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // פרויקטי גיוס.
@@ -25,13 +28,13 @@ import { logAction } from '../lib/score';
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function ProjectsTab({ addTrigger }: { addTrigger?: { tab: string; count: number } } = {}) {
-  const { projects, updateProjects, donations, hk, visibleDonors, crm } = useAppStore();
+  const { projects, updateProjects, donations, hk, visibleDonors, crm, eventsData } = useAppStore();
 
   const [openId, setOpenId] = useState<string | null>(null);
   const [isAdding, setIsAdding] = useState(false);
   const [newName, setNewName] = useState('');
   const [showClosed, setShowClosed] = useState(false);
-  const [pane, setPane] = useState<'raise' | 'budget'>('raise');
+  const [pane, setPane] = useState<'raise' | 'budget' | 'tasks'>('raise');
   const [addPersonSearch, setAddPersonSearch] = useState('');
 
   React.useEffect(() => {
@@ -59,14 +62,14 @@ export function ProjectsTab({ addTrigger }: { addTrigger?: { tab: string; count:
       {/* Topbar */}
       <div className="bg-[#0D1B2A] px-4 md:px-6 py-3 flex items-center justify-between sticky top-0 z-50 shadow-md">
         <div className="flex-1">
-          <div className="font-['Frank_Ruhl_Libre'] text-lg font-bold text-[#C9A84C]">פרויקטים וקמפיינים</div>
+          <div className="font-['Frank_Ruhl_Libre'] text-lg font-bold text-[#C9A84C]">קמפיינים</div>
           <div className="text-[11px] text-white/45 mt-[1px]">גיוס מול יעד, עם מעקב מי נתן ומי הבטיח</div>
         </div>
         <button
           onClick={() => setIsAdding(true)}
           className="flex items-center gap-1.5 px-3 h-9 bg-[#C9A84C] text-[#0D1B2A] rounded-full text-xs font-bold shrink-0"
         >
-          <Plus size={14} /> פרויקט
+          <Plus size={14} /> קמפיין
         </button>
       </div>
 
@@ -76,7 +79,7 @@ export function ProjectsTab({ addTrigger }: { addTrigger?: { tab: string; count:
             <input
               autoFocus value={newName} onChange={e => setNewName(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && create()}
-              placeholder="שם הפרויקט — למשל: הדפסת לוח שנה תשפ״ו"
+              placeholder="שם הקמפיין — למשל: הדפסת לוח שנה תשפ״ו"
               className="w-full border border-[#EDE6D6] rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#C9A84C]"
             />
             <div className="flex gap-2">
@@ -96,8 +99,8 @@ export function ProjectsTab({ addTrigger }: { addTrigger?: { tab: string; count:
           <div className="bg-white rounded-2xl p-6 text-center border border-[#EDE6D6]">
             <Target size={32} className="mx-auto text-[#C9A84C]/40 mb-2" />
             <p className="text-sm text-gray-500 leading-relaxed">
-              אין פרויקטים פעילים.<br />
-              פרויקט הוא גיוס מול יעד — הדפסת לוח שנה, שיפוץ, קמפיין שנתי.
+              אין קמפיינים פעילים.<br />
+              קמפיין הוא גיוס מול יעד — שנתי, ללוח שנה או עבור פעילות מסוימת.
             </p>
           </div>
         )}
@@ -114,7 +117,7 @@ export function ProjectsTab({ addTrigger }: { addTrigger?: { tab: string; count:
                 <div className="min-w-0">
                   <div className="font-bold text-[#0D1B2A] truncate">{p.name}</div>
                   <div className="text-[11px] text-gray-400">
-                    {p.kind === 'campaign' ? 'קמפיין כללי' : 'פרויקט'}
+                    קמפיין
                     {p.deadline ? ` · יעד: ${p.deadline}` : ''}
                     {p.status === 'closed' ? ' · סגור' : ''}
                   </div>
@@ -144,7 +147,7 @@ export function ProjectsTab({ addTrigger }: { addTrigger?: { tab: string; count:
 
         {projects.some(p => p.status === 'closed') && (
           <button onClick={() => setShowClosed(!showClosed)} className="text-xs text-[#9B7A2F] font-bold">
-            {showClosed ? 'הסתר פרויקטים סגורים' : 'הצג גם פרויקטים סגורים'}
+            {showClosed ? 'הסתר קמפיינים סגורים' : 'הצג גם קמפיינים סגורים'}
           </button>
         )}
       </div>
@@ -156,6 +159,7 @@ export function ProjectsTab({ addTrigger }: { addTrigger?: { tab: string; count:
           donations={donations}
           donorNames={Object.keys(visibleDonors)}
           crm={crm}
+          activities={eventsData}
           pane={pane}
           setPane={setPane}
           addPersonSearch={addPersonSearch}
@@ -173,14 +177,15 @@ export function ProjectsTab({ addTrigger }: { addTrigger?: { tab: string; count:
   );
 }
 
-function ProjectDetail({ project, donations, hk, donorNames, crm, pane, setPane, addPersonSearch, setAddPersonSearch, onPatch, onDelete, onClose }: {
+function ProjectDetail({ project, donations, hk, donorNames, crm, activities, pane, setPane, addPersonSearch, setAddPersonSearch, onPatch, onDelete, onClose }: {
   project: Project;
   donations: any[];
   hk: any[];
   donorNames: string[];
   crm: Record<string, any>;
-  pane: 'raise' | 'budget';
-  setPane: (p: 'raise' | 'budget') => void;
+  activities: any[];
+  pane: 'raise' | 'budget' | 'tasks';
+  setPane: (p: 'raise' | 'budget' | 'tasks') => void;
   addPersonSearch: string;
   setAddPersonSearch: (s: string) => void;
   onPatch: (changes: Partial<Project>) => void;
@@ -241,6 +246,7 @@ function ProjectDetail({ project, donations, hk, donorNames, crm, pane, setPane,
   const totals = React.useMemo(() => sumSolicitationRows(rows), [rows]);
   const [statusFilter, setStatusFilter] = React.useState<SolicitationStatus | 'all'>('all');
   const [rowSearch, setRowSearch] = React.useState('');
+  const [newTaskText, setNewTaskText] = React.useState('');
   // שורה שממנה נפתח חלון פתיחת הוראת קבע — כדי לשייך אותה חזרה לשורה
   const [hkForRow, setHkForRow] = React.useState<number | null>(null);
   // איזה מהמספרים בראש הרשימה נפתח לפירוט
@@ -261,15 +267,15 @@ function ProjectDetail({ project, donations, hk, donorNames, crm, pane, setPane,
 
   return (
     <FullScreenView
-      eyebrow="פרויקט"
-      title={project.name || 'פרויקט ללא שם'}
-      backLabel="פרויקטים"
+      eyebrow="קמפיין"
+      title={project.name || 'קמפיין ללא שם'}
+      backLabel="קמפיינים"
       onClose={onClose}
       layout="wide"
     >
       <>
         <div>
-          <label className="block text-[10px] font-bold text-gray-500 mb-1">שם הפרויקט</label>
+          <label className="block text-[10px] font-bold text-gray-500 mb-1">שם הקמפיין</label>
           <input
             value={project.name}
             onChange={e => onPatch({ name: e.target.value })}
@@ -326,24 +332,44 @@ function ProjectDetail({ project, donations, hk, donorNames, crm, pane, setPane,
               <input type="date" value={project.deadline || ''} onChange={e => onPatch({ deadline: e.target.value })}
                      className="w-full border border-[#EDE6D6] rounded-lg px-2 py-1.5 text-sm outline-none focus:border-[#C9A84C]" />
             </Field>
-            <Field label="סוג">
-              <select value={project.kind} onChange={e => onPatch({ kind: e.target.value as any })}
+            <Field label="מצב">
+              <select value={project.status} onChange={e => onPatch({ status: e.target.value as any })}
                       className="w-full border border-[#EDE6D6] rounded-lg px-2 py-1.5 text-sm outline-none focus:border-[#C9A84C]">
-                <option value="project">פרויקט</option>
-                <option value="campaign">קמפיין כללי</option>
+                <option value="active">פעיל</option>
+                <option value="closed">סגור</option>
               </select>
             </Field>
           </div>
 
           <div className="mt-2">
-            <Field label="ייעוד התרומות" hint="הטקסט שנרשם בשדה הייעוד. תרומות עם הייעוד הזה נספרות לפרויקט אוטומטית.">
+            <Field label="ייעוד התרומות" hint="הטקסט שנרשם בשדה הייעוד. תרומות עם הייעוד הזה נספרות לקמפיין אוטומטית.">
               <input value={project.purposeTag} onChange={e => onPatch({ purposeTag: e.target.value })}
                      className="w-full border border-[#EDE6D6] rounded-lg px-2 py-1.5 text-sm outline-none focus:border-[#C9A84C]" />
             </Field>
           </div>
 
+          <details className="mt-3 bg-[#FAF6EE] border border-[#EDE6D6] rounded-xl p-3">
+            <summary className="text-xs font-bold text-[#0D1B2A] cursor-pointer">
+              פעילויות שממומנות מהקמפיין ({(project.activityIds || []).length})
+            </summary>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3 max-h-44 overflow-y-auto">
+              {activities.map(activity => {
+                const checked = (project.activityIds || []).includes(activity.id);
+                return (
+                  <label key={activity.id} className={`flex items-center gap-2 rounded-lg px-2.5 py-2 text-xs border cursor-pointer ${checked ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-white border-[#EDE6D6] text-gray-600'}`}>
+                    <input type="checkbox" checked={checked} onChange={() => onPatch({ activityIds: checked ? (project.activityIds || []).filter(id => id !== activity.id) : [...(project.activityIds || []), activity.id] })} />
+                    <span className="font-bold truncate">{activity.name}</span>
+                  </label>
+                );
+              })}
+              {activities.length === 0 && <div className="text-xs text-gray-400">אין עדיין פעילויות לקישור.</div>}
+            </div>
+            <p className="text-[10px] text-gray-400 mt-2">אפשר לקשר קמפיין לכמה פעילויות, ופעילות לכמה קמפיינים. הכסף נשאר רשום פעם אחת ביומן התרומות.</p>
+          </details>
+
           <div className="flex gap-2 mt-3">
             <TabBtn active={pane === 'raise'} onClick={() => setPane('raise')} icon={<Users size={14} />} label={`התרמה (${sols.length})`} />
+            <TabBtn active={pane === 'tasks'} onClick={() => setPane('tasks')} icon={<ClipboardList size={14} />} label={`משימות (${(project.tasks || []).filter(t => !t.done).length})`} />
             <TabBtn active={pane === 'budget'} onClick={() => setPane('budget')} icon={<Wallet size={14} />} label="תקציב" />
           </div>
         </div>
@@ -351,6 +377,43 @@ function ProjectDetail({ project, donations, hk, donorNames, crm, pane, setPane,
         <div className="pt-4">
           {pane === 'budget' ? (
             <BudgetEditor budget={project.budget || emptyBudget()} onChange={b => onPatch({ budget: b })} />
+          ) : pane === 'tasks' ? (
+            <div className="space-y-3">
+              {(project.tasks || []).map((task: any, idx: number) => (
+                <div key={`${task.createdAt || task.text}-${idx}`} className="bg-white rounded-xl p-3 border border-[#EDE6D6] shadow-sm">
+                  <div className="flex items-center gap-3">
+                    <button onClick={() => onPatch({ tasks: (project.tasks || []).map((item: any, i: number) => i === idx ? { ...item, done: !item.done, ...(!item.done ? { doneAt: new Date().toISOString() } : {}) } : item) })} className={`w-6 h-6 rounded-md border-2 flex items-center justify-center ${task.done ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-gray-300'}`}>{task.done && <Check size={14} />}</button>
+                    <span className={`flex-1 text-sm ${task.done ? 'line-through text-gray-400' : 'text-[#0D1B2A]'}`}>{task.text}</span>
+                    <button onClick={() => onPatch({ tasks: (project.tasks || []).filter((_: any, i: number) => i !== idx) })} className="text-red-300 hover:text-red-500"><Trash2 size={14} /></button>
+                  </div>
+                  <TaskDetailsPanel task={task} onPatch={patch => onPatch({ tasks: (project.tasks || []).map((item: any, i: number) => i === idx ? { ...item, ...patch } : item) })} />
+                </div>
+              ))}
+              {(project.tasks || []).length === 0 && <div className="text-sm text-gray-400 text-center py-4">אין עדיין משימות לקמפיין.</div>}
+              <div className="flex gap-2 bg-white border border-dashed border-[#EDE6D6] rounded-xl p-3">
+                <input value={newTaskText} onChange={e => setNewTaskText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && newTaskText.trim()) { onPatch({ tasks: [...(project.tasks || []), stampCreated({ text: newTaskText.trim(), done: false })] }); setNewTaskText(''); } }} placeholder="משימה חדשה לקמפיין..." className="flex-1 border border-[#EDE6D6] rounded-lg px-3 py-2 text-sm outline-none focus:border-[#C9A84C]" />
+                <button onClick={() => { if (!newTaskText.trim()) return; onPatch({ tasks: [...(project.tasks || []), stampCreated({ text: newTaskText.trim(), done: false })] }); setNewTaskText(''); logAction('task_create'); }} disabled={!newTaskText.trim()} className="bg-[#0D1B2A] text-[#E8C97A] rounded-lg px-4 text-sm font-bold disabled:opacity-40">הוסף</button>
+              </div>
+              <AIPlanningAssistant
+                title={project.name}
+                contextLines={[
+                  Number(project.goal) > 0 ? `יעד הקמפיין: ₪${Number(project.goal).toLocaleString()}` : '',
+                  project.deadline ? `תאריך יעד: ${project.deadline}` : '',
+                  (project.activityIds || []).length ? `מספר פעילויות ממומנות: ${(project.activityIds || []).length}` : '',
+                ].filter(Boolean)}
+                includeBudget
+                onApply={result => {
+                  const nextTasks = [...(project.tasks || []), ...(result.tasks || []).map(text => stampCreated({ text, done: false }))];
+                  const budget = project.budget || emptyBudget();
+                  const nextBudget = (result.budget || []).reduce((next, line) => {
+                    const key = line.type === 'income' ? 'income' : 'expenses';
+                    return { ...next, [key]: [...next[key], { name: line.name, planned: line.amount, actual: '' }] };
+                  }, { expenses: [...budget.expenses], income: [...budget.income] });
+                  onPatch({ tasks: nextTasks, budget: nextBudget });
+                  logAction('task_create', result.tasks?.length || 0);
+                }}
+              />
+            </div>
           ) : (
             <div className="space-y-3">
               {/* הוספת אנשים */}
@@ -717,7 +780,7 @@ function ProjectDetail({ project, donations, hk, donorNames, crm, pane, setPane,
             onClick={() => onPatch({ status: project.status === 'closed' ? 'active' : 'closed' })}
             className="flex-1 py-2.5 rounded-xl bg-[#0D1B2A] text-white text-sm font-bold flex items-center justify-center gap-1.5"
           >
-            <CheckCircle2 size={15} /> {project.status === 'closed' ? 'פתח מחדש' : 'סגור פרויקט'}
+            <CheckCircle2 size={15} /> {project.status === 'closed' ? 'פתח מחדש' : 'סגור קמפיין'}
           </button>
           <button onClick={onDelete} className="px-4 py-2.5 rounded-xl bg-red-50 text-red-600 text-sm font-bold">מחק</button>
         </div>

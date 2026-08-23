@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAppStore } from '../store/AppContext';
-import { Check, ClipboardList, Calendar, CalendarCheck, Cake, X, ChevronLeft, Plus, Clock, ListTodo, SlidersHorizontal, ChevronDown, Home, Bot } from 'lucide-react';
+import { Check, ClipboardList, Calendar, CalendarCheck, Cake, X, ChevronLeft, Plus, Clock, ListTodo, SlidersHorizontal, ChevronDown, Home, Bot, Target } from 'lucide-react';
 import { FullScreenView } from './FullScreenView';
 import { GlobalAIImportModal } from './GlobalAIImportModal';
 import { ProfileModal } from './ProfileModal';
@@ -17,11 +17,11 @@ import { getCustomHols } from '../lib/api';
 import { logAction } from '../lib/score';
 
 export function TasksTab({ setTab, addTrigger }: { setTab: (t: string) => void; addTrigger?: { tab: string; count: number } }) {
-  const { holidayExtras, updateHolidayExtras, eventsData, updateEventsData, visibleDonors, crm, holidays, markHomeVisitDone, settings, homeVisits, updateHomeVisitRoundMeta } = useAppStore();
+  const { holidayExtras, updateHolidayExtras, eventsData, updateEventsData, projects, updateProjects, visibleDonors, crm, holidays, markHomeVisitDone, settings, homeVisits, updateHomeVisitRoundMeta } = useAppStore();
   const [selectedDonor, setSelectedDonor] = useState<string | null>(null);
   const [selectedHoliday, setSelectedHoliday] = useState<any | null>(null);
   const [isAddOpen, setIsAddOpen] = useState(false);
-  const [addTarget, setAddTarget] = useState<{ kind: 'holiday' | 'event'; id: string } | null>(null);
+  const [addTarget, setAddTarget] = useState<{ kind: 'holiday' | 'event' | 'campaign'; id: string } | null>(null);
   const [addText, setAddText] = useState('');
   const [addDate, setAddDate] = useState('');
   const [addTime, setAddTime] = useState('');
@@ -33,7 +33,7 @@ export function TasksTab({ setTab, addTrigger }: { setTab: (t: string) => void; 
   const [calendarSelectedKey, setCalendarSelectedKey] = useState<string | null>(null);
   const [isControlsOpen, setIsControlsOpen] = useState(false);
   const [isAIImportOpen, setIsAIImportOpen] = useState(false);
-  type CompletionTarget = { kind: 'standalone' } | { kind: 'holiday'; id: string } | { kind: 'event'; id: string } | { kind: 'personal'; key: string };
+  type CompletionTarget = { kind: 'standalone' } | { kind: 'holiday'; id: string } | { kind: 'event'; id: string } | { kind: 'campaign'; id: string } | { kind: 'personal'; key: string };
   const [completionPrompt, setCompletionPrompt] = useState<{ label: string; target: CompletionTarget } | null>(null);
   // כיווץ קבוצות משימות (לפי חג/אירוע) בתצוגה "לפי קטגוריה" — פתוח כברירת
   // מחדל, נשמר רק ב-state המקומי (לא בין רענונים) כדי לא לסבך את מודל הנתונים.
@@ -144,6 +144,18 @@ export function TasksTab({ setTab, addTrigger }: { setTab: (t: string) => void; 
     })
   ).filter(g => g.tasks.length > 0);
 
+  const campaignGroups = sortByContextDate<{ id: string; name: string; tasks: any[]; contextDate: Date | null }>(
+    projects.map(project => {
+      const parsed = project.deadline ? new Date(`${project.deadline}T00:00`) : null;
+      const contextDate = parsed && !isNaN(parsed.getTime()) ? parsed : null;
+      const tasks = (project.tasks || [])
+        .map((t: any, idx: number) => ({ t, idx, date: effectiveDate(t, contextDate) }))
+        .filter((x: any) => !x.t.done)
+        .sort((a: any, b: any) => compareTasks(a.t, b.t, sortKey, a.date, b.date));
+      return { id: project.id, name: project.name, tasks, contextDate };
+    })
+  ).filter(group => group.tasks.length > 0);
+
   // "משימות ביקורי בית" (kind:'homeVisit') חיות באותו מערך אחסון כמו המשימות
   // החד-פעמיות (STANDALONE_TASKS_ID) — רק מוצגות כאן בקבוצה נפרדת מבחינה
   // ויזואלית. ה-idx נשאר אינדקס במערך המקורי allStandaloneTasks בשני
@@ -183,6 +195,7 @@ export function TasksTab({ setTab, addTrigger }: { setTab: (t: string) => void; 
 
   const openHolidayCount = holidayGroups.reduce((s, g) => s + g.tasks.length, 0);
   const openEventCount = eventGroups.reduce((s, g) => s + g.tasks.length, 0);
+  const openCampaignCount = campaignGroups.reduce((s, g) => s + g.tasks.length, 0);
   const openHomeVisitCount = homeVisitTasks.length + openPrepTasks.length;
   const openStandaloneCount = standaloneTasks.length;
 
@@ -328,6 +341,32 @@ export function TasksTab({ setTab, addTrigger }: { setTab: (t: string) => void; 
     if (!wasDone) logAction('invite_done');
   };
 
+  const patchCampaignTasks = (campaignId: string, mutate: (tasks: any[]) => any[]) => {
+    updateProjects(projects.map(project => project.id === campaignId
+      ? { ...project, tasks: mutate([...(project.tasks || [])]) }
+      : project));
+  };
+
+  const toggleCampaignTask = (campaignId: string, idx: number) => {
+    const project = projects.find(item => item.id === campaignId);
+    const task = project?.tasks?.[idx];
+    if (!task) return;
+    patchCampaignTasks(campaignId, tasks => {
+      tasks[idx] = { ...tasks[idx], done: !tasks[idx].done, ...(!tasks[idx].done ? { doneAt: new Date().toISOString() } : {}) };
+      return tasks;
+    });
+    if (!task.done) {
+      logAction('task_complete');
+      setCompletionPrompt({ label: task.text, target: { kind: 'campaign', id: campaignId } });
+    }
+  };
+
+  const deleteCampaignTask = (campaignId: string, idx: number) =>
+    patchCampaignTasks(campaignId, tasks => { tasks.splice(idx, 1); return tasks; });
+
+  const patchCampaignTask = (campaignId: string, idx: number, patch: Partial<any>) =>
+    patchCampaignTasks(campaignId, tasks => { tasks[idx] = { ...tasks[idx], ...patch }; return tasks; });
+
   const submitAddTask = () => {
     if (!addTarget || !addText.trim()) return;
     const newTask: any = stampCreated({ text: addText.trim(), done: false });
@@ -336,8 +375,10 @@ export function TasksTab({ setTab, addTrigger }: { setTab: (t: string) => void; 
     if (addTarget.kind === 'holiday') {
       const tasks = [...(holidayExtras[addTarget.id]?.tasks || []), newTask];
       updateHolidayExtras(addTarget.id, { tasks });
-    } else {
+    } else if (addTarget.kind === 'event') {
       updateEventsData((eventsData as any[]).map((e: any) => e.id === addTarget.id ? { ...e, tasks: [...(e.tasks || []), newTask] } : e));
+    } else {
+      patchCampaignTasks(addTarget.id, tasks => [...tasks, newTask]);
     }
     logAction('task_create');
     setAddText('');
@@ -480,6 +521,24 @@ export function TasksTab({ setTab, addTrigger }: { setTab: (t: string) => void; 
     });
   });
 
+  campaignGroups.forEach(group => {
+    group.tasks.forEach(({ t, idx, date }: any) => {
+      flatRows.push({
+        key: `c-${group.id}-${idx}`,
+        date,
+        priorityObj: t,
+        node: (
+          <div key={`c-${group.id}-${idx}`}>
+            <button onClick={() => setTab('projects')} className="text-[10px] text-[#9B7A2F] font-bold mb-1 hover:underline flex items-center gap-1">
+              🎯 {group.name} <ChevronLeft size={10} />
+            </button>
+            {renderTaskItem(t, () => toggleCampaignTask(group.id, idx), () => deleteCampaignTask(group.id, idx), () => {}, patch => patchCampaignTask(group.id, idx, patch))}
+          </div>
+        ),
+      });
+    });
+  });
+
   openPrepTasks.forEach(pt => {
     flatRows.push({
       key: `prep-${pt.roundId}-${pt.idx}`,
@@ -528,7 +587,7 @@ export function TasksTab({ setTab, addTrigger }: { setTab: (t: string) => void; 
   // כדי שמשימות בלי תאריך אמיתי יופיעו במגירת "ללא תאריך" ולא "יתפסו" תא אקראי.
   interface CalItem {
     key: string; date: Date | null; label: string; done: boolean; t: any;
-    source: 'personal' | 'holiday' | 'event' | 'standalone' | 'homeVisit';
+    source: 'personal' | 'holiday' | 'event' | 'campaign' | 'standalone' | 'homeVisit';
     onToggle: () => void; onDelete: () => void; onTogglePerson: (p: string) => void; onPatch: (patch: any) => void; extra?: React.ReactNode;
     customCard?: React.ReactNode;
   }
@@ -578,6 +637,18 @@ export function TasksTab({ setTab, addTrigger }: { setTab: (t: string) => void; 
     });
   });
 
+  campaignGroups.forEach(group => {
+    group.tasks.forEach(({ t, idx }: any) => {
+      calendarItems.push({
+        key: `c-${group.id}-${idx}`,
+        date: group.contextDate ? applyTaskTime(group.contextDate, t) : (t.dueDate ? applyTaskTime(new Date(`${t.dueDate}T00:00`), t) : null),
+        label: `🎯 ${t.text}`, done: !!t.done, t, source: 'campaign',
+        onToggle: () => toggleCampaignTask(group.id, idx), onDelete: () => deleteCampaignTask(group.id, idx),
+        onTogglePerson: () => {}, onPatch: patch => patchCampaignTask(group.id, idx, patch),
+      });
+    });
+  });
+
   [...homeVisitTasks, ...standaloneTasks].forEach(({ t, idx }: any) => {
     calendarItems.push({
       key: `s-${idx}`, date: t.dueDate ? applyTaskTime(new Date(`${t.dueDate}T00:00`), t) : null,
@@ -595,6 +666,7 @@ export function TasksTab({ setTab, addTrigger }: { setTab: (t: string) => void; 
     ...holidayGroups.map(g => ({ kind: 'holiday' as const, id: g.id, label: g.id })),
     ...Object.keys(holidayLookup).filter(id => !holidayGroups.some(g => g.id === id)).map(id => ({ kind: 'holiday' as const, id, label: id })),
     ...(eventsData as any[]).map(e => ({ kind: 'event' as const, id: e.id, label: e.name })),
+    ...projects.filter(project => project.status !== 'closed').map(project => ({ kind: 'campaign' as const, id: project.id, label: project.name })),
   ];
 
   return (
@@ -606,7 +678,7 @@ export function TasksTab({ setTab, addTrigger }: { setTab: (t: string) => void; 
         </div>
         <div className="flex-1 px-3 md:px-0">
           <div className="font-['Frank_Ruhl_Libre'] text-lg font-bold text-[#C9A84C]">משימות</div>
-          <div className="text-[11px] text-white/45 mt-[1px]">{openHolidayCount + openEventCount + openHomeVisitCount + openStandaloneCount} משימות פתוחות · {personalDates.length} תאריכים ב-30 הימים הקרובים</div>
+          <div className="text-[11px] text-white/45 mt-[1px]">{openHolidayCount + openEventCount + openCampaignCount + openHomeVisitCount + openStandaloneCount} משימות פתוחות · {personalDates.length} תאריכים ב-30 הימים הקרובים</div>
         </div>
         <button
           onClick={() => setIsControlsOpen(o => !o)}
@@ -769,11 +841,11 @@ export function TasksTab({ setTab, addTrigger }: { setTab: (t: string) => void; 
         {/* משימות אירועים */}
         <div>
           <h2 className="font-['Frank_Ruhl_Libre'] text-lg font-bold text-[#0D1B2A] mb-3 flex items-center gap-2">
-            <CalendarCheck size={18} className="text-[#C9A84C]" /> משימות אירועים
+            <CalendarCheck size={18} className="text-[#C9A84C]" /> משימות פעילויות
           </h2>
           {eventGroups.length === 0 ? (
             <div className="bg-white rounded-xl p-4 text-center text-gray-500 shadow-sm text-sm border border-[#EDE6D6]">
-              אין עדיין משימות אירוע. אפשר להוסיף בכפתור ה-+ למעלה, או מכרטיס האירוע בכרטיסיית אירועים.
+              אין עדיין משימות פעילות. אפשר להוסיף בכפתור ה-+ למעלה, או מתוך מסך הפעילויות.
             </div>
           ) : (
             <div className="space-y-4">
@@ -804,6 +876,41 @@ export function TasksTab({ setTab, addTrigger }: { setTab: (t: string) => void; 
                         </div>
                       </>
                     )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* משימות קמפיינים */}
+        <div>
+          <h2 className="font-['Frank_Ruhl_Libre'] text-lg font-bold text-[#0D1B2A] mb-3 flex items-center gap-2">
+            <Target size={18} className="text-[#C9A84C]" /> משימות קמפיינים
+          </h2>
+          {campaignGroups.length === 0 ? (
+            <div className="bg-white rounded-xl p-4 text-center text-gray-500 shadow-sm text-sm border border-[#EDE6D6]">
+              אין משימות קמפיין פתוחות. אפשר להוסיף בכפתור ה־+ ולבחור קמפיין.
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {campaignGroups.map(group => {
+                const groupKey = `c-${group.id}`;
+                const collapsed = collapsedGroups.has(groupKey);
+                return (
+                  <div key={group.id}>
+                    <div className="flex items-center justify-between mb-1">
+                      <button onClick={() => setTab('projects')} className="flex items-center gap-1 text-xs font-bold text-[#9B7A2F] hover:underline">{group.name} <ChevronLeft size={12} /></button>
+                      <button onClick={() => toggleGroupCollapse(groupKey)} className="flex items-center gap-1 text-[10px] text-gray-400 px-1.5 py-0.5 rounded hover:bg-[#FAF6EE] transition-colors">
+                        {group.tasks.length} משימות <ChevronDown size={12} className={`transition-transform ${collapsed ? '' : 'rotate-180'}`} />
+                      </button>
+                    </div>
+                    {!collapsed && <>
+                      {group.contextDate && <div className="text-[10px] text-gray-400 flex items-center gap-1 mb-2"><Clock size={10} /> {formatRemaining(group.contextDate, new Date())} עד יעד הקמפיין</div>}
+                      <div className="space-y-2">{group.tasks.map(({ t, idx }: any) => (
+                        <div key={idx}>{renderTaskItem(t, () => toggleCampaignTask(group.id, idx), () => deleteCampaignTask(group.id, idx), () => {}, patch => patchCampaignTask(group.id, idx, patch))}</div>
+                      ))}</div>
+                    </>}
                   </div>
                 );
               })}
@@ -934,13 +1041,13 @@ export function TasksTab({ setTab, addTrigger }: { setTab: (t: string) => void; 
               <h3 className="font-bold text-xl text-[#0D1B2A]">הוספת משימה</h3>
               <button onClick={() => setIsAddOpen(false)} className="text-gray-400 p-1 hover:text-gray-600"><X size={20} /></button>
             </div>
-            <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">לאיזה חג/אירוע</label>
+            <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">לאיזה חג, פעילות או קמפיין</label>
             <select
               value={addTarget ? `${addTarget.kind}:${addTarget.id}` : ''}
               onChange={e => {
                 const [kind, id] = e.target.value.split(':');
                 if (!id) { setAddTarget(null); return; }
-                setAddTarget({ kind: kind as 'holiday' | 'event', id });
+                setAddTarget({ kind: kind as 'holiday' | 'event' | 'campaign', id });
                 // משימת אירוע מקבלת אוטומטית את תאריך האירוע הקרוב, אלא אם המשתמש
                 // כבר בחר תאריך ידנית בעצמו — לא דורסים בחירה מפורשת.
                 if (kind === 'event' && !addDate) {
@@ -955,8 +1062,11 @@ export function TasksTab({ setTab, addTrigger }: { setTab: (t: string) => void; 
               <optgroup label="חגים">
                 {addTargetOptions.filter(o => o.kind === 'holiday').map(o => <option key={o.id} value={`${o.kind}:${o.id}`}>{o.label}</option>)}
               </optgroup>
-              <optgroup label="אירועים">
+              <optgroup label="פעילויות">
                 {addTargetOptions.filter(o => o.kind === 'event').map(o => <option key={o.id} value={`${o.kind}:${o.id}`}>{o.label}</option>)}
+              </optgroup>
+              <optgroup label="קמפיינים">
+                {addTargetOptions.filter(o => o.kind === 'campaign').map(o => <option key={o.id} value={`${o.kind}:${o.id}`}>{o.label}</option>)}
               </optgroup>
             </select>
             <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">תיאור המשימה</label>
@@ -1028,6 +1138,8 @@ export function TasksTab({ setTab, addTrigger }: { setTab: (t: string) => void; 
               updateHolidayExtras(target.id, { tasks: [...(holidayExtras[target.id]?.tasks || []), newTask] });
             } else if (target.kind === 'event') {
               updateEventsData((eventsData as any[]).map((e: any) => e.id === target.id ? { ...e, tasks: [...(e.tasks || []), newTask] } : e));
+            } else if (target.kind === 'campaign') {
+              patchCampaignTasks(target.id, tasks => [...tasks, newTask]);
             } else {
               // 'standalone' וגם 'personal' (תזכורת תאריך אישי) — משימת המשך
               // חופשית ברשימת המשימות החד-פעמיות.

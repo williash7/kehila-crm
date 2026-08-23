@@ -23,6 +23,8 @@ export function HolidayModal({ holiday, onClose, backLabel }: { holiday: any, on
   const [evType, setEvType] = useState('other');
   const [evDate, setEvDate] = useState('');
   const [evTime, setEvTime] = useState('');
+  const [evLocation, setEvLocation] = useState('');
+  const [evEntryPrice, setEvEntryPrice] = useState('');
 
   // Use either the real id or fallback to stringified name for custom holidays
   const id = holiday.id || holiday.name;
@@ -746,15 +748,15 @@ ${docs.length > 0 ? section('📄 מסמכים מקושרים',
           )}
         </div>
 
-        {/* אירועים בחג — חג יכול להחזיק כמה התכנסויות נפרדות */}
+        {/* פעילויות בחג — חג יכול להחזיק כמה התכנסויות נפרדות */}
         <div className="mb-6">
           <div className="flex justify-between items-center mb-3">
-            <h3 className="font-['Frank_Ruhl_Libre'] text-lg font-bold text-[#0D1B2A]">🎪 האירועים בחג</h3>
+            <h3 className="font-['Frank_Ruhl_Libre'] text-lg font-bold text-[#0D1B2A]">🎪 הפעילויות בחג</h3>
             <button
               onClick={() => { setIsAddingEvent(!isAddingEvent); setEvDate(holiday.dateStr || holiday.date?.split('T')[0] || ''); }}
               className="bg-[#C9A84C]/10 text-[#9B7A2F] text-xs font-bold px-3 py-1.5 rounded-lg active:scale-95 transition-transform"
             >
-              {isAddingEvent ? 'בטל' : '+ הוסף אירוע'}
+              {isAddingEvent ? 'בטל' : '+ הוסף פעילות'}
             </button>
           </div>
 
@@ -762,7 +764,7 @@ ${docs.length > 0 ? section('📄 מסמכים מקושרים',
             <div className="bg-white rounded-xl shadow-sm border border-[#EDE6D6] p-3 mb-3 space-y-2">
               <input
                 value={evName} onChange={e => setEvName(e.target.value)}
-                placeholder="שם האירוע — למשל: סעודת ליל החג"
+                placeholder="שם הפעילות — למשל: סעודת ליל החג"
                 className="w-full border border-[#EDE6D6] rounded-lg px-3 py-2 text-sm outline-none focus:border-[#C9A84C]"
               />
               <div className="grid grid-cols-3 gap-2">
@@ -778,20 +780,24 @@ ${docs.length > 0 ? section('📄 מסמכים מקושרים',
                 <input type="time" value={evTime} onChange={e => setEvTime(e.target.value)}
                        className="border border-[#EDE6D6] rounded-lg px-2 py-2 text-sm outline-none focus:border-[#C9A84C]" />
               </div>
+              <div className="grid grid-cols-2 gap-2">
+                <input value={evLocation} onChange={e => setEvLocation(e.target.value)} placeholder="מקום — אופציונלי" className="border border-[#EDE6D6] rounded-lg px-2 py-2 text-sm outline-none focus:border-[#C9A84C]" />
+                <input type="number" min="0" value={evEntryPrice} onChange={e => setEvEntryPrice(e.target.value)} placeholder="מחיר כניסה — אופציונלי" className="border border-[#EDE6D6] rounded-lg px-2 py-2 text-sm outline-none focus:border-[#C9A84C]" />
+              </div>
               <button
                 onClick={() => {
                   if (!evName.trim() || !evDate) return;
-                  updateEventsData([...eventsData, buildHolidayEvent(id, { name: evName, type: evType, date: evDate, time: evTime })]);
+                  updateEventsData([...eventsData, buildHolidayEvent(id, { name: evName, type: evType, date: evDate, time: evTime, location: evLocation, entryPrice: Number(evEntryPrice) || 0 })]);
                   logAction('event_create');
-                  setEvName(''); setEvTime(''); setIsAddingEvent(false);
+                  setEvName(''); setEvTime(''); setEvLocation(''); setEvEntryPrice(''); setIsAddingEvent(false);
                 }}
                 disabled={!evName.trim() || !evDate}
                 className="w-full bg-[#0D1B2A] text-white py-2 rounded-lg text-sm font-bold disabled:opacity-40"
               >
-                צור אירוע
+                צור פעילות
               </button>
               <p className="text-[11px] text-gray-400 leading-relaxed">
-                האירוע ינוהל בטאב האירועים — שם תסמן נוכחות, תנהל משימות ותכין פרסום.
+                הפעילות תנוהל במסך הפעילויות — שם תסמן נוכחות, תשלום, משימות ותקציב.
                 הנוכחות שלו תיספר גם בחג.
               </p>
             </div>
@@ -800,7 +806,7 @@ ${docs.length > 0 ? section('📄 מסמכים מקושרים',
           <div className="bg-white rounded-xl shadow-sm border border-[#EDE6D6] overflow-hidden">
             {linkedEvents.length === 0 ? (
               <div className="text-sm text-gray-400 text-center py-4">
-                אין אירועים בחג הזה. אפשר להוסיף, או לנהל את החג כמו שהוא.
+                אין פעילויות בחג הזה. אפשר להוסיף, או לנהל את מעטפת החג כמו שהיא.
               </div>
             ) : (
               <div className="divide-y divide-[#EDE6D6]">

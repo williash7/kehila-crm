@@ -11,7 +11,7 @@ interface DonationModalProps {
 }
 
 export function DonationModal({ onClose, defaultName = '' }: DonationModalProps) {
-  const { donors, refresh, crm, addManualDonation, projects } = useAppStore();
+  const { donors, refresh, crm, addManualDonation, projects, eventsData } = useAppStore();
   const openProjects = activeProjects(projects);
   const [name, setName] = useState(defaultName);
   const [amount, setAmount] = useState('');
@@ -128,7 +128,9 @@ export function DonationModal({ onClose, defaultName = '' }: DonationModalProps)
             {/* בחירת פרויקט מייצרת את הקישור לבד: הייעוד נכתב בדיוק כמו
                 שהפרויקט מצפה לו, בלי סיכון לשגיאת כתיב. */}
             {openProjects.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 mb-2">
+              <div className="mb-2">
+                <div className="text-[10px] text-gray-400 mb-1">קמפיינים</div>
+                <div className="flex flex-wrap gap-1.5">
                 {openProjects.map(p => (
                   <button
                     key={p.id}
@@ -143,7 +145,30 @@ export function DonationModal({ onClose, defaultName = '' }: DonationModalProps)
                     🎯 {p.name}
                   </button>
                 ))}
+                </div>
               </div>
+            )}
+
+            {eventsData.length > 0 && (
+              <details className="mb-2">
+                <summary className="text-[10px] font-bold text-[#9B7A2F] cursor-pointer">קישור לפעילות — אופציונלי</summary>
+                <div className="flex flex-wrap gap-1.5 mt-1.5">
+                  {eventsData.map(activity => (
+                    <button
+                      key={activity.id}
+                      type="button"
+                      onClick={() => setPurpose(purpose === activity.purposeTag ? '' : activity.purposeTag)}
+                      className={`text-xs font-bold px-2.5 py-1.5 rounded-lg transition-colors ${
+                        purpose === activity.purposeTag
+                          ? 'bg-[#0D1B2A] text-[#C9A84C]'
+                          : 'bg-purple-50 text-purple-700'
+                      }`}
+                    >
+                      📅 {activity.name}
+                    </button>
+                  ))}
+                </div>
+              </details>
             )}
 
             <input

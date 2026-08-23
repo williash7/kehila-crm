@@ -14,9 +14,10 @@ import { TaskDetailsPanel } from './TaskDetailsPanel';
 import { CompletionFollowUpModal } from './CompletionFollowUpModal';
 import { emptyPerformer, Performer } from '../lib/events';
 import { BudgetEditor, emptyBudget } from './BudgetEditor';
+import { ACTIVITY_KIND_LABEL, ActivityKind, ActivityParticipant, activityDonations, activityReadiness, normalizeActivity } from '../lib/activities';
 
 export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: number } } = {}) {
-  const { eventsData, updateEventsData, visibleDonors, crm, hk, failures, settings, refresh, history, archiveOccurrence, importTasksFromHistory } = useAppStore();
+  const { eventsData, updateEventsData, visibleDonors, crm, hk, failures, settings, refresh, history, archiveOccurrence, importTasksFromHistory, donations, projects } = useAppStore();
   const [filter, setFilter] = useState('all');
   const [isAddingMode, setIsAddingMode] = useState(false);
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
@@ -39,6 +40,10 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
   const [evFreq, setEvFreq] = useState('weekly');
   const [evDate, setEvDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [evTime, setEvTime] = useState('');
+  const [evActivityKind, setEvActivityKind] = useState<ActivityKind>('recurring');
+  const [evLocation, setEvLocation] = useState('');
+  const [evPurposeTag, setEvPurposeTag] = useState('');
+  const [evEntryPrice, setEvEntryPrice] = useState('');
 
   React.useEffect(() => {
     if (addTrigger?.tab === 'events' && addTrigger.count) {
@@ -50,14 +55,14 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
 
   const [attSearch, setAttSearch] = useState('');
   const [attCategory, setAttCategory] = useState('all');
-  const [pendingAtt, setPendingAtt] = useState<Record<string, boolean>>({});
+  const [pendingParticipants, setPendingParticipants] = useState<Record<string, ActivityParticipant>>({});
   const [attDateISO, setAttDateISO] = useState(() => new Date().toISOString().split('T')[0]);
 
   const typeIcons: Record<string, string> = { shabbat: '🕯️', minyan: '🙏', class: '📚', other: '📌' };
   const typeLabels: Record<string, string> = { shabbat: 'שבת', minyan: 'מניין', class: 'שיעור', other: 'אחר' };
   const freqLabels: Record<string, string> = { weekly: 'שבועי', biweekly: 'דו-שבועי', monthly: 'חודשי', oneoff: 'חד-פעמי' };
 
-  const activeEvents = filter === 'all' ? eventsData : eventsData.filter((e: any) => e.type === filter);
+  const activeEvents = filter === 'all' ? eventsData : eventsData.filter((e: any) => e.activityKind === filter);
 
   const resetEventForm = () => {
     setEvName('');
@@ -65,6 +70,10 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
     setEvFreq('weekly');
     setEvDate(new Date().toISOString().split('T')[0]);
     setEvTime('');
+    setEvActivityKind('recurring');
+    setEvLocation('');
+    setEvPurposeTag('');
+    setEvEntryPrice('');
   };
 
   const openAddModal = () => {
@@ -79,6 +88,10 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
     setEvFreq(ev.freq || 'weekly');
     setEvDate(ev.date || new Date().toISOString().split('T')[0]);
     setEvTime(ev.time || '');
+    setEvActivityKind(ev.activityKind || (ev.holidayId ? 'holiday' : ev.freq === 'oneoff' ? 'special' : 'recurring'));
+    setEvLocation(ev.location || '');
+    setEvPurposeTag(ev.purposeTag || ev.name || '');
+    setEvEntryPrice(ev.entryPrice ? String(ev.entryPrice) : '');
     setEditingEventId(ev.id);
     setIsAddingMode(true);
   };
@@ -90,24 +103,34 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
         ...e,
         name: evName.trim(),
         type: evType,
-        freq: evFreq,
+        activityKind: evActivityKind,
+        freq: evActivityKind === 'recurring' ? evFreq : 'oneoff',
         date: evDate,
         time: evTime,
+        location: evLocation.trim(),
+        purposeTag: evPurposeTag.trim() || evName.trim(),
+        entryPrice: Number(evEntryPrice) || 0,
       } : e));
       logAction('event_edit');
     } else {
-      const occ = nextEventOccurrence({ date: evDate, freq: evFreq, time: evTime }, new Date());
-      const newEv = {
+      const effectiveFreq = evActivityKind === 'recurring' ? evFreq : 'oneoff';
+      const occ = nextEventOccurrence({ date: evDate, freq: effectiveFreq, time: evTime }, new Date());
+      const newEv = normalizeActivity({
         id: `ev_${Date.now()}`,
         name: evName.trim(),
         type: evType,
-        freq: evFreq,
+        activityKind: evActivityKind,
+        freq: effectiveFreq,
         date: evDate,
         time: evTime,
         attendance: {},
         tasks: createEventMediaTasks(occ ? occ.toISOString().split('T')[0] : undefined),
         performers: [],
-      };
+        budget: emptyBudget(),
+        location: evLocation.trim(),
+        purposeTag: evPurposeTag.trim() || evName.trim(),
+        entryPrice: Number(evEntryPrice) || 0,
+      });
       updateEventsData([...eventsData, newEv]);
       logAction('event_create');
       logAction('task_create', createEventMediaTasks().length);
@@ -118,15 +141,24 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
   };
 
   const deleteEvent = (ev: any) => {
-    if (!confirm(`למחוק את "${ev.name}"? כל היסטוריית הנוכחות והמשימות שלו יימחקו לצמיתות.`)) return;
+    if (!confirm(`למחוק את "${ev.name}"? כל היסטוריית הנוכחות והמשימות של הפעילות תימחק לצמיתות.`)) return;
     updateEventsData(eventsData.filter((e: any) => e.id !== ev.id));
+  };
+
+  const loadParticipantsForDate = (ev: any, dateKey: string) => {
+    const attendance = { ...(ev?.attendance?.[dateKey] || {}) };
+    const detailed: Record<string, ActivityParticipant> = { ...(ev?.participants?.[dateKey] || {}) };
+    Object.entries(attendance).forEach(([name, present]) => {
+      if (present && !detailed[name]) detailed[name] = { attended: true };
+    });
+    setPendingParticipants(detailed);
   };
 
   const openAttModal = (ev: any) => {
     const iso = new Date().toISOString().split('T')[0];
     setAttDateISO(iso);
     const dateKey = format(new Date(iso), 'dd/MM/yyyy');
-    setPendingAtt({ ...(ev.attendance?.[dateKey] || {}) });
+    loadParticipantsForDate(ev, dateKey);
     setAttEventId(ev.id);
     setAttSearch('');
   };
@@ -136,7 +168,7 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
   const openAttModalForDate = (ev: any, dateKey: string) => {
     const [d, m, y] = dateKey.split('/');
     setAttDateISO(`${y}-${m}-${d}`);
-    setPendingAtt({ ...(ev.attendance?.[dateKey] || {}) });
+    loadParticipantsForDate(ev, dateKey);
     setAttEventId(ev.id);
     setAttSearch('');
   };
@@ -144,7 +176,14 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
   const changeAttDate = (iso: string) => {
     setAttDateISO(iso);
     const dateKey = format(new Date(iso), 'dd/MM/yyyy');
-    setPendingAtt({ ...(currentAttEvent?.attendance?.[dateKey] || {}) });
+    loadParticipantsForDate(currentAttEvent, dateKey);
+  };
+
+  const patchParticipant = (name: string, patch: Partial<ActivityParticipant>) => {
+    setPendingParticipants(prev => ({
+      ...prev,
+      [name]: { ...(prev[name] || {}), ...patch },
+    }));
   };
 
   const saveAttendance = async () => {
@@ -154,7 +193,10 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
     const prevAtt = ev?.attendance?.[dateKey] || {};
     // מי סומן "נוכח" כרגע ולא היה מסומן קודם עבור אותו תאריך — רק עבורם
     // נרשום רשומת "יצירת קשר" חדשה, כדי לא ליצור כפילויות בשמירות חוזרות.
-    const newlyPresent = Object.keys(pendingAtt).filter(name => pendingAtt[name] && !prevAtt[name]);
+    const attendanceNow = Object.fromEntries(
+      Object.entries(pendingParticipants).map(([name, row]) => [name, !!(row as ActivityParticipant).attended])
+    );
+    const newlyPresent = Object.keys(attendanceNow).filter(name => attendanceNow[name] && !prevAtt[name]);
 
     const updated = eventsData.map((e: any) => {
       if (e.id === attEventId) {
@@ -162,7 +204,11 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
           ...e,
           attendance: {
             ...e.attendance,
-            [dateKey]: pendingAtt
+            [dateKey]: attendanceNow
+          },
+          participants: {
+            ...e.participants,
+            [dateKey]: pendingParticipants,
           }
         };
       }
@@ -179,9 +225,9 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
           apiPost('addMeeting', {
             name,
             date: slashDateToDotDate(dateKey),
-            meetType: 'נוכחות באירוע',
+            meetType: 'נוכחות בפעילות',
             purpose: ev.name || '',
-            notes: `נוכחות באירוע: ${ev.name || ''}`,
+            notes: `נוכחות בפעילות: ${ev.name || ''}`,
             nextMeet: ''
           }).then(res => ({ name, res }))
         ));
@@ -331,8 +377,8 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
       <div className="bg-[#0D1B2A] px-4 py-3 pb-3 flex items-center justify-between sticky top-0 z-50 shadow-md">
         <div className="w-9 h-9 bg-gradient-to-br from-[#C9A84C] to-[#9B7A2F] rounded-lg flex items-center justify-center font-['Frank_Ruhl_Libre'] text-xl text-white font-black shrink-0">ח</div>
         <div className="flex-1 px-3">
-          <div className="font-['Frank_Ruhl_Libre'] text-lg font-bold text-[#C9A84C]">אירועים קבועים</div>
-          <div className="text-[11px] text-white/45 mt-[1px]">{activeEvents.length} אירועים פעילים</div>
+          <div className="font-['Frank_Ruhl_Libre'] text-lg font-bold text-[#C9A84C]">פעילויות</div>
+          <div className="text-[11px] text-white/45 mt-[1px]">קבועות, מיוחדות ופעילויות חג · {activeEvents.length}</div>
         </div>
         <button onClick={openAddModal} className="w-9 h-9 bg-white/10 rounded-full flex items-center justify-center text-white/80 shrink-0">
           <Plus size={20} />
@@ -343,10 +389,9 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
         {/* Filters */}
         <div className="flex gap-2 mb-4 overflow-x-auto pb-1 custom-scrollbar">
            <button onClick={() => setFilter('all')} className={`shrink-0 px-3.5 py-1.5 rounded-full text-xs font-bold transition-colors ${filter === 'all' ? 'bg-[#0D1B2A] text-[#C9A84C]' : 'bg-white text-gray-500 border border-[#EDE6D6]'}`}>הכל</button>
-           <button onClick={() => setFilter('shabbat')} className={`shrink-0 px-3.5 py-1.5 rounded-full text-xs font-bold transition-colors ${filter === 'shabbat' ? 'bg-[#0D1B2A] text-[#C9A84C]' : 'bg-white text-gray-500 border border-[#EDE6D6]'}`}>🕯️ שבת</button>
-           <button onClick={() => setFilter('minyan')} className={`shrink-0 px-3.5 py-1.5 rounded-full text-xs font-bold transition-colors ${filter === 'minyan' ? 'bg-[#0D1B2A] text-[#C9A84C]' : 'bg-white text-gray-500 border border-[#EDE6D6]'}`}>🙏 מניין</button>
-           <button onClick={() => setFilter('class')} className={`shrink-0 px-3.5 py-1.5 rounded-full text-xs font-bold transition-colors ${filter === 'class' ? 'bg-[#0D1B2A] text-[#C9A84C]' : 'bg-white text-gray-500 border border-[#EDE6D6]'}`}>📚 שיעור</button>
-           <button onClick={() => setFilter('other')} className={`shrink-0 px-3.5 py-1.5 rounded-full text-xs font-bold transition-colors ${filter === 'other' ? 'bg-[#0D1B2A] text-[#C9A84C]' : 'bg-white text-gray-500 border border-[#EDE6D6]'}`}>📌 אחר</button>
+           <button onClick={() => setFilter('recurring')} className={`shrink-0 px-3.5 py-1.5 rounded-full text-xs font-bold transition-colors ${filter === 'recurring' ? 'bg-[#0D1B2A] text-[#C9A84C]' : 'bg-white text-gray-500 border border-[#EDE6D6]'}`}>🔁 קבועות</button>
+           <button onClick={() => setFilter('special')} className={`shrink-0 px-3.5 py-1.5 rounded-full text-xs font-bold transition-colors ${filter === 'special' ? 'bg-[#0D1B2A] text-[#C9A84C]' : 'bg-white text-gray-500 border border-[#EDE6D6]'}`}>✨ מיוחדות</button>
+           <button onClick={() => setFilter('holiday')} className={`shrink-0 px-3.5 py-1.5 rounded-full text-xs font-bold transition-colors ${filter === 'holiday' ? 'bg-[#0D1B2A] text-[#C9A84C]' : 'bg-white text-gray-500 border border-[#EDE6D6]'}`}>🕯️ חגים</button>
         </div>
 
         <div className="space-y-3">
@@ -360,6 +405,9 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
             const lastCount = lastDate ? Object.values(ev.attendance[lastDate]).filter(Boolean).length : 0;
             const lastNames = lastDate ? Object.entries(ev.attendance[lastDate]).filter(e => e[1]).slice(0, 8).map(e => e[0].split(' ')[0]) : [];
             const nextOcc = nextEventOccurrence(ev, new Date());
+            const linkedCampaigns = projects.filter(p => (p.activityIds || []).includes(ev.id));
+            const linkedIncome = activityDonations(ev, donations, linkedCampaigns.map(p => p.purposeTag)).reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
+            const readiness = activityReadiness(ev);
 
             return (
               <div key={ev.id} className="bg-white rounded-xl shadow-sm border border-[#EDE6D6] overflow-hidden">
@@ -368,7 +416,8 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
                       <div className="w-11 h-11 bg-gray-50 rounded-full flex items-center justify-center text-xl shrink-0 opacity-80">{typeIcons[ev.type] || '📌'}</div>
                       <div>
                         <div className="font-bold text-[#0D1B2A] text-[15px]">{ev.name}</div>
-                        <div className="text-[11px] text-gray-500">{freqLabels[ev.freq] || ev.freq} {ev.time && `· ${ev.time}`}</div>
+                        <div className="text-[11px] text-gray-500">{ACTIVITY_KIND_LABEL[ev.activityKind as ActivityKind]} · {freqLabels[ev.freq] || ev.freq} {ev.time && `· ${ev.time}`}</div>
+                        {(ev.location || ev.holidayId) && <div className="text-[10px] text-gray-400 mt-0.5">{ev.holidayId ? `חג: ${ev.holidayId}` : ''}{ev.holidayId && ev.location ? ' · ' : ''}{ev.location ? `📍 ${ev.location}` : ''}</div>}
                         {nextOcc && (
                           <div className="text-[10px] text-[#9B7A2F] flex items-center gap-1 mt-0.5"><Clock size={10}/> {formatRemaining(nextOcc, new Date())} למפגש הבא</div>
                         )}
@@ -411,10 +460,10 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
                            </span>
                          )}
                       </button>
-                      <button onClick={() => openEditModal(ev)} title="עריכת אירוע" className="bg-gray-50 text-gray-500 p-1.5 rounded-lg active:scale-95 transition-transform shrink-0">
+                      <button onClick={() => openEditModal(ev)} title="עריכת פעילות" className="bg-gray-50 text-gray-500 p-1.5 rounded-lg active:scale-95 transition-transform shrink-0">
                          <Pencil size={14}/>
                       </button>
-                      <button onClick={() => deleteEvent(ev)} title="מחיקת אירוע" className="bg-red-50 text-red-400 p-1.5 rounded-lg active:scale-95 transition-transform shrink-0">
+                      <button onClick={() => deleteEvent(ev)} title="מחיקת פעילות" className="bg-red-50 text-red-400 p-1.5 rounded-lg active:scale-95 transition-transform shrink-0">
                          <Trash2 size={14}/>
                       </button>
                     </div>
@@ -432,8 +481,13 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
                    </div>
                    <div className="w-px bg-[#EDE6D6]"></div>
                    <div className="text-center">
-                     <div className="text-[13px] font-bold text-[#0D1B2A] leading-tight mt-1">{lastDate || '—'}</div>
-                     <div className="text-[10px] text-gray-500 uppercase tracking-wide">תאריך</div>
+                     <div className="text-[13px] font-bold text-[#0D1B2A] leading-tight mt-1">{readiness.percent}%</div>
+                     <div className="text-[10px] text-gray-500 uppercase tracking-wide">מוכנות</div>
+                   </div>
+                   <div className="w-px bg-[#EDE6D6]"></div>
+                   <div className="text-center">
+                     <div className="text-[13px] font-bold text-[#0D1B2A] leading-tight mt-1">{linkedIncome ? `₪${linkedIncome.toLocaleString()}` : '—'}</div>
+                     <div className="text-[10px] text-gray-500 uppercase tracking-wide">הכנסות מקושרות</div>
                    </div>
                  </div>
 
@@ -480,14 +534,14 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
           {activeEvents.length === 0 && (
             <EmptyState
               icon="📌"
-              title="עוד אין אירועים קבועים"
-              hint="מניין, שיעור או סעודת שבת — כל התכנסות עם שעה ומקום, שחוזרת או חד-פעמית."
+              title="עוד אין פעילויות"
+              hint="כאן מנהלים שיעור קבוע, אירוע מיוחד או פעילות ששייכת לחג."
               action={
                 <button
                   onClick={() => setIsAddingMode(true)}
                   className="bg-[#0D1B2A] text-[#E8C97A] text-sm font-bold px-4 py-2 rounded-xl"
                 >
-                  + הוסף אירוע ראשון
+                  + הוסף פעילות ראשונה
                 </button>
               }
             />
@@ -498,20 +552,31 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
       {/* Add/Edit Event Modal */}
       {isAddingMode && (
         <FullScreenView
-          eyebrow="אירוע קבוע"
-          title={editingEventId ? 'עריכת אירוע קבוע' : 'הוספת אירוע קבוע'}
-          backLabel="אירועים"
+          eyebrow="פעילות"
+          title={editingEventId ? 'עריכת פעילות' : 'הוספת פעילות'}
+          backLabel="פעילויות"
           onClose={() => setIsAddingMode(false)}
         >
            <>
              
              <div className="space-y-4">
                <div>
-                 <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">שם האירוע</label>
-                 <input value={evName} onChange={e => setEvName(e.target.value)} type="text" className="w-full bg-white border border-[#EDE6D6] rounded-xl px-3 py-2.5 text-sm outline-none focus:border-[#C9A84C]" placeholder="למשל: מניין שחרית" />
+                 <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">שם הפעילות</label>
+                 <input value={evName} onChange={e => setEvName(e.target.value)} type="text" className="w-full bg-white border border-[#EDE6D6] rounded-xl px-3 py-2.5 text-sm outline-none focus:border-[#C9A84C]" placeholder="למשל: שיעור תניא או סיור סליחות" />
                </div>
                <div>
-                 <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">סוג האירוע</label>
+                 <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">מסגרת הפעילות</label>
+                 <div className={`grid gap-2 ${evActivityKind === 'holiday' ? 'grid-cols-1' : 'grid-cols-2'}`}>
+                   {(evActivityKind === 'holiday' ? ['holiday' as ActivityKind] : ['recurring', 'special'] as ActivityKind[]).map(kind => (
+                     <button key={kind} type="button" onClick={() => setEvActivityKind(kind)} className={`py-2 text-xs font-bold rounded-xl border ${evActivityKind === kind ? 'bg-[#0D1B2A] text-[#C9A84C] border-[#0D1B2A]' : 'bg-white text-gray-500 border-[#EDE6D6]'}`}>
+                       {ACTIVITY_KIND_LABEL[kind]}
+                     </button>
+                   ))}
+                 </div>
+                 <div className="text-[10px] text-gray-400 mt-1.5">פעילות חג חדשה מוסיפים מתוך החג עצמו, וכך היא נשמרת במעטפת הנכונה.</div>
+               </div>
+               <div>
+                 <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">תוכן הפעילות</label>
                  <div className="grid grid-cols-2 gap-2">
                    {Object.keys(typeLabels).map(t => (
                      <button key={t} onClick={() => setEvType(t)} className={`py-2 text-sm font-bold rounded-xl border ${evType === t ? 'bg-[#0D1B2A] text-[#C9A84C] border-[#0D1B2A]' : 'bg-white text-gray-500 border-[#EDE6D6]'}`}>
@@ -520,12 +585,12 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
                    ))}
                  </div>
                </div>
-               <div>
+               {evActivityKind === 'recurring' && <div>
                  <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">תדירות</label>
                  <select value={evFreq} onChange={e => setEvFreq(e.target.value)} className="w-full bg-white border border-[#EDE6D6] rounded-xl px-3 py-2.5 text-sm font-bold text-gray-700 outline-none focus:border-[#C9A84C]">
-                   {Object.keys(freqLabels).map(f => <option key={f} value={f}>{freqLabels[f]}</option>)}
+                   {Object.keys(freqLabels).filter(f => f !== 'oneoff').map(f => <option key={f} value={f}>{freqLabels[f]}</option>)}
                  </select>
-               </div>
+               </div>}
                <div className="grid grid-cols-2 gap-3">
                  <div>
                    <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">תאריך בסיס</label>
@@ -536,9 +601,27 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
                    <input value={evTime} onChange={e => setEvTime(e.target.value)} type="time" className="w-full bg-white border border-[#EDE6D6] rounded-xl px-3 py-2.5 text-sm outline-none focus:border-[#C9A84C]" />
                  </div>
                </div>
+               <div>
+                 <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">מקום</label>
+                 <input value={evLocation} onChange={e => setEvLocation(e.target.value)} type="text" className="w-full bg-white border border-[#EDE6D6] rounded-xl px-3 py-2.5 text-sm outline-none focus:border-[#C9A84C]" placeholder="בית חב״ד, אולם, כתובת..." />
+               </div>
+               <details className="bg-white border border-[#EDE6D6] rounded-xl p-3">
+                 <summary className="text-sm font-bold text-[#0D1B2A] cursor-pointer">כסף והרשמה — אופציונלי</summary>
+                 <div className="grid grid-cols-2 gap-3 mt-3">
+                   <div>
+                     <label className="block text-[10px] font-bold text-gray-500 mb-1">מחיר כניסה לאדם</label>
+                     <input value={evEntryPrice} onChange={e => setEvEntryPrice(e.target.value)} type="number" min="0" className="w-full border border-[#EDE6D6] rounded-lg px-2.5 py-2 text-sm" placeholder="0" />
+                   </div>
+                   <div>
+                     <label className="block text-[10px] font-bold text-gray-500 mb-1">תג שיוך לתרומות</label>
+                     <input value={evPurposeTag} onChange={e => setEvPurposeTag(e.target.value)} type="text" className="w-full border border-[#EDE6D6] rounded-lg px-2.5 py-2 text-sm" placeholder={evName || 'שם הפעילות'} />
+                   </div>
+                 </div>
+                 <p className="text-[10px] text-gray-400 mt-2">תרומה נרשמת פעם אחת ביומן הרגיל. בחירת התג בזמן ההזנה רק מקשרת אותה לפעילות.</p>
+               </details>
                
                <button onClick={saveEvent} className="w-full bg-gradient-to-br from-[#0D1B2A] to-[#1A2E45] text-white rounded-xl py-3.5 font-bold shadow-md mt-2">
-                 {editingEventId ? 'שמור שינויים' : 'שמור אירוע'}
+                 {editingEventId ? 'שמור שינויים' : 'שמור פעילות'}
                </button>
              </div>
            </>
@@ -550,11 +633,11 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
         <FullScreenView
           eyebrow="נוכחות"
           title={currentAttEvent?.name || 'נוכחות'}
-          backLabel="אירועים"
+          backLabel="פעילויות"
           onClose={() => setAttEventId(null)}
           footer={
             <button onClick={saveAttendance} className="w-full bg-gradient-to-br from-[#0D1B2A] to-[#1A2E45] text-white rounded-xl py-3.5 font-bold shadow-md">
-              שמור נוכחות ({Object.values(pendingAtt).filter(Boolean).length})
+              שמור מפגש ({Object.values(pendingParticipants).filter(row => (row as ActivityParticipant).attended).length} הגיעו)
             </button>
           }
         >
@@ -606,16 +689,31 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
 
              <div className="space-y-2">
                 {donorNames.map(n => {
-                  const isChecked = pendingAtt[n];
+                  const row = pendingParticipants[n] || {};
+                  const isChecked = !!row.attended;
+                  const isPaidActivity = Number(currentAttEvent?.entryPrice) > 0;
                   return (
-                    <div key={n} onClick={() => setPendingAtt({...pendingAtt, [n]: !isChecked})} className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer shadow-sm transition-colors border ${isChecked ? 'bg-[#D1FAE5] border-[#10B981]/50' : 'bg-white border-[#EDE6D6]'}`}>
-                       <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#0D1B2A] to-[#1A2E45] text-white flex items-center justify-center font-bold text-sm shrink-0">
-                          {n.charAt(0)}
-                       </div>
-                       <div className="flex-1 font-bold text-[#0D1B2A]">{n}</div>
-                       <div className={`w-6 h-6 rounded-md border-2 flex items-center justify-center shrink-0 transition-colors ${isChecked ? 'bg-[#10B981] border-[#10B981] text-white' : 'bg-white border-[#EDE6D6]'}`}>
-                          {isChecked && <Check size={14} />}
-                       </div>
+                    <div key={n} className={`p-3 rounded-xl shadow-sm transition-colors border ${isChecked ? 'bg-[#D1FAE5] border-[#10B981]/50' : 'bg-white border-[#EDE6D6]'}`}>
+                       <button type="button" onClick={() => patchParticipant(n, { attended: !isChecked })} className="w-full flex items-center gap-3 text-right">
+                         <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#0D1B2A] to-[#1A2E45] text-white flex items-center justify-center font-bold text-sm shrink-0">{n.charAt(0)}</div>
+                         <div className="flex-1 font-bold text-[#0D1B2A]">{n}</div>
+                         <div className={`w-6 h-6 rounded-md border-2 flex items-center justify-center shrink-0 transition-colors ${isChecked ? 'bg-[#10B981] border-[#10B981] text-white' : 'bg-white border-[#EDE6D6]'}`}>
+                           {isChecked && <Check size={14} />}
+                         </div>
+                       </button>
+                       {isPaidActivity && (
+                         <div className="grid grid-cols-3 gap-1.5 mt-2 pt-2 border-t border-black/5">
+                           {([
+                             ['registered', 'נרשם'],
+                             ['paid', 'שילם'],
+                             ['owed', 'חייב'],
+                           ] as const).map(([key, label]) => (
+                             <button key={key} type="button" onClick={() => patchParticipant(n, { [key]: !row[key] })} className={`text-[10px] font-bold rounded-lg py-1.5 border ${row[key] ? 'bg-[#0D1B2A] text-[#C9A84C] border-[#0D1B2A]' : 'bg-white text-gray-500 border-[#EDE6D6]'}`}>
+                               {label}
+                             </button>
+                           ))}
+                         </div>
+                       )}
                     </div>
                   );
                 })}
@@ -630,7 +728,7 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
         <FullScreenView
           eyebrow="משימות"
           title={currentTasksEvent.name}
-          backLabel="אירועים"
+          backLabel="פעילויות"
           onClose={() => setTasksEventId(null)}
         >
            <>
@@ -662,7 +760,7 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
              )}
              <div className="space-y-2">
                {(currentTasksEvent.tasks || []).length === 0 && (
-                 <div className="text-sm text-gray-400 text-center bg-white rounded-xl p-4 border border-[#EDE6D6]">אין עדיין משימות לאירוע הזה</div>
+                 <div className="text-sm text-gray-400 text-center bg-white rounded-xl p-4 border border-[#EDE6D6]">אין עדיין משימות לפעילות הזאת</div>
                )}
                {(currentTasksEvent.tasks || []).map((t: any, i: number) => (
                  t.kind === 'invite' ? (
@@ -727,7 +825,9 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
                <AIPlanningAssistant
                  title={currentTasksEvent.name}
                  contextLines={[
-                   `סוג אירוע: ${typeLabels[currentTasksEvent.type] || currentTasksEvent.type}, תדירות: ${freqLabels[currentTasksEvent.freq] || currentTasksEvent.freq}`,
+                   `מסגרת: ${ACTIVITY_KIND_LABEL[currentTasksEvent.activityKind as ActivityKind]}, תוכן: ${typeLabels[currentTasksEvent.type] || currentTasksEvent.type}, תדירות: ${freqLabels[currentTasksEvent.freq] || currentTasksEvent.freq}`,
+                   currentTasksEvent.location ? `מקום: ${currentTasksEvent.location}` : '',
+                   Number(currentTasksEvent.entryPrice) > 0 ? `מחיר כניסה: ₪${currentTasksEvent.entryPrice}` : '',
                    ...(currentTasksEvent.tasks?.length ? [`משימות שכבר קיימות: ${currentTasksEvent.tasks.map((t: any) => t.text).join(', ')}`] : []),
                  ]}
                  onApply={(result) => {
@@ -789,9 +889,9 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
       {/* Budget Modal */}
       {budgetEventId && currentBudgetEvent && (
         <FullScreenView
-          eyebrow="תקציב האירוע"
+          eyebrow="תקציב הפעילות"
           title={currentBudgetEvent.name}
-          backLabel="אירועים"
+          backLabel="פעילויות"
           onClose={() => setBudgetEventId(null)}
         >
           <>
@@ -817,7 +917,7 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
 
              <div className="flex-1 overflow-y-auto pr-1 custom-scrollbar space-y-2 mb-4">
                {(currentPerformersEvent.performers || []).length === 0 && (
-                 <div className="text-sm text-gray-400 text-center bg-white rounded-xl p-4 border border-[#EDE6D6]">אין עדיין אמנים לאירוע הזה. אם לא הוזמן אמן, אפשר להשאיר ריק.</div>
+                 <div className="text-sm text-gray-400 text-center bg-white rounded-xl p-4 border border-[#EDE6D6]">אין עדיין אמנים לפעילות הזאת. אם לא הוזמן אמן, אפשר להשאיר ריק.</div>
                )}
                {(currentPerformersEvent.performers || []).map((p: Performer) => (
                  <div key={p.id} className="bg-white rounded-xl p-3 shadow-sm border border-[#EDE6D6]">

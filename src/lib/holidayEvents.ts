@@ -13,12 +13,15 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { createEventMediaTasks, nextEventOccurrence } from './tasks';
+import { normalizeActivity } from './activities';
 
 export interface HolidayEventDraft {
   name: string;
   type: string;
   date: string;
   time: string;
+  location?: string;
+  entryPrice?: number;
 }
 
 /** האירועים שמשוייכים לחג נתון, ממוינים לפי תאריך. */
@@ -32,19 +35,23 @@ export function eventsForHoliday(eventsData: any[], holidayId: string): any[] {
 /** יוצר אירוע חדש המשוייך לחג. אותו מבנה בדיוק כמו אירוע רגיל. */
 export function buildHolidayEvent(holidayId: string, draft: HolidayEventDraft): any {
   const occ = nextEventOccurrence({ date: draft.date, freq: 'oneoff', time: draft.time }, new Date());
-  return {
+  return normalizeActivity({
     id: `ev_${Date.now()}`,
     holidayId,
+    activityKind: 'holiday',
     name: draft.name.trim(),
     type: draft.type,
     freq: 'oneoff',        // אירוע בחג הוא חד-פעמי; החג עצמו הוא שחוזר כל שנה
     date: draft.date,
     time: draft.time,
+    location: draft.location || '',
+    entryPrice: draft.entryPrice || 0,
+    purposeTag: draft.name.trim(),
     attendance: {},
     tasks: createEventMediaTasks(occ ? occ.toISOString().split('T')[0] : undefined),
     performers: [],
     budget: { expenses: [], income: [] },
-  };
+  });
 }
 
 /** כמה נוכחים נרשמו באירוע אחד, על פני כל התאריכים שלו. */

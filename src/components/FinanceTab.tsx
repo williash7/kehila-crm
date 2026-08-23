@@ -33,7 +33,7 @@ const STATUS_LABELS: Record<FinanceStatus, string> = {
 };
 
 const SCOPE_LABELS: Record<FinanceScopeType, string> = {
-  general: 'פעילות כללית', event: 'אירוע', holiday: 'חג', project: 'פרויקט',
+  general: 'פעילות כללית', event: 'פעילות', holiday: 'חג', project: 'קמפיין',
 };
 
 const money = (value: number) => `₪${Math.round(value || 0).toLocaleString('he-IL')}`;
@@ -67,7 +67,7 @@ export function FinanceTab() {
     (eventsData as BudgetSource[] || []).forEach(event => {
       const b = sumBudget(event.budget);
       if (b.plannedExpense || b.actualExpense || b.plannedIncome || b.actualIncome) rows.push({
-        key: `event:${event.id}`, type: 'אירוע', name: event.title || event.name || 'אירוע',
+        key: `event:${event.id}`, type: 'פעילות', name: event.title || event.name || 'פעילות',
         planned: b.plannedExpense, actual: b.actualExpense, income: b.actualIncome,
       });
     });
@@ -81,7 +81,7 @@ export function FinanceTab() {
     (projects as BudgetSource[] || []).forEach(project => {
       const b = sumBudget(project.budget);
       if (b.plannedExpense || b.actualExpense || b.plannedIncome || b.actualIncome) rows.push({
-        key: `project:${project.id}`, type: 'פרויקט', name: project.name || 'פרויקט',
+        key: `project:${project.id}`, type: 'קמפיין', name: project.name || 'קמפיין',
         planned: b.plannedExpense, actual: b.actualExpense, income: b.actualIncome,
       });
     });
@@ -91,7 +91,7 @@ export function FinanceTab() {
   const tabs: { id: Pane; label: string }[] = [
     { id: 'overview', label: 'תמונה עכשיו' },
     { id: 'transactions', label: 'תנועות' },
-    { id: 'scopes', label: 'אירועים ויעדים' },
+    { id: 'scopes', label: 'פעילויות ויעדים' },
     { id: 'import', label: 'ייבוא ודוחות' },
     { id: 'settings', label: 'הגדרות' },
   ];
@@ -260,7 +260,7 @@ function Scopes({ scopes, budgets, onAdd }: { scopes: ReturnType<typeof summariz
   return <div className="space-y-4">
     <section className="bg-white border border-[#EDE6D6] rounded-2xl p-4">
       <div className="flex justify-between items-center mb-3"><div><h2 className="font-bold text-[#0D1B2A]">מה עלה וכמה חסר</h2><p className="text-xs text-gray-500">לפי התנועות ששויכו במרכז הכספי</p></div><button onClick={onAdd} className="text-xs text-[#9B7A2F] font-bold flex items-center gap-1"><Plus size={13} /> תכנון</button></div>
-      {scopes.length === 0 ? <p className="text-sm text-gray-400 py-5 text-center">שייך תנועה לאירוע, חג או פרויקט כדי לראות כאן תמונה מלאה.</p> : <div className="grid md:grid-cols-2 gap-2">
+      {scopes.length === 0 ? <p className="text-sm text-gray-400 py-5 text-center">שייך תנועה לפעילות, חג או קמפיין כדי לראות כאן תמונה מלאה.</p> : <div className="grid md:grid-cols-2 gap-2">
         {scopes.map(row => <div key={row.key} className="border border-[#EDE6D6] rounded-xl p-3"><div className="flex justify-between gap-2"><span><small className="text-gray-400">{SCOPE_LABELS[row.type]}</small><b className="block text-sm text-[#0D1B2A]">{row.name}</b></span><b className={row.projectedBalance >= 0 ? 'text-emerald-700' : 'text-red-600'}>{money(row.projectedBalance)}</b></div><div className="mt-2 text-[11px] text-gray-500 flex flex-wrap gap-x-3"><span>נכנס {money(row.actualIncome)}</span><span>יצא {money(row.actualExpense)}</span><span>עוד צפוי לצאת {money(row.futureExpense)}</span></div>{row.projectedBalance < 0 && <p className="text-[11px] text-red-600 font-bold mt-2">צריך להשיג {money(Math.abs(row.projectedBalance))} כדי שהיעד יכסה את עצמו</p>}</div>)}
       </div>}
     </section>
@@ -350,7 +350,7 @@ function TransactionEditor({ value, categories, scopeSuggestions, onClose, onSav
       <div className="grid grid-cols-2 gap-2"><Field label="מצב"><select value={draft.status || 'actual'} onChange={e => patch('status', e.target.value)} className={INPUT}>{Object.entries(STATUS_LABELS).filter(([id]) => id !== 'cancelled').map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></Field><Field label="קטגוריה"><input list="finance-categories" value={draft.category || ''} onChange={e => patch('category', e.target.value)} className={INPUT} /><datalist id="finance-categories">{categories.map(c => <option key={c} value={c} />)}</datalist></Field></div>
       {!draft.id && draft.status !== 'actual' && <Field label="חזרה חודשית"><select value={repeats} onChange={e => setRepeats(Number(e.target.value))} className={INPUT}><option value="1">פעם אחת</option><option value="3">3 חודשים</option><option value="6">6 חודשים</option><option value="12">12 חודשים</option><option value="24">24 חודשים</option></select></Field>}
       <button onClick={() => setAdvanced(!advanced)} className="text-xs text-[#9B7A2F] font-bold flex items-center gap-1"><SlidersHorizontal size={13} /> {advanced ? 'פחות פרטים' : 'שיוך, חלוקה והערות'}</button>
-      {advanced && <div className="bg-[#FAF6EE] rounded-2xl p-3 space-y-3"><div className="grid grid-cols-2 gap-2"><Field label="סוג שיוך"><select value={draft.scopeType || 'general'} onChange={e => patch('scopeType', e.target.value)} className={INPUT}>{Object.entries(SCOPE_LABELS).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></Field><Field label="שם האירוע / היעד"><input list="finance-scopes" value={draft.scopeName || ''} onChange={e => patch('scopeName', e.target.value)} className={INPUT} /><datalist id="finance-scopes">{scopeSuggestions.map(x => <option key={x} value={x} />)}</datalist></Field></div><Field label="אמצעי"><input value={draft.method || ''} onChange={e => patch('method', e.target.value)} placeholder="בנק, מזומן, צ׳ק…" className={INPUT} /></Field><Field label="הערות"><textarea value={draft.notes || ''} onChange={e => patch('notes', e.target.value)} className={`${INPUT} min-h-16`} /></Field><div><div className="flex justify-between items-center"><label className="text-xs font-bold text-gray-600">חלוקה בין כמה יעדים</label><button onClick={addSplit} className="text-xs text-[#9B7A2F] font-bold">+ חלק</button></div>{(draft.allocations || []).map((a, i) => <div key={a.id} className="grid grid-cols-[1fr_100px_28px] gap-1.5 mt-1.5"><input value={a.label} onChange={e => patch('allocations', (draft.allocations || []).map((x, j) => j === i ? { ...x, label: e.target.value } : x))} placeholder="שם יעד" className={INPUT} /><MoneyInput value={a.amount} onChange={v => patch('allocations', (draft.allocations || []).map((x, j) => j === i ? { ...x, amount: v } : x))} /><button onClick={() => patch('allocations', (draft.allocations || []).filter((_, j) => j !== i))} className="text-red-400"><X size={15} /></button></div>)}</div></div>}
+      {advanced && <div className="bg-[#FAF6EE] rounded-2xl p-3 space-y-3"><div className="grid grid-cols-2 gap-2"><Field label="סוג שיוך"><select value={draft.scopeType || 'general'} onChange={e => patch('scopeType', e.target.value)} className={INPUT}>{Object.entries(SCOPE_LABELS).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></Field><Field label="שם הפעילות / היעד"><input list="finance-scopes" value={draft.scopeName || ''} onChange={e => patch('scopeName', e.target.value)} className={INPUT} /><datalist id="finance-scopes">{scopeSuggestions.map(x => <option key={x} value={x} />)}</datalist></Field></div><Field label="אמצעי"><input value={draft.method || ''} onChange={e => patch('method', e.target.value)} placeholder="בנק, מזומן, צ׳ק…" className={INPUT} /></Field><Field label="הערות"><textarea value={draft.notes || ''} onChange={e => patch('notes', e.target.value)} className={`${INPUT} min-h-16`} /></Field><div><div className="flex justify-between items-center"><label className="text-xs font-bold text-gray-600">חלוקה בין כמה יעדים</label><button onClick={addSplit} className="text-xs text-[#9B7A2F] font-bold">+ חלק</button></div>{(draft.allocations || []).map((a, i) => <div key={a.id} className="grid grid-cols-[1fr_100px_28px] gap-1.5 mt-1.5"><input value={a.label} onChange={e => patch('allocations', (draft.allocations || []).map((x, j) => j === i ? { ...x, label: e.target.value } : x))} placeholder="שם יעד" className={INPUT} /><MoneyInput value={a.amount} onChange={v => patch('allocations', (draft.allocations || []).map((x, j) => j === i ? { ...x, amount: v } : x))} /><button onClick={() => patch('allocations', (draft.allocations || []).filter((_, j) => j !== i))} className="text-red-400"><X size={15} /></button></div>)}</div></div>}
       {draft.kind === 'cash_income' && <p className="text-xs bg-amber-50 text-amber-800 rounded-xl p-3">ההכנסה תיספר לפעילות, ובמקביל ההתחשבנות תראה שהכסף נמצא אצלך.</p>}
       {draft.kind === 'personal_expense' && <p className="text-xs bg-blue-50 text-blue-800 rounded-xl p-3">ההוצאה תיספר, ובמקביל ההתחשבנות תראה שהפעילות חייבת לך.</p>}
       {!!draft.history?.length && <details className="border border-[#EDE6D6] rounded-xl p-3 text-xs"><summary className="font-bold text-gray-600 cursor-pointer">היסטוריית שינויים ({draft.history.length})</summary><div className="mt-2 divide-y divide-[#EDE6D6]">{[...draft.history].reverse().map((revision, index) => <div key={`${revision.at}_${index}`} className="py-2"><b>{new Date(revision.at).toLocaleString('he-IL')}</b><div className="text-gray-500">{revision.snapshot.title} · {money(revision.snapshot.amount)} · {STATUS_LABELS[revision.snapshot.status]}</div></div>)}</div></details>}

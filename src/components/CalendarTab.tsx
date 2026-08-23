@@ -6,9 +6,10 @@ import { logAction } from '../lib/score';
 import { Plus, CalendarDays } from 'lucide-react';
 import { HolidayModal } from './HolidayModal';
 import { filterHolidays } from '../lib/holidayFilter';
+import { ACTIVITY_KIND_LABEL, upcomingActivities } from '../lib/activities';
 
 export function CalendarTab({ addTrigger }: { addTrigger?: { tab: string; count: number } } = {}) {
-  const { holidays: allHolidays, holidayExtras, settings } = useAppStore();
+  const { holidays: allHolidays, holidayExtras, settings, eventsData } = useAppStore();
   // הסינון בתצוגה בלבד — הנתונים נשמרים במלואם
   const holidays = React.useMemo(
     () => filterHolidays(allHolidays, settings.holidayVisibility),
@@ -55,6 +56,7 @@ export function CalendarTab({ addTrigger }: { addTrigger?: { tab: string; count:
   const allHols = buildHolidays();
   const upcoming = allHols.filter(h => new Date(h.dateStr) >= today);
   const past = allHols.filter(h => new Date(h.dateStr) < today);
+  const upcomingActivityRows = React.useMemo(() => upcomingActivities(eventsData, today, 45), [eventsData]);
 
   const HolidayCard = ({ h, i, dim = false }: { h: any; i: number; dim?: boolean }) => {
     const days = dim ? null : Math.ceil((new Date(h.dateStr).getTime() - today.getTime()) / 86400000);
@@ -105,8 +107,8 @@ export function CalendarTab({ addTrigger }: { addTrigger?: { tab: string; count:
           <CalendarDays size={18} className="text-white" />
         </div>
         <div className="flex-1 px-3 md:px-0">
-          <div className="font-['Frank_Ruhl_Libre'] text-lg font-bold text-[#C9A84C]">יומן חגים</div>
-          <div className="text-[11px] text-white/45 mt-[1px]">תכנון ומשימות</div>
+          <div className="font-['Frank_Ruhl_Libre'] text-lg font-bold text-[#C9A84C]">לוח שנה</div>
+          <div className="text-[11px] text-white/45 mt-[1px]">פעילויות וחגים — תצוגה אחת</div>
         </div>
         <button
           onClick={() => setIsAdding(true)}
@@ -118,6 +120,24 @@ export function CalendarTab({ addTrigger }: { addTrigger?: { tab: string; count:
       </div>
 
       <div className="p-4 md:p-6">
+        {upcomingActivityRows.length > 0 && (
+          <div className="mb-6">
+            <div className="text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-3">פעילויות ב־45 הימים הקרובים</div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {upcomingActivityRows.map(({ activity, date }) => (
+                <div key={activity.id} className="bg-white rounded-xl p-3.5 shadow-sm border-r-4 border-purple-400 flex items-center gap-3">
+                  <span className="text-2xl">{activity.activityKind === 'recurring' ? '🔁' : activity.activityKind === 'holiday' ? '🕯️' : '✨'}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-bold text-[#0D1B2A] truncate">{activity.name}</div>
+                    <div className="text-[11px] text-gray-500">{ACTIVITY_KIND_LABEL[activity.activityKind]} · {date.toLocaleDateString('he-IL')}{activity.time ? ` · ${activity.time}` : ''}</div>
+                    {activity.location && <div className="text-[10px] text-gray-400 truncate">📍 {activity.location}</div>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {upcoming.length > 0 ? (
           <>
             <div className="text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-3">חגים מגיעים</div>
@@ -148,11 +168,11 @@ export function CalendarTab({ addTrigger }: { addTrigger?: { tab: string; count:
         >
           <div className="bg-[#FAF6EE] rounded-t-3xl md:rounded-3xl p-5 pb-10 md:pb-6 w-full max-w-[430px] md:max-w-md animate-in slide-in-from-bottom duration-300">
             <div className="w-10 h-1 bg-gray-300 rounded-full mx-auto mb-5 md:hidden" />
-            <h2 className="font-['Frank_Ruhl_Libre'] text-xl font-bold text-[#0D1B2A] mb-5">📅 הוספת אירוע / תזכורת</h2>
+            <h2 className="font-['Frank_Ruhl_Libre'] text-xl font-bold text-[#0D1B2A] mb-5">📅 הוספת חג או תאריך</h2>
             <form onSubmit={handleAdd}>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">שם האירוע</label>
+                  <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">שם החג או התאריך</label>
                   <input required name="name" type="text" className="w-full bg-white border-[1.5px] border-[#EDE6D6] rounded-xl px-3 py-2.5 text-sm outline-none focus:border-[#C9A84C]" placeholder="..." />
                 </div>
                 <div>
@@ -164,7 +184,7 @@ export function CalendarTab({ addTrigger }: { addTrigger?: { tab: string; count:
                   <textarea name="desc" rows={3} className="w-full bg-white border-[1.5px] border-[#EDE6D6] rounded-xl px-3 py-2.5 text-sm outline-none focus:border-[#C9A84C]" placeholder="..." />
                 </div>
                 <button type="submit" className="w-full bg-gradient-to-br from-[#0D1B2A] to-[#1A2E45] text-white rounded-xl p-3.5 font-['Frank_Ruhl_Libre'] text-lg font-bold shadow-md">
-                  שמור אירוע
+                  שמור תאריך
                 </button>
               </div>
             </form>

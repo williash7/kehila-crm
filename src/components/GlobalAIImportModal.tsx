@@ -5,6 +5,7 @@ import { useAppStore } from '../store/AppContext';
 import { buildHolidayList } from '../lib/holidayList';
 import { getCustomHols, saveCustomHols, apiPost } from '../lib/api';
 import { emptyProject, SOLICITATION_ORDER, SOLICITATION_LABEL, normalizeStatus, Solicitation } from '../lib/projects';
+import { normalizeActivity } from '../lib/activities';
 import { stampCreated, STANDALONE_TASKS_ID } from '../lib/tasks';
 import { getOrg } from '../lib/orgConfig';
 
@@ -40,8 +41,8 @@ interface SheetRow {
 
 const KIND_LABELS: Record<TargetKind, string> = {
   holiday: '📅 חג',
-  event: '📌 אירוע',
-  project: '🎯 פרויקט',
+  event: '📌 פעילות',
+  project: '🎯 קמפיין',
   homeVisit: '🏠 ביקורי בית (הכנה)',
   contact: '👤 אדם פרטי',
   standalone: '📋 משימה חד-פעמית',
@@ -71,8 +72,8 @@ const PREVIEW_FIELDS: Record<string, string[]> = {
   contacts: ['שם מלא', 'טלפון', 'כתובת', 'בן/בת זוג', 'הערות'],
   donations: ['name', 'amount', 'date', 'method', 'purpose'],
   standingOrders: ['name', 'amount', 'startDate', 'payments', 'campaign'],
-  events: ['name', 'type', 'freq', 'date', 'time'],
-  projects: ['name', 'kind', 'goal', 'deadline'],
+  events: ['name', 'activityKind', 'type', 'freq', 'date', 'time', 'location', 'entryPrice'],
+  projects: ['name', 'goal', 'deadline'],
   holidays: ['name', 'date', 'desc'],
   solicitations: ['project', 'name', 'ask', 'status', 'notes'],
 };
@@ -81,8 +82,8 @@ const SECTION_LABELS: Record<string, string> = {
   contacts: '👥 אנשי קשר',
   donations: '💰 תרומות',
   standingOrders: '🔄 הוראות קבע',
-  events: '📌 אירועים',
-  projects: '🎯 פרויקטים',
+  events: '📌 פעילויות',
+  projects: '🎯 קמפיינים',
   holidays: '📅 חגים ותאריכים',
   solicitations: '📊 רשימת התרמה לקמפיין',
 };
@@ -102,8 +103,8 @@ const TOPIC_HINTS: Record<string, string> = {
   contacts: 'רשימת שמות, טלפונים, כתובות',
   donations: 'תרומות שכבר התקבלו',
   standingOrders: 'הוראות קבע — סכום חודשי ומספר תשלומים',
-  events: 'מניינים, שיעורים, סעודות — עם שעה ומקום',
-  projects: 'קמפיינים ופרויקטי גיוס עם יעד',
+  events: 'פעילויות קבועות ומיוחדות — עם שעה ומקום',
+  projects: 'קמפיינים לגיוס עם יעד',
   holidays: 'תאריכים בלוח השנה',
   solicitations: 'טבלת קמפיין: ממי לבקש, כמה, ומה הסטטוס',
 };
@@ -175,9 +176,9 @@ export function GlobalAIImportModal({ onClose }: { onClose: () => void }) {
     const confusing = ['events', 'holidays', 'projects', 'items'].filter(on);
     if (confusing.length > 1) {
       parts.push('\nההבחנה בין אלה שמתבלבלים הכי הרבה:');
-      if (on('events')) parts.push('· **אירוע** = התכנסות עם שעה ומקום, שחוזרת או חד-פעמית. השאלה שהוא עונה עליה: "מי הגיע?"');
+      if (on('events')) parts.push('· **פעילות** = התכנסות עם שעה ומקום. activityKind הוא recurring לפעילות קבועה או special לאירוע מיוחד. פעילות חג נוצרת מתוך החג.');
       if (on('holidays')) parts.push('· **חג** = תאריך בלוח השנה. אף אחד לא "מגיע לחנוכה" — מגיעים למסיבה שבחנוכה.');
-      if (on('projects')) parts.push('· **פרויקט** = גיוס כסף מאנשים מול יעד בשקלים. השאלה: "כמה גויס?"');
+      if (on('projects')) parts.push('· **קמפיין** = גיוס כסף מאנשים מול יעד בשקלים. הוא יכול לממן פעילות אחת או כמה פעילויות.');
       if (on('items')) parts.push('· אם משהו הוא רק דבר לעשות ולא אחד מאלה — הוא **משימה**.');
     }
 
@@ -188,9 +189,9 @@ export function GlobalAIImportModal({ onClose }: { onClose: () => void }) {
       ctx.push(`אנשי קשר קיימים (אם שם במידע שלי הוא אחד מהם — כתוב אותו בדיוק כך): ${contactNames.slice(0, 150).join(', ')}`);
     }
     if (on('holidays') && holidayOptions.length) ctx.push(`חגים קרובים: ${holidayOptions.map(h => h.label).join(', ')}`);
-    if ((on('events') || on('items')) && eventsData.length) ctx.push(`אירועים קיימים: ${(eventsData as any[]).map(e => e.name).join(', ')}`);
+    if ((on('events') || on('items')) && eventsData.length) ctx.push(`פעילויות קיימות: ${(eventsData as any[]).map(e => e.name).join(', ')}`);
     if ((on('projects') || on('items') || on('solicitations') || on('donations')) && projects.length) {
-      ctx.push(`פרויקטים קיימים: ${(projects as any[]).map(p => p.name).join(', ')}`);
+      ctx.push(`קמפיינים קיימים: ${(projects as any[]).map(p => p.name).join(', ')}`);
     }
     if (on('items') && roundOptions.length) ctx.push(`מערכי ביקורי בית פעילים: ${roundOptions.map(r => r.label).join(', ')}`);
     if (ctx.length) {
@@ -206,8 +207,8 @@ export function GlobalAIImportModal({ onClose }: { onClose: () => void }) {
     parts.push('· אל תמציא נתונים שלא כתובים אצלי. שדה שאין לו מקור — פשוט אל תכלול אותו.');
     if (on('donations')) parts.push('· "אפיק גבייה" (method) הוא אחד מ: מזומן, ביט/פייבוקס, העברה בנקאית, קישור ישיר, הוראת קבע, צ\'ק.');
     if (on('standingOrders')) parts.push('· בהוראת קבע: amount הוא הסכום **החודשי**, payments מספר החיובים. אם כתוב "ללא הגבלה" — כתוב payments: "ללא הגבלה".');
-    if (on('events')) parts.push(`· באירוע: type אחד מתוך ${EVENT_TYPES.join('/')} (שבת/מניין/שיעור/אחר), freq אחד מתוך ${EVENT_FREQS.join('/')} (שבועי/דו-שבועי/חודשי/חד-פעמי). date בפורמט yyyy-MM-dd, time בפורמט HH:mm.`);
-    if (on('projects')) parts.push('· בפרויקט: kind הוא "project" או "campaign", goal הוא היעד בשקלים כמספר, deadline בפורמט yyyy-MM-dd.');
+    if (on('events')) parts.push(`· בפעילות: activityKind הוא recurring או special; type אחד מתוך ${EVENT_TYPES.join('/')}; freq רלוונטי רק ל-recurring ואחד מתוך ${EVENT_FREQS.join('/')}. date בפורמט yyyy-MM-dd, time בפורמט HH:mm. אפשר location ו-entryPrice.`);
+    if (on('projects')) parts.push('· בקמפיין: goal הוא היעד בשקלים כמספר, deadline בפורמט yyyy-MM-dd.');
     if (on('holidays')) parts.push('· בחג מותאם: date בפורמט yyyy-MM-dd (לועזי).');
     if (on('solicitations')) {
       parts.push(`· ברשימת ההתרמה: project הוא שם הקמפיין שהשורה שייכת אליו. ask = כמה מתכוונים לבקש. status הוא **אחד מהערכים האלה בדיוק**: ${SOLICITATION_ORDER.map(o => SOLICITATION_LABEL[o]).join(' / ')}.`);
@@ -236,8 +237,8 @@ export function GlobalAIImportModal({ onClose }: { onClose: () => void }) {
     if (on('contacts')) schema.contacts = [{ 'שם מלא': 'ישראל ישראלי', 'טלפון': '050-1234567', 'כתובת': 'הרצל 5', 'בן/בת זוג': 'שרה', 'הערות': '' }];
     if (on('donations')) schema.donations = [{ id: '12345', name: 'ישראל ישראלי', amount: 500, date: '15/05/2026', method: 'מזומן', purpose: 'תרומה כללית', notes: '' }];
     if (on('standingOrders')) schema.standingOrders = [{ id: '1866314', name: 'דוד כהן', amount: 100, startDate: '01/09/2025', payments: 12, phone: '', campaign: '' }];
-    if (on('events')) schema.events = [{ name: 'סעודת שבת', type: 'shabbat', freq: 'weekly', date: '2026-08-14', time: '19:30' }];
-    if (on('projects')) schema.projects = [{ name: 'הדפסת לוח שנה', kind: 'project', goal: 12000, deadline: '2026-09-01', notes: '' }];
+    if (on('events')) schema.events = [{ name: 'שיעור תניא', activityKind: 'recurring', type: 'class', freq: 'weekly', date: '2026-08-14', time: '19:30', location: 'בית חב״ד', entryPrice: 0 }];
+    if (on('projects')) schema.projects = [{ name: 'הדפסת לוח שנה', goal: 12000, deadline: '2026-09-01', notes: '' }];
     if (on('holidays')) schema.holidays = [{ name: 'יום השנה לסבא', date: '2026-10-05', desc: '' }];
     if (on('solicitations')) schema.solicitations = [
       { project: 'הדפסת לוח שנה', name: 'ישראל ישראלי', ask: 1200, status: 'לחזור אליו', notes: 'לחזור בחודש 9' },
@@ -424,17 +425,21 @@ export function GlobalAIImportModal({ onClose }: { onClose: () => void }) {
       const d = r.data;
       const id = `ev_${Date.now()}_${r.key}`;
       idMap[r.key] = id;
-      return {
+      return normalizeActivity({
         id,
         name: String(d.name).trim(),
         type: EVENT_TYPES.includes(d.type) ? d.type : 'other',
-        freq: EVENT_FREQS.includes(d.freq) ? d.freq : 'weekly',
+        activityKind: d.activityKind === 'special' || d.freq === 'oneoff' ? 'special' : 'recurring',
+        freq: d.activityKind === 'special' || d.freq === 'oneoff' ? 'oneoff' : (EVENT_FREQS.includes(d.freq) ? d.freq : 'weekly'),
         date: d.date || new Date().toISOString().split('T')[0],
         time: d.time || '',
         attendance: {},
         tasks: [],
         performers: [],
-      };
+        location: d.location || '',
+        entryPrice: Number(d.entryPrice) || 0,
+        purposeTag: String(d.name).trim(),
+      });
     });
 
     const newProjects = rows.projects.map(r => {
@@ -445,7 +450,7 @@ export function GlobalAIImportModal({ onClose }: { onClose: () => void }) {
       return {
         ...base,
         id,
-        kind: d.kind === 'campaign' ? 'campaign' : 'project',
+        kind: 'campaign' as const,
         goal: Number(d.goal) || '',
         deadline: d.deadline || undefined,
         notes: d.notes || '',
@@ -800,7 +805,7 @@ export function GlobalAIImportModal({ onClose }: { onClose: () => void }) {
                           )}
                           {it.targetKind === 'project' && (
                             <select value={it.targetId} onChange={e => patchItem(it.key, { targetId: e.target.value })} className="flex-1 bg-[#FAF6EE] border border-[#EDE6D6] rounded-lg px-2 py-1.5 text-xs outline-none focus:border-[#C9A84C]">
-                              {projectOptions.length === 0 && <option value="">אין פרויקט</option>}
+                              {projectOptions.length === 0 && <option value="">אין קמפיין</option>}
                               {projectOptions.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
                             </select>
                           )}
@@ -855,8 +860,8 @@ export function GlobalAIImportModal({ onClose }: { onClose: () => void }) {
                 {result.sheet?.added?.contacts > 0 && <div>{result.sheet.added.contacts} אנשי קשר</div>}
                 {result.sheet?.added?.donations > 0 && <div>{result.sheet.added.donations} תרומות</div>}
                 {result.sheet?.added?.standingOrders > 0 && <div>{result.sheet.added.standingOrders} הוראות קבע</div>}
-                {result.events > 0 && <div>{result.events} אירועים</div>}
-                {result.projects > 0 && <div>{result.projects} פרויקטים</div>}
+                {result.events > 0 && <div>{result.events} פעילויות</div>}
+                {result.projects > 0 && <div>{result.projects} קמפיינים</div>}
                 {result.holidays > 0 && <div>{result.holidays} חגים ותאריכים</div>}
               </div>
             )}
