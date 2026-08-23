@@ -159,11 +159,11 @@ function parseDate_(v: any): Date | null {
  */
 export function buildGivingIndex(
   donations: any[],
-  purposeTag: string,
+  purposeTag: string | string[],
   now: Date = new Date()
 ): Record<string, GivingHistory> {
   const yearAgo = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
-  const tag = (purposeTag || '').trim();
+  const tags = new Set((Array.isArray(purposeTag) ? purposeTag : [purposeTag]).map(value => String(value || '').trim()).filter(Boolean));
   const out: Record<string, GivingHistory> = {};
 
   (donations || []).forEach(d => {
@@ -177,7 +177,7 @@ export function buildGivingIndex(
     rec.allTime += amount;
     if (amount > rec.largest) rec.largest = amount;
     if (date && date >= yearAgo) rec.lastYear += amount;
-    if (tag && String(d.purpose || '').trim() === tag) rec.toProject += amount;
+    if (tags.has(String(d.purpose || '').trim())) rec.toProject += amount;
 
     const prev = parseDate_(rec.lastDate);
     if (date && (!prev || date > prev)) rec.lastDate = d.date;
@@ -218,8 +218,10 @@ export interface Project {
    * הייעוד שנרשם בתרומות ומקשר אותן לפרויקט. ברירת המחדל היא שם הפרויקט,
    * כך שבחירה ברשימה הנפתחת בעת הוספת תרומה מייצרת את הקישור לבד ואין
    * סיכון לשגיאת כתיב.
-   */
+  */
   purposeTag: string;
+  /** ייעודים נוספים שמקשרים תרומות לאותו קמפיין, למשל שמות של כמה קישורי תשלום. */
+  purposeTags?: string[];
   holidayId?: string;
   eventId?: string;
   /** פעילויות שהקמפיין מממן. מערך מאפשר קמפיין אחד לכמה פעילויות ולהפך. */
@@ -253,6 +255,7 @@ export function normalizeProjects(raw: any): Project[] {
     ...emptyProject(String(project?.name || '')),
     ...project,
     kind: 'campaign' as const,
+    purposeTags: projectPurposeTags(project),
     activityIds: Array.from(new Set([
       ...(Array.isArray(project?.activityIds) ? project.activityIds : []),
       ...(project?.eventId ? [project.eventId] : []),
@@ -263,6 +266,20 @@ export function normalizeProjects(raw: any): Project[] {
   }));
 }
 
+/** כל הייעודים שמקשרים תרומה לקמפיין; purposeTag הישן נשאר הייעוד הראשי. */
+export function projectPurposeTags(project: Pick<Project, 'name' | 'purposeTag' | 'purposeTags'>): string[] {
+  const values = [
+    project.purposeTag || project.name || '',
+    ...(Array.isArray(project.purposeTags) ? project.purposeTags : []),
+  ].map(value => String(value || '').trim()).filter(Boolean);
+  return Array.from(new Set(values));
+}
+
+export function projectPurposeMatches(project: Pick<Project, 'name' | 'purposeTag' | 'purposeTags'>, purpose: unknown): boolean {
+  const value = String(purpose || '').trim();
+  return !!value && projectPurposeTags(project).includes(value);
+}
+
 function num(v: any): number {
   const n = parseFloat(String(v ?? '').replace(/[^0-9.\-]/g, ''));
   return isNaN(n) ? 0 : n;
@@ -270,9 +287,9 @@ function num(v: any): number {
 
 /** התרומות ששייכות לפרויקט — לפי הייעוד שנרשם בהן. */
 export function projectDonations(project: Project, donations: any[]): any[] {
-  const tag = (project.purposeTag || project.name || '').trim();
-  if (!tag) return [];
-  return (donations || []).filter(d => String(d?.purpose || '').trim() === tag && num(d.amount) > 0);
+  const tags = new Set(projectPurposeTags(project));
+  if (!tags.size) return [];
+  return (donations || []).filter(d => tags.has(String(d?.purpose || '').trim()) && num(d.amount) > 0);
 }
 
 export interface ProjectProgress {
@@ -447,13 +464,13 @@ export function explicitHkIds(sol: Solicitation): string[] {
 export function hkForSolicitation(sol: Solicitation, project: Project, hk: any[]): HkCommitment[] {
   const name = String(sol?.name || '').trim();
   if (!name) return [];
-  const tag = (project.purposeTag || project.name || '').trim();
+  const tags = new Set(projectPurposeTags(project));
   const explicit = explicitHkIds(sol);
 
   const mine = (hk || []).filter(h => String(h?.name || '').trim() === name);
   const chosen = mine.filter(h => {
     if (explicit.length) return explicit.indexOf(String(h.id)) >= 0;   // קישור מפורש גובר
-    return !!tag && String(h.campaign || h.purpose || '').trim() === tag;
+    return tags.has(String(h.campaign || h.purpose || '').trim());
   });
 
   return chosen.map(hkCommitment).filter(Boolean) as HkCommitment[];
@@ -546,7 +563,7 @@ export function buildSolicitationRows(
   hk: any[],
   giving?: Record<string, GivingHistory>
 ): SolicitationRow[] {
-  const tag = (project.purposeTag || project.name || '').trim();
+  const tags = new Set(projectPurposeTags(project));
 
   // מעבר אחד על היומן: כל התשלומים לפי שם
   const byName: Record<string, any[]> = {};
@@ -585,7 +602,7 @@ export function buildSolicitationRows(
             String(d.method || '').trim() === 'הוראת קבע'
           )) return;
 
-      const taggedHere = !!tag && String(d.purpose || '').trim() === tag;
+      const taggedHere = tags.has(String(d.purpose || '').trim());
       if (excluded.has(id)) { candidates.push(toAttached(d, taggedHere)); return; }
       if (taggedHere || included.has(id)) attached.push(toAttached(d, taggedHere));
       else if (!isHkCharge) candidates.push(toAttached(d, false));

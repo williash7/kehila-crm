@@ -21,6 +21,8 @@ export interface Activity {
   time?: string;
   location?: string;
   holidayId?: string;
+  /** כל ערכי הייעוד שמקשרים תרומה לפעילות. הראשון נשמר גם ב-purposeTag לתאימות. */
+  purposeTags?: string[];
   purposeTag: string;
   entryPrice?: number | string;
   attendance?: Record<string, Record<string, boolean>>;
@@ -61,7 +63,8 @@ export function normalizeActivity(raw: any): Activity {
     date: String(raw?.date || new Date().toISOString().split('T')[0]),
     time: String(raw?.time || ''),
     location: String(raw?.location || ''),
-    purposeTag: String(raw?.purposeTag || name),
+    purposeTag: activityPurposeTags({ ...raw, name } as Activity)[0] || name,
+    purposeTags: activityPurposeTags({ ...raw, name } as Activity),
     attendance: raw?.attendance || {},
     participants: raw?.participants || {},
     tasks: raw?.tasks || [],
@@ -74,9 +77,23 @@ export function normalizeActivities(raw: any): Activity[] {
   return Array.isArray(raw) ? raw.filter(Boolean).map(normalizeActivity) : [];
 }
 
+export function normalizePurposeTags(values: unknown, fallback = ''): string[] {
+  const list = Array.isArray(values) ? values : String(values || '').split(/[,;\n]/);
+  const normalized = list.map(value => String(value || '').trim()).filter(Boolean);
+  if (!normalized.length && fallback.trim()) normalized.push(fallback.trim());
+  return Array.from(new Set(normalized));
+}
+
+export function activityPurposeTags(activity: Pick<Activity, 'name' | 'purposeTag' | 'purposeTags'>): string[] {
+  return normalizePurposeTags([
+    activity.purposeTag || activity.name || '',
+    ...(Array.isArray(activity.purposeTags) ? activity.purposeTags : []),
+  ], activity.name || '');
+}
+
 export function activityDonations(activity: Activity, donations: any[], linkedPurposeTags: string[] = []): any[] {
   const tags = new Set(
-    [activity.purposeTag, ...linkedPurposeTags]
+    [...activityPurposeTags(activity), ...linkedPurposeTags]
       .map(v => String(v || '').trim())
       .filter(Boolean)
   );

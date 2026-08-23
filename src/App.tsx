@@ -38,6 +38,7 @@ const ADD_LABELS: Record<string, string> = {
   projects: 'קמפיין',
   calendar: 'חג מותאם',
   homevisits: 'מערך ביקורים',
+  donations: 'תרומה',
 };
 
 function AppContent() {
@@ -51,7 +52,7 @@ function AppContent() {
   const [addTrigger, setAddTrigger] = useState<{ tab: string; count: number }>({ tab: '', count: 0 });
 
   const requestAdd = () => {
-    if (activeTab === 'home') { setIsDonationOpen(true); return; }
+    if (activeTab === 'home' || activeTab === 'donations') { setIsDonationOpen(true); return; }
     if (!(activeTab in ADD_LABELS)) return;
     setAddTrigger({ tab: activeTab, count: Date.now() });
   };
@@ -89,7 +90,7 @@ function AppContent() {
           {activeTab === 'home' && <HomeTab setTab={setActiveTab} onDonationClick={() => setIsDonationOpen(true)} onQuickAdd={requestAddFor} />}
           {activeTab === 'donors' && <DonorsTab addTrigger={addTrigger} />}
           {activeTab === 'homevisits' && <HomeVisitsTab addTrigger={addTrigger} />}
-          {activeTab === 'donations' && <DonationsTab />}
+          {activeTab === 'donations' && <DonationsTab onAddDonation={() => setIsDonationOpen(true)} />}
           {activeTab === 'finance' && <FinanceTab />}
           {activeTab === 'events' && <EventsTab addTrigger={addTrigger} />}
           {activeTab === 'calendar' && <CalendarTab addTrigger={addTrigger} />}

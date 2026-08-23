@@ -14,7 +14,9 @@ import { TaskDetailsPanel } from './TaskDetailsPanel';
 import { CompletionFollowUpModal } from './CompletionFollowUpModal';
 import { emptyPerformer, Performer } from '../lib/events';
 import { BudgetEditor, emptyBudget } from './BudgetEditor';
-import { ACTIVITY_KIND_LABEL, ActivityKind, ActivityParticipant, activityDonations, activityReadiness, normalizeActivity } from '../lib/activities';
+import { ACTIVITY_KIND_LABEL, ActivityKind, ActivityParticipant, activityDonations, activityPurposeTags, activityReadiness, normalizeActivity, normalizePurposeTags } from '../lib/activities';
+import { projectPurposeTags } from '../lib/projects';
+import { PurposeTagsEditor } from './PurposeTagsEditor';
 
 export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: number } } = {}) {
   const { eventsData, updateEventsData, visibleDonors, crm, hk, failures, settings, refresh, history, archiveOccurrence, importTasksFromHistory, donations, projects } = useAppStore();
@@ -42,7 +44,7 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
   const [evTime, setEvTime] = useState('');
   const [evActivityKind, setEvActivityKind] = useState<ActivityKind>('recurring');
   const [evLocation, setEvLocation] = useState('');
-  const [evPurposeTag, setEvPurposeTag] = useState('');
+  const [evPurposeTags, setEvPurposeTags] = useState<string[]>([]);
   const [evEntryPrice, setEvEntryPrice] = useState('');
 
   React.useEffect(() => {
@@ -72,7 +74,7 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
     setEvTime('');
     setEvActivityKind('recurring');
     setEvLocation('');
-    setEvPurposeTag('');
+    setEvPurposeTags([]);
     setEvEntryPrice('');
   };
 
@@ -90,7 +92,7 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
     setEvTime(ev.time || '');
     setEvActivityKind(ev.activityKind || (ev.holidayId ? 'holiday' : ev.freq === 'oneoff' ? 'special' : 'recurring'));
     setEvLocation(ev.location || '');
-    setEvPurposeTag(ev.purposeTag || ev.name || '');
+    setEvPurposeTags(activityPurposeTags(ev));
     setEvEntryPrice(ev.entryPrice ? String(ev.entryPrice) : '');
     setEditingEventId(ev.id);
     setIsAddingMode(true);
@@ -98,6 +100,7 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
 
   const saveEvent = () => {
     if (!evName.trim()) return;
+    const purposeTags = normalizePurposeTags(evPurposeTags, evName.trim());
     if (editingEventId) {
       updateEventsData(eventsData.map((e: any) => e.id === editingEventId ? {
         ...e,
@@ -108,7 +111,8 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
         date: evDate,
         time: evTime,
         location: evLocation.trim(),
-        purposeTag: evPurposeTag.trim() || evName.trim(),
+        purposeTag: purposeTags[0],
+        purposeTags,
         entryPrice: Number(evEntryPrice) || 0,
       } : e));
       logAction('event_edit');
@@ -128,7 +132,8 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
         performers: [],
         budget: emptyBudget(),
         location: evLocation.trim(),
-        purposeTag: evPurposeTag.trim() || evName.trim(),
+        purposeTag: purposeTags[0],
+        purposeTags,
         entryPrice: Number(evEntryPrice) || 0,
       });
       updateEventsData([...eventsData, newEv]);
@@ -406,16 +411,16 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
             const lastNames = lastDate ? Object.entries(ev.attendance[lastDate]).filter(e => e[1]).slice(0, 8).map(e => e[0].split(' ')[0]) : [];
             const nextOcc = nextEventOccurrence(ev, new Date());
             const linkedCampaigns = projects.filter(p => (p.activityIds || []).includes(ev.id));
-            const linkedIncome = activityDonations(ev, donations, linkedCampaigns.map(p => p.purposeTag)).reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
+            const linkedIncome = activityDonations(ev, donations, linkedCampaigns.flatMap(projectPurposeTags)).reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
             const readiness = activityReadiness(ev);
 
             return (
               <div key={ev.id} className="bg-white rounded-xl shadow-sm border border-[#EDE6D6] overflow-hidden">
-                 <div className="p-3.5 flex items-center justify-between border-b border-[#EDE6D6]">
-                    <div className="flex items-center gap-3">
+                 <div className="p-3.5 border-b border-[#EDE6D6] sm:flex sm:items-start sm:justify-between sm:gap-4">
+                    <div className="flex items-start gap-3 min-w-0 flex-1">
                       <div className="w-11 h-11 bg-gray-50 rounded-full flex items-center justify-center text-xl shrink-0 opacity-80">{typeIcons[ev.type] || '📌'}</div>
-                      <div>
-                        <div className="font-bold text-[#0D1B2A] text-[15px]">{ev.name}</div>
+                      <div className="min-w-0 flex-1">
+                        <div className="font-bold text-[#0D1B2A] text-[15px] leading-snug break-words">{ev.name}</div>
                         <div className="text-[11px] text-gray-500">{ACTIVITY_KIND_LABEL[ev.activityKind as ActivityKind]} · {freqLabels[ev.freq] || ev.freq} {ev.time && `· ${ev.time}`}</div>
                         {(ev.location || ev.holidayId) && <div className="text-[10px] text-gray-400 mt-0.5">{ev.holidayId ? `חג: ${ev.holidayId}` : ''}{ev.holidayId && ev.location ? ' · ' : ''}{ev.location ? `📍 ${ev.location}` : ''}</div>}
                         {nextOcc && (
@@ -423,10 +428,10 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
                         )}
                       </div>
                     </div>
-                    <div className="flex items-center gap-1.5 shrink-0">
+                    <div className="mt-3 grid grid-cols-2 gap-2 sm:mt-0 sm:flex sm:flex-wrap sm:items-center sm:justify-end sm:max-w-[65%] shrink-0">
                       <button
                         onClick={() => setBudgetEventId(ev.id)}
-                        className="bg-emerald-50 text-emerald-700 text-xs font-bold px-3 py-1.5 rounded-lg active:scale-95 transition-transform flex items-center gap-1.5 whitespace-nowrap"
+                        className="bg-emerald-50 text-emerald-700 text-xs font-bold px-3 py-2 rounded-lg active:scale-95 transition-transform flex items-center justify-center gap-1.5 whitespace-nowrap"
                       >
                         <Wallet size={14} /> תקציב
                       </button>
@@ -440,7 +445,7 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
                           setTaskDate(nextOcc ? nextOcc.toISOString().split('T')[0] : '');
                           setTaskTime('');
                         }}
-                        className="relative bg-purple-50 text-purple-700 text-xs font-bold px-3 py-1.5 rounded-lg active:scale-95 transition-transform flex items-center gap-1.5 whitespace-nowrap"
+                        className="relative bg-purple-50 text-purple-700 text-xs font-bold px-3 py-2 rounded-lg active:scale-95 transition-transform flex items-center justify-center gap-1.5 whitespace-nowrap"
                       >
                         <ClipboardList size={14}/> משימות
                         {(ev.tasks || []).some((t: any) => !t.done) && (
@@ -449,10 +454,10 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
                           </span>
                         )}
                       </button>
-                      <button onClick={() => openAttModal(ev)} className="bg-[#C9A84C]/10 text-[#9B7A2F] text-xs font-bold px-3 py-1.5 rounded-lg active:scale-95 transition-transform flex items-center gap-1.5 whitespace-nowrap">
+                      <button onClick={() => openAttModal(ev)} className="bg-[#C9A84C]/10 text-[#9B7A2F] text-xs font-bold px-3 py-2 rounded-lg active:scale-95 transition-transform flex items-center justify-center gap-1.5 whitespace-nowrap">
                          <Check size={14}/> נוכחות
                       </button>
-                      <button onClick={() => openPerformersModal(ev)} className="relative bg-pink-50 text-pink-700 text-xs font-bold px-3 py-1.5 rounded-lg active:scale-95 transition-transform flex items-center gap-1.5 whitespace-nowrap">
+                      <button onClick={() => openPerformersModal(ev)} className="relative bg-pink-50 text-pink-700 text-xs font-bold px-3 py-2 rounded-lg active:scale-95 transition-transform flex items-center justify-center gap-1.5 whitespace-nowrap">
                          <Mic2 size={14}/> אמנים
                          {(ev.performers || []).length > 0 && (
                            <span className="absolute -top-1.5 -left-1.5 w-4 h-4 bg-[#C9A84C] text-[#0D1B2A] rounded-full text-[9px] font-bold flex items-center justify-center">
@@ -460,12 +465,14 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
                            </span>
                          )}
                       </button>
-                      <button onClick={() => openEditModal(ev)} title="עריכת פעילות" className="bg-gray-50 text-gray-500 p-1.5 rounded-lg active:scale-95 transition-transform shrink-0">
-                         <Pencil size={14}/>
-                      </button>
-                      <button onClick={() => deleteEvent(ev)} title="מחיקת פעילות" className="bg-red-50 text-red-400 p-1.5 rounded-lg active:scale-95 transition-transform shrink-0">
-                         <Trash2 size={14}/>
-                      </button>
+                      <div className="col-span-2 flex justify-end gap-1.5 sm:contents">
+                        <button onClick={() => openEditModal(ev)} title="עריכת פעילות" aria-label={`עריכת ${ev.name}`} className="bg-gray-50 text-gray-500 p-2 rounded-lg active:scale-95 transition-transform shrink-0">
+                           <Pencil size={14}/>
+                        </button>
+                        <button onClick={() => deleteEvent(ev)} title="מחיקת פעילות" aria-label={`מחיקת ${ev.name}`} className="bg-red-50 text-red-400 p-2 rounded-lg active:scale-95 transition-transform shrink-0">
+                           <Trash2 size={14}/>
+                        </button>
+                      </div>
                     </div>
                  </div>
 
@@ -607,17 +614,17 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
                </div>
                <details className="bg-white border border-[#EDE6D6] rounded-xl p-3">
                  <summary className="text-sm font-bold text-[#0D1B2A] cursor-pointer">כסף והרשמה — אופציונלי</summary>
-                 <div className="grid grid-cols-2 gap-3 mt-3">
+                 <div className="mt-3 space-y-3">
                    <div>
                      <label className="block text-[10px] font-bold text-gray-500 mb-1">מחיר כניסה לאדם</label>
                      <input value={evEntryPrice} onChange={e => setEvEntryPrice(e.target.value)} type="number" min="0" className="w-full border border-[#EDE6D6] rounded-lg px-2.5 py-2 text-sm" placeholder="0" />
                    </div>
                    <div>
-                     <label className="block text-[10px] font-bold text-gray-500 mb-1">תג שיוך לתרומות</label>
-                     <input value={evPurposeTag} onChange={e => setEvPurposeTag(e.target.value)} type="text" className="w-full border border-[#EDE6D6] rounded-lg px-2.5 py-2 text-sm" placeholder={evName || 'שם הפעילות'} />
+                     <label className="block text-[10px] font-bold text-gray-500 mb-1.5">ייעודי תרומות אוטומטיים</label>
+                     <PurposeTagsEditor values={evPurposeTags} onChange={setEvPurposeTags} placeholder={evName ? `למשל: ${evName}` : 'למשל: פסח'} />
                    </div>
                  </div>
-                 <p className="text-[10px] text-gray-400 mt-2">תרומה נרשמת פעם אחת ביומן הרגיל. בחירת התג בזמן ההזנה רק מקשרת אותה לפעילות.</p>
+                 <p className="text-[10px] text-gray-400 mt-2">תרומה נשארת רשומה פעם אחת ביומן הרגיל, גם אם הייעוד שלה מקשר אותה לפעילות.</p>
                </details>
                
                <button onClick={saveEvent} className="w-full bg-gradient-to-br from-[#0D1B2A] to-[#1A2E45] text-white rounded-xl py-3.5 font-bold shadow-md mt-2">

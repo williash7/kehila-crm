@@ -1,5 +1,5 @@
 /* ═══ נוצר אוטומטית על ידי scripts/gen-theme-map.mjs — אין לערוך ביד ═══
-   67 כללים, מתוך סריקה של 110 קבצים.
+   69 כללים, מתוך סריקה של 111 קבצים.
    לעדכון: npm run theme
    ═════════════════════════════════════════════════════════════════════ */
 
@@ -29,6 +29,7 @@
 [data-theme] .border-\[\#0D1B2A\] { border-color: var(--c-text); }
 [data-theme] .border-\[\#C9A84C\] { border-color: var(--c-gold); }
 [data-theme] .border-\[\#C9A84C\]\/30 { border-color: color-mix(in srgb, var(--c-gold) 30%, transparent); }
+[data-theme] .border-\[\#C9A84C\]\/35 { border-color: color-mix(in srgb, var(--c-gold) 35%, transparent); }
 [data-theme] .border-\[\#C9A84C\]\/40 { border-color: color-mix(in srgb, var(--c-gold) 40%, transparent); }
 [data-theme] .border-\[\#E8C97A\] { border-color: var(--c-gold-light); }
 [data-theme] .border-\[\#EDE6D6\] { border-color: var(--c-border); }
@@ -60,6 +61,7 @@
 [data-theme] .text-\[\#0D1B2A\] { color: var(--c-text); }
 [data-theme] .text-\[\#0D1B2A\]\/70 { color: color-mix(in srgb, var(--c-text) 70%, transparent); }
 [data-theme] .text-\[\#9B7A2F\] { color: var(--c-gold-dark); }
+[data-theme] .text-\[\#9B7A2F\]\/70 { color: color-mix(in srgb, var(--c-gold-dark) 70%, transparent); }
 [data-theme] .text-\[\#C9A84C\] { color: var(--c-gold); }
 [data-theme] .text-\[\#C9A84C\]\/40 { color: color-mix(in srgb, var(--c-gold) 40%, transparent); }
 [data-theme] .text-\[\#C9A84C\]\/5 { color: color-mix(in srgb, var(--c-gold) 5%, transparent); }

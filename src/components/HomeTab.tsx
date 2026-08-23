@@ -20,7 +20,7 @@ import { HDate } from '@hebcal/core';
 import { DASH_CARDS, DashCardId, resolveCards } from '../lib/dashboardCards';
 import { toCanonicalHebrewString } from '../lib/hebrewDates';
 import { ACTIVITY_KIND_LABEL, activityDonations, activityReadiness, upcomingActivities } from '../lib/activities';
-import { projectProgress } from '../lib/projects';
+import { projectProgress, projectPurposeTags } from '../lib/projects';
 import { sumBudgetLines } from '../lib/holidayEvents';
 
 const FAILURE_WINDOW_DAYS = 30;
@@ -685,7 +685,7 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd }: { setTab: (t: s
   const renderActivityFunding = () => {
     const rows = upcomingActivities(eventsData, new Date(), 60).map(({ activity }) => {
       const linkedCampaigns = projects.filter(project => (project.activityIds || []).includes(activity.id));
-      const linked = activityDonations(activity, donations, linkedCampaigns.map(project => project.purposeTag));
+      const linked = activityDonations(activity, donations, linkedCampaigns.flatMap(projectPurposeTags));
       const income = linked.reduce((sum, donation) => sum + (Number(donation.amount) || 0), 0);
       const planned = sumBudgetLines(activity.budget?.expenses || [], 'planned');
       return { activity, income, planned, gap: Math.max(0, planned - income), shared: linkedCampaigns.length > 0 };

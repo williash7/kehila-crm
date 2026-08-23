@@ -1,6 +1,6 @@
 import React from 'react';
 import { useAppStore } from '../store/AppContext';
-import { activeProjects } from '../lib/projects';
+import { activeProjects, projectPurposeMatches } from '../lib/projects';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // תווית הקמפיין.
@@ -20,7 +20,7 @@ export function CampaignTag({ value, size = 'sm' }: { value?: string | null; siz
   if (!tag) return null;
 
   const match = activeProjects(projects as any).find(
-    p => (p.purposeTag || p.name || '').trim() === tag
+    p => projectPurposeMatches(p, tag)
   );
 
   const pad = size === 'xs' ? 'px-1.5 py-0.5 text-[9px]' : 'px-2 py-0.5 text-[10px]';

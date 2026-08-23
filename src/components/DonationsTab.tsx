@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { EmptyState } from './EmptyState';
 import { useAppStore } from '../store/AppContext';
-import { RefreshCw, Search, HandCoins, AlertTriangle, ChevronDown, X, Mail, MessageSquare, Pencil, Check, User, Trash2 } from 'lucide-react';
+import { RefreshCw, Search, HandCoins, AlertTriangle, ChevronDown, X, Mail, MessageSquare, Pencil, Check, User, Trash2, Plus } from 'lucide-react';
 import { ChargeFailure, getHkStatus, sortHkList, countHkByStatus, openFailureFor, indexFailures, HK_STATUS_LABEL, HK_STATUS_COLOR, HkEntry, HkStatus } from '../lib/standingOrders';
 import { parseDdMmYyyy } from '../lib/dateUtils';
 import { ProfileModal } from './ProfileModal';
@@ -20,7 +20,7 @@ type MainTab = 'donations' | 'hk' | 'errors' | 'payments';
 const EDIT_METHODS = ['🔗 קישור ישיר', '💵 מזומן', '🏦 העברה בנקאית', '📱 ביט/פייבוקס', '🔄 הוראת קבע', '🌐 אתר תרומות'];
 type DonationEditFields = Omit<Partial<Donation>, 'amount'> & { amount?: number | string };
 
-export function DonationsTab() {
+export function DonationsTab({ onAddDonation }: { onAddDonation: () => void }) {
   const { donations, hk, failures, settings, refresh, crm, projects } = useAppStore();
   const openProjects = activeProjects(projects);
   const [mainTab, setMainTab] = useState<MainTab>('donations');
@@ -120,9 +120,14 @@ export function DonationsTab() {
           <div className="font-['Frank_Ruhl_Libre'] text-lg font-bold text-[#C9A84C]">תרומות</div>
           <div className="text-[11px] text-white/45 mt-[1px]">כל התרומות, הוראות קבע ושגיאות במקום אחד</div>
         </div>
-        <button onClick={refresh} className="w-9 h-9 bg-white/10 rounded-full flex items-center justify-center text-white/80 shrink-0">
-          <RefreshCw size={16} />
-        </button>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <button onClick={onAddDonation} aria-label="הוספת תרומה" title="הוספת תרומה" className="h-9 px-3 bg-[#C9A84C] text-[#0D1B2A] rounded-xl flex items-center justify-center gap-1.5 text-xs font-bold">
+            <Plus size={17} /> <span className="hidden sm:inline">תרומה</span>
+          </button>
+          <button onClick={refresh} aria-label="רענון נתונים" className="w-9 h-9 bg-white/10 rounded-full flex items-center justify-center text-white/80">
+            <RefreshCw size={16} />
+          </button>
+        </div>
       </div>
 
       <div className="p-4 md:p-6">

@@ -11,11 +11,13 @@ import {
   SOLICITATION_LABEL, SOLICITATION_COLOR, SOLICITATION_ORDER, normalizeStatus,
   buildSolicitationRows, sumSolicitationRows, unlinkedHkFor, explicitHkIds, SolicitationRow,
   breakdownFor, BreakdownMetric, BREAKDOWN_LABEL, BREAKDOWN_HINT,
+  projectPurposeTags,
 } from '../lib/projects';
 import { logAction } from '../lib/score';
 import { stampCreated } from '../lib/tasks';
 import { TaskDetailsPanel } from './TaskDetailsPanel';
 import { AIPlanningAssistant } from './AIPlanningAssistant';
+import { PurposeTagsEditor } from './PurposeTagsEditor';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // פרויקטי גיוס.
@@ -200,7 +202,7 @@ function ProjectDetail({ project, donations, hk, donorNames, crm, activities, pa
   React.useEffect(() => {
     const synced = syncSolicitationsWithDonations(project, donations);
     if (synced) onPatch({ solicitations: synced });
-  }, [donations, project.purposeTag]);
+  }, [donations, project.purposeTag, project.purposeTags]);
 
   const sols = project.solicitations || [];
 
@@ -209,8 +211,8 @@ function ProjectDetail({ project, donations, hk, donorNames, crm, activities, pa
 
   // מדד נתינה לכל תורם — נבנה פעם אחת ומשמש את כל השורות
   const giving = React.useMemo(
-    () => buildGivingIndex(donations, project.purposeTag),
-    [donations, project.purposeTag]
+    () => buildGivingIndex(donations, projectPurposeTags(project)),
+    [donations, project.purposeTag, project.purposeTags]
   );
 
   const addPerson = (name: string) => {
@@ -341,12 +343,18 @@ function ProjectDetail({ project, donations, hk, donorNames, crm, activities, pa
             </Field>
           </div>
 
-          <div className="mt-2">
-            <Field label="ייעוד התרומות" hint="הטקסט שנרשם בשדה הייעוד. תרומות עם הייעוד הזה נספרות לקמפיין אוטומטית.">
-              <input value={project.purposeTag} onChange={e => onPatch({ purposeTag: e.target.value })}
-                     className="w-full border border-[#EDE6D6] rounded-lg px-2 py-1.5 text-sm outline-none focus:border-[#C9A84C]" />
-            </Field>
-          </div>
+          <details className="mt-2 bg-[#FAF6EE] border border-[#EDE6D6] rounded-xl p-3">
+            <summary className="text-xs font-bold text-[#0D1B2A] cursor-pointer">
+              ייעודי תרומות אוטומטיים ({projectPurposeTags(project).length})
+            </summary>
+            <div className="mt-3">
+              <PurposeTagsEditor
+                values={projectPurposeTags(project)}
+                onChange={purposeTags => onPatch({ purposeTag: purposeTags[0] || project.name, purposeTags })}
+                placeholder="למשל: פסח"
+              />
+            </div>
+          </details>
 
           <details className="mt-3 bg-[#FAF6EE] border border-[#EDE6D6] rounded-xl p-3">
             <summary className="text-xs font-bold text-[#0D1B2A] cursor-pointer">
