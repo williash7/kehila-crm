@@ -67,7 +67,7 @@
  *
  * **מעדכנים אותה בכל שינוי מהותי בקובץ.**
  */
-var CODE_VERSION = '2026-08-23c';
+var CODE_VERSION = '2026-08-23d';
 var EXPORT_SCHEMA_VERSION = 1;
 var EXPORT_MAX_LIMIT = 500;
 
@@ -680,7 +680,7 @@ function route_(action, body) {
   // מחכה לאישור, ואין טעם להוסיף לו סריקה באמצע.
   // דוח תקינות הוא אבחון קריאה-בלבד. אסור שקריאתו תתזמן סנכרון רקע
   // שיכתוב לגיליון בזמן שהדוח קורא אותו.
-  if (action.indexOf('get') === 0 && action !== 'getIntegrity') maybeSync_();
+  if (action.indexOf('get') === 0 && action !== 'getIntegrity' && action !== 'getPaymentLedger') maybeSync_();
 
   switch (action) {
     // קריאה
@@ -691,6 +691,7 @@ function route_(action, body) {
     case 'getIntegrity':     return getIntegrity_();
     case 'getSummary':       return getSummary_();
     case 'getDonations':     return { donations: getDonations_() };
+    case 'getPaymentLedger': return { payments: getPaymentLedger_() };
     case 'getDonors':        return { donors: getDonors_() };
     case 'getHK':            return { hk: getHK_() };
     case 'getFailures':      return { failures: getFailures_() };
@@ -789,6 +790,46 @@ function getDonations_() {
       meetPurpose: fmt_(get_(r, t, 'מטרת המפגש')),
       notes:       fmt_(get_(r, t, 'סיכום ותובנות')),
       source:      fmt_(get_(r, t, 'מקור')),
+    });
+  });
+  return out;
+}
+
+/**
+ * היומן הכספי המלא לתצוגת בקרה אופציונלית.
+ *
+ * בניגוד ל-getDonations_, כאן לא מסננים עתידי/נכשל/מבוטל — זו בדיוק
+ * מטרת המסך. הפונקציה קריאה בלבד ואינה משמשת אף סכום הכנסה קיים.
+ * מפגש שאין בו תרומה אינו נכנס גם אם יש לו שם.
+ */
+function getPaymentLedger_() {
+  var t = table_(SH.LOG);
+  var out = [];
+  t.rows.forEach(function (r) {
+    var id = fmt_(get_(r, t, 'מזהה'));
+    var name = fmt_(get_(r, t, 'שם'));
+    var dateValue = get_(r, t, 'תאריך תרומה');
+    var method = fmt_(get_(r, t, 'אפיק גבייה'));
+    var rawStatus = fmt_(get_(r, t, 'סטטוס'));
+    if (!name) return;
+    if (!dateValue && !method && id.indexOf('hk:') !== 0) return;
+
+    var status = rawStatus === STATUS_FAILED ? 'failed'
+      : rawStatus === STATUS_FUTURE ? 'future'
+      : rawStatus === STATUS_CANCELLED ? 'cancelled'
+      : 'received';
+    out.push({
+      id:          id,
+      name:        name,
+      date:        asDate_(dateValue),
+      amount:      asNumber_(get_(r, t, 'סכום')),
+      purpose:     fmt_(get_(r, t, 'ייעוד')),
+      method:      method,
+      notes:       fmt_(get_(r, t, 'סיכום ותובנות')),
+      source:      fmt_(get_(r, t, 'מקור')),
+      status:      status,
+      rawStatus:   rawStatus,
+      orderId:     id.indexOf('hk:') === 0 ? orderIdFromChargeId_(id) : '',
     });
   });
   return out;

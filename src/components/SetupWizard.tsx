@@ -139,7 +139,9 @@ export function SetupWizard({ onDone, onCancel }: Props) {
   const canAdvance = (() => {
     if (step === 0) return !!cfg.orgName.he.trim();
     if (step === 1) return !!cfg.city.trim();
-    if (step === 2) return !!cfg.gsUrl.trim();
+    // מצב הדגמה הוא אפשרות מפורשת במסך. בעבר הטקסט הבטיח שאפשר להמשיך
+    // בלי גיליון, אבל הכפתור נשאר מושבת — משתמש חדש נתקע כאן לחלוטין.
+    if (step === 2) return true;
     return true;
   })();
 

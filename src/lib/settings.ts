@@ -16,6 +16,7 @@ export interface AppSettings {
   fbAccessToken: string; // טוקן גישה לדף
   hkExpiringThreshold: number; // כמה חיובים נותרו כדי לסמן הוראת קבע כ"מסתיימת בקרוב"
   donationsSinceDate: string; // ISO "yyyy-MM-dd" — מציגים סכומי תרומות רק מתאריך זה ואילך. '' = כל הזמנים.
+  showPaymentStatuses: boolean; // מציג טאב בקרה נפרד; אינו משנה סכומים או נתונים
   defaultTaskView: 'grouped' | 'flat' | 'calendar'; // תצוגת ברירת המחדל שנפתחת בטאב משימות
   holidayVisibility: HolidayVisibility; // אילו חגים ותאריכים מוצגים בלוח
 
@@ -132,6 +133,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   fbAccessToken: '',
   hkExpiringThreshold: 2,
   donationsSinceDate: '',
+  showPaymentStatuses: false,
   defaultTaskView: 'grouped',
   holidayVisibility: DEFAULT_VISIBILITY,
   theme: 'classic',

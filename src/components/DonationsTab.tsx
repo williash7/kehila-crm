@@ -12,8 +12,9 @@ import { FullScreenView } from './FullScreenView';
 import { apiPost, explainApiError} from '../lib/api';
 import { activeProjects } from '../lib/projects';
 import { ThankYouLetterModal } from './ThankYouLetterModal';
+import { PaymentLedgerView } from './PaymentLedgerView';
 
-type MainTab = 'donations' | 'hk' | 'errors';
+type MainTab = 'donations' | 'hk' | 'errors' | 'payments';
 
 const EDIT_METHODS = ['🔗 קישור ישיר', '💵 מזומן', '🏦 העברה בנקאית', '📱 ביט/פייבוקס', '🔄 הוראת קבע', '🌐 אתר תרומות'];
 
@@ -99,10 +100,11 @@ export function DonationsTab() {
     hkList = hkList.filter(h => h.name?.toLowerCase().includes(q) || String(h.id || '').includes(q));
   }
 
-  const mainTabs: { id: MainTab; label: string; count: number }[] = [
+  const mainTabs: { id: MainTab; label: string; count?: number }[] = [
     { id: 'donations', label: 'תרומות', count: donationRecords.length },
     { id: 'hk', label: 'הוראות קבע', count: hk.length },
     { id: 'errors', label: 'שגיאות', count: failures.length },
+    ...(settings.showPaymentStatuses ? [{ id: 'payments' as MainTab, label: 'מצבי חיוב' }] : []),
   ];
 
   return (
@@ -132,7 +134,7 @@ export function DonationsTab() {
                 mainTab === t.id ? 'bg-[#0D1B2A] text-[#C9A84C]' : 'text-gray-500 hover:bg-gray-50'
               }`}
             >
-              {t.label} ({t.count})
+              {t.label}{t.count !== undefined ? ` (${t.count})` : ''}
             </button>
           ))}
         </div>
@@ -365,6 +367,8 @@ export function DonationsTab() {
             ))}
           </div>
         )}
+
+        {mainTab === 'payments' && settings.showPaymentStatuses && <PaymentLedgerView />}
       </div>
 
       {selectedDonor && <ProfileModal name={selectedDonor} onClose={() => setSelectedDonor(null)} backLabel="תרומות" />}

@@ -175,6 +175,7 @@ export const exportChunk = (sheet: string, offset: number, limit: number) =>
   apiGetStrict('exportAll', { sheet, offset, limit });
 export const exportSync = (syncKey: string) => apiGetStrict('exportAll', { syncKey });
 export const fetchIntegrity = () => apiGetStrict('getIntegrity');
+export const fetchPaymentLedger = () => apiGetStrict('getPaymentLedger');
 
 /** קריאת שחזור מחמירה: אין נתוני דמה ואין הצלחה שקטה על תשובת שגיאה. */
 async function restorePost(action: string, data: any) {
