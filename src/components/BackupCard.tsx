@@ -9,6 +9,9 @@ import {
   sortIssues, headline, ISSUE_HELP, SEVERITY_LABEL,
   Issue, IntegrityReport, Progress,
 } from '../lib/backup';
+import {
+  BackupStamp, makeBackupStamp, readBackupStamp, writeBackupStamp,
+} from '../lib/backupHistory';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // גיבוי מלא ובדיקת תקינות.
@@ -80,13 +83,13 @@ export function BackupCard() {
   const [error, setError] = useState('');
   const [failures, setFailures] = useState<{ what: string; error: string }[]>([]);
   const [needsDeploy, setNeedsDeploy] = useState(false);
-  const [lastBackup, setLastBackup] = useState('');
+  const [lastBackup, setLastBackup] = useState<BackupStamp | null>(() => readBackupStamp());
   const [report, setReport] = useState<IntegrityReport | null>(null);
 
   const reset = () => { setError(''); setFailures([]); setNeedsDeploy(false); };
 
   const runBackup = async () => {
-    reset(); setLastBackup(''); setBusy('backup'); setProgress({ ratio: 0, label: 'מתחיל...' });
+    reset(); setBusy('backup'); setProgress({ ratio: 0, label: 'מתחיל...' });
     try {
       const manifest = await exportManifest();
       const file = await collectBackup(
@@ -110,12 +113,15 @@ export function BackupCard() {
       const blob = new Blob([JSON.stringify(file, null, 2)], { type: 'application/json' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = backupFileName();
+      const fileName = backupFileName();
+      a.download = fileName;
       a.click();
       URL.revokeObjectURL(a.href);
 
       const s = backupSummary(file);
-      setLastBackup(`${s.rows.toLocaleString()} שורות · ${s.sheets} לשוניות · ${s.sync} מפתחות נתונים`);
+      const stamp = makeBackupStamp(s, fileName);
+      writeBackupStamp(stamp);
+      setLastBackup(stamp);
     } catch (e: any) {
       if (isNotDeployed(e)) setNeedsDeploy(true);
       else if (e instanceof BackupIncomplete || e?.name === 'BackupIncomplete') {
@@ -197,7 +203,12 @@ export function BackupCard() {
         {lastBackup && (
           <div className="mt-2 bg-emerald-50 border border-emerald-200 rounded-xl p-2.5 text-[11px] text-emerald-800 flex items-start gap-1.5">
             <CheckCircle2 size={13} className="shrink-0 mt-0.5" />
-            <span><b>הגיבוי הורד.</b> {lastBackup}</span>
+            <span>
+              <b>הגיבוי האחרון במכשיר זה:</b>{' '}
+              {new Date(lastBackup.completedAt).toLocaleString('he-IL')} ·{' '}
+              {lastBackup.rows.toLocaleString()} שורות · {lastBackup.sheets} לשוניות ·{' '}
+              {lastBackup.sync} מפתחות נתונים
+            </span>
           </div>
         )}
 

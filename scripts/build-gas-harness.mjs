@@ -21,7 +21,7 @@ import { fileURLToPath } from 'url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const CODE = join(ROOT, 'google-apps-script', 'Code.gs');
-const OUT = '/tmp/base.js';
+const OUT = join(process.env.KEHILA_TEST_TMP || '/tmp', 'base.js');
 
 // כל קריאה מחזירה עוד דמה, ולכן שרשרת כמו
 // SpreadsheetApp.getActive().getSheetByName('x').getRange(...) לא תיפול.
