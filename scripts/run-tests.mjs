@@ -85,6 +85,7 @@ const libBundles = [
   ['lib/donationFilter.ts', join(OUT, 'df.js')],
   ['lib/finance.ts', join(OUT, 'finance.js')],
   ['lib/activities.ts', join(OUT, 'activities.js')],
+  ['lib/dataOnboarding.ts', join(OUT, 'dataOnboarding.js')],
 ];
 for (const [source, outfile] of libBundles) await bundle(source, outfile);
 

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAppStore } from '../store/AppContext';
-import { Settings as SettingsIcon, RotateCcw, History, Loader2, ChevronDown, Bot } from 'lucide-react';
+import { Settings as SettingsIcon, RotateCcw, History, Loader2, ChevronDown, Bot, Rocket } from 'lucide-react';
 import { GlobalAIImportModal } from './GlobalAIImportModal';
 import { MigrateYahrzeitsModal } from './MigrateYahrzeitsModal';
 import { DatesRescueModal } from './DatesRescueModal';
@@ -17,6 +17,7 @@ import { SetupWizard } from './SetupWizard';
 import { HolidayCategory, CATEGORY_LABEL, CATEGORY_HINT, groupHolidayNames } from '../lib/holidayFilter';
 import { isSignedIn, signOut, currentAccount, isGoogleLoginAvailable } from '../lib/googleAuth';
 import { deleteConfigFromDrive } from '../lib/driveConfig';
+import { DataOnboardingWizard } from './DataOnboardingWizard';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // קבוצות ההגדרות.
@@ -51,6 +52,7 @@ export function SettingsTab() {
   const [openCat, setOpenCat] = useState<HolidayCategory | null>(null);
   const holidayNames = React.useMemo(() => groupHolidayNames(holidays), [holidays]);
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [dataWizardOpen, setDataWizardOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [migrateOpen, setMigrateOpen] = useState(false);
   const [rescueOpen, setRescueOpen] = useState(false);
@@ -240,6 +242,17 @@ export function SettingsTab() {
               נתק
             </button>
           </div>
+        </div>
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6] space-y-3">
+          <div className="flex items-start gap-3">
+            <span className="w-9 h-9 rounded-xl bg-[#C9A84C]/15 text-[#9B7A2F] flex items-center justify-center shrink-0"><Rocket size={18} /></span>
+            <CardTitle title="קליטת נתוני התחלה">
+              חוזרים לאשף השאלות או מכינים שיחת AI עם קבצים. אפשר להשתמש בו גם בהמשך כדי להוסיף מידע חדש; מידע קיים אינו נמחק.
+            </CardTitle>
+          </div>
+          <button onClick={() => setDataWizardOpen(true)} className="w-full bg-[#0D1B2A] text-white rounded-xl py-2.5 text-sm font-bold">
+            פתח את אשף קליטת הנתונים
+          </button>
         </div>
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6] space-y-3">
           <CardTitle title="טווח תאריכים לסכומי תרומות">
@@ -614,6 +627,7 @@ export function SettingsTab() {
             onCancel={() => setWizardOpen(false)}
           />
         )}
+        {dataWizardOpen && <DataOnboardingWizard onDone={() => setDataWizardOpen(false)} />}
       </div>
 
       {importOpen && <GlobalAIImportModal onClose={() => setImportOpen(false)} />}

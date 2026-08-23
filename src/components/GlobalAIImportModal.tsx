@@ -116,7 +116,14 @@ const SHEET_SECTIONS = ['contacts', 'donations', 'standingOrders'] as const;
 const APP_SECTIONS = ['events', 'projects', 'holidays', 'solicitations'] as const;
 const ALL_SECTIONS = [...SHEET_SECTIONS, ...APP_SECTIONS];
 
-export function GlobalAIImportModal({ onClose }: { onClose: () => void }) {
+interface GlobalAIImportModalProps {
+  onClose: () => void;
+  /** באשף ההתחלה: פלט תקין נקלט ונשמר בלי מסך אישור נוסף. */
+  saveImmediately?: boolean;
+  onImported?: () => void;
+}
+
+export function GlobalAIImportModal({ onClose, saveImmediately = false, onImported }: GlobalAIImportModalProps) {
   const {
     holidays, eventsData, homeVisits, donors, holidayExtras, projects, donations,
     updateHolidayExtras, updateEventsData, updateHomeVisitRoundMeta, updateProjects, refresh,
@@ -136,6 +143,7 @@ export function GlobalAIImportModal({ onClose }: { onClose: () => void }) {
   const [saving, setSaving] = useState(false);
   const [result, setResult] = useState<any | null>(null);
   const [undone, setUndone] = useState(false);
+  const [autoCommit, setAutoCommit] = useState(false);
 
   const holidayOptions = useMemo(() => buildHolidayList(holidays, getCustomHols(), new Date()).filter(h => h.daysAway >= 0).map(h => ({ id: h.id, label: `${h.emoji} ${h.name} (בעוד ${h.daysAway} ימים)` })), [holidays]);
   const roundOptions = useMemo(() => (homeVisits.rounds || []).filter((r: any) => r.status === 'active').map((r: any) => ({
@@ -162,7 +170,8 @@ export function GlobalAIImportModal({ onClose }: { onClose: () => void }) {
     const parts: string[] = [];
     const chosen = [...ALL_SECTIONS.filter(on), ...(on('items') ? ['items'] : [])];
 
-    parts.push(`אני מנהל את ${getOrg().orgName.he || 'הארגון'} ומשתמש באפליקציית ניהול קהילה. יש לי מידע שאני צריך להכניס אליה — רשימה, קובץ אקסל, צילום של דף, או סתם טקסט חופשי. אני אצרף אותו בהודעה הבאה. תפקידך להמיר אותו למבנה JSON מדויק שהאפליקציה יודעת לקלוט.`);
+    parts.push(`אני מנהל את ${getOrg().orgName.he || 'הארגון'} ומשתמש באפליקציית ניהול קהילה. עזור לי לנהל שיחת קליטה מסודרת של המידע שכבר יש לי. אני עשוי לצרף בשיחה אחת או בכמה הודעות קובצי Excel/CSV, מסמכים, תמונות של דפים או טקסט חופשי. קרא את כולם יחד ושמור לעצמך תמונה מצטברת.`);
+    parts.push('אם משהו חשוב אינו ברור, שאל אותי שאלות קצרות וממוקדות — עד חמש שאלות בכל פעם. אל תנחש. כשאכתוב שסיימתי להעביר מידע, המר את כל מה שנאסף למבנה JSON המדויק שהאפליקציה יודעת לקלוט. אם הכול ברור כבר מהקבצים, אפשר להחזיר את ה-JSON מיד.');
 
     // ── רק מה שנבחר ───────────────────────────────────────────────────────
     const names: string[] = [
@@ -378,6 +387,7 @@ export function GlobalAIImportModal({ onClose }: { onClose: () => void }) {
 
     setItems(resolvedItems);
     setRows(nextRows);
+    setAutoCommit(saveImmediately);
     setStep('review');
   };
 
@@ -586,8 +596,15 @@ export function GlobalAIImportModal({ onClose }: { onClose: () => void }) {
     setResult({ tasks: items.length, sheet: sheetResult,
       events: newEvents.length, projects: newProjects.length, holidays: rows.holidays.length });
     setStep('done');
+    onImported?.();
     if (sheetRowCount > 0) refresh();
   };
+
+  React.useEffect(() => {
+    if (!autoCommit || step !== 'review' || totalCount === 0 || saving) return;
+    setAutoCommit(false);
+    void commit();
+  }, [autoCommit, step, totalCount, saving]);
 
   const undo = async () => {
     if (!result?.sheet?.tag) return;
@@ -611,10 +628,10 @@ export function GlobalAIImportModal({ onClose }: { onClose: () => void }) {
         {step === 'prompt' && (
           <div className="flex-1 overflow-y-auto pr-1 custom-scrollbar space-y-3">
             <p className="text-[11px] text-gray-500 leading-relaxed">
-              יש לך רשימה, אקסל, או צילום של דף? צור פרומפט, הדבק אותו בצ'אט AI יחד עם הקובץ,
-              והחזר הנה את ה-JSON שקיבלת. בחר קודם במה הקובץ נוגע — ההנחיה תיבנה
-              סביב זה בלבד, ותצא קצרה ומדויקת יותר. לפני השמירה תראה בדיוק
-              מה עומד להיכנס, ולאן.
+              יש לך רשימה, אקסל, מסמך או צילום של דף? צור פרומפט, הדבק אותו בצ'אט AI
+              וצרף שם קובץ אחד או כמה קבצים. ה-AI יוכל לשאול שאלות הבהרה, ובסוף יחזיר
+              JSON להדבקה כאן. בחר קודם במה המידע נוגע כדי לקבל שיחה קצרה ומדויקת יותר.
+              {saveImmediately ? ' במצב ההתחלה, פלט תקין ייקלט ויישמר מיד.' : ' לפני השמירה תראה בדיוק מה עומד להיכנס ולאן.'}
             </p>
             {!prompt ? (
               <>
@@ -697,7 +714,7 @@ export function GlobalAIImportModal({ onClose }: { onClose: () => void }) {
                   />
                 </div>
                 <button onClick={parsePasted} disabled={!pasteText.trim()} className="w-full bg-[#0D1B2A] text-[#E8C97A] text-sm font-bold py-2.5 rounded-xl disabled:opacity-40">
-                  המשך לאישור
+                  {saveImmediately ? 'קלוט ושמור עכשיו' : 'המשך לאישור'}
                 </button>
                 {parseError && <div className="text-xs rounded-lg p-2.5 bg-red-50 text-red-700">{parseError}</div>}
               </>
@@ -707,6 +724,10 @@ export function GlobalAIImportModal({ onClose }: { onClose: () => void }) {
 
         {step === 'review' && (
           <>
+            {saveImmediately && (autoCommit || saving) && (
+              <div className="flex-1 flex items-center justify-center text-sm font-bold text-[#0D1B2A]">קולט ושומר את הנתונים...</div>
+            )}
+            {(!saveImmediately || (!autoCommit && !saving)) && (<>
             <div className="flex-1 overflow-y-auto pr-1 custom-scrollbar space-y-3 mb-3">
               <p className="text-[11px] text-gray-500">
                 עברו על הכל לפני השמירה. אפשר להסיר כל שורה, ולתקן את השיוך של כל משימה.
@@ -844,6 +865,7 @@ export function GlobalAIImportModal({ onClose }: { onClose: () => void }) {
                 {saving ? 'שומר...' : `שמור ${totalCount} רשומות`}
               </button>
             </div>
+            </>)}
           </>
         )}
 

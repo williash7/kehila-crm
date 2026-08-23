@@ -25,6 +25,8 @@ import { ProfileModal } from './components/ProfileModal';
 import { SetupWizard } from './components/SetupWizard';
 import { SignInScreen } from './components/SignInScreen';
 import { isConfigured } from './lib/orgConfig';
+import { DataOnboardingWizard } from './components/DataOnboardingWizard';
+import { shouldShowDataOnboarding } from './lib/dataOnboarding';
 
 // תווית לכפתור "+" הגלובלי (FAB במובייל, "הוסף X" בסיידבר) לפי המסך הפעיל.
 // מסכים שלא ברשימה (דוחות, פוסטר, הגדרות) — אין פעולת "הוספה" משמעותית, הכפתור מוסתר בהם.
@@ -43,6 +45,7 @@ function AppContent() {
   const [activeTab, setActiveTab] = useState('home');
   const [isDonationOpen, setIsDonationOpen] = useState(false);
   const [scoreOpenContact, setScoreOpenContact] = useState<string | null>(null);
+  const [dataOnboardingOpen, setDataOnboardingOpen] = useState(() => shouldShowDataOnboarding());
   // { tab, count } — לחיצה על "+" הגלובלי מעדכנת את זה, וכל מסך שמאזין (donors/tasks/events/calendar)
   // פותח את מודל ההוספה שלו כשה-tab תואם לו. count משתנה בכל לחיצה כדי שאפשר יהיה לפתוח שוב אחרי סגירה.
   const [addTrigger, setAddTrigger] = useState<{ tab: string; count: number }>({ tab: '', count: 0 });
@@ -108,6 +111,7 @@ function AppContent() {
 
       {isDonationOpen && <DonationModal onClose={() => setIsDonationOpen(false)} />}
       {scoreOpenContact && <ProfileModal name={scoreOpenContact} onClose={() => setScoreOpenContact(null)} backLabel="ניקוד" />}
+      {dataOnboardingOpen && <DataOnboardingWizard onDone={() => setDataOnboardingOpen(false)} />}
     </div>
   );
 }
