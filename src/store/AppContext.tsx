@@ -33,6 +33,7 @@ import { Activity, normalizeActivities } from '../lib/activities';
 import { hebcalUrl } from '../lib/orgConfig';
 import { chabadHolidayItems } from '../lib/chabadDates';
 import { FinanceData, emptyFinanceData, normalizeFinanceData } from '../lib/finance';
+import { trackedPost, startAutoFlush } from '../lib/writeQueue';
 
 interface AppState {
   summary: ReportSummary | null;
@@ -677,7 +678,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setRebbeDate(date);
     localStorage.setItem('rebbe_date', date.toISOString());
     import('../lib/api').then(({ apiPost }) => {
-      apiPost('updateRebbe', { date: date.toISOString().split('T')[0] }).catch(console.error);
+      trackedPost('updateRebbe', { date: date.toISOString().split('T')[0] }, apiPost);
     });
   };
 
@@ -950,6 +951,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     loadAll();
     const localRebbe = localStorage.getItem('rebbe_date');
     if (localRebbe) setRebbeDate(new Date(localRebbe));
+  }, []);
+
+  // ניסיונות חוזרים לכתיבות שנכשלו.
+  //
+  // רץ פעם אחת לכל חיי האפליקציה ומתנקה בסגירה. `apiPost` מיובאת בעצלתיים
+  // כדי לא לגרור את מודול ה-API לתוך המסלול הקריטי של הפתיחה.
+  useEffect(() => {
+    let stop: (() => void) | undefined;
+    let cancelled = false;
+    import('../lib/api').then(({ apiPost }) => {
+      if (!cancelled) stop = startAutoFlush(apiPost);
+    });
+    return () => { cancelled = true; stop?.(); };
   }, []);
 
   return (

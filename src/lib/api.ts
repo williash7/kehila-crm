@@ -1,4 +1,5 @@
 import { getOrg, hebcalUrl } from './orgConfig';
+import { trackedPost } from './writeQueue';
 
 export const HEBCAL_API = () => hebcalUrl('shabbat');
 
@@ -194,7 +195,15 @@ export const restoreSync = (data: any) => restorePost('restoreSync', data);
 export const restoreFinish = (token: string) => restorePost('restoreFinish', { token });
 export const restoreRollback = (token: string) => restorePost('restoreRollback', { token });
 
-export async function apiPost(action: string, data: any) {
+/**
+ * שליחת כתיבה לגיליון.
+ *
+ * `reqId` מתקבל מבחוץ כשמדובר ב**ניסיון חוזר**. זו נקודה קריטית שיוסי
+ * איתר: אם הניסיון החוזר מקבל מזהה חדש, מנגנון מניעת הכפילויות בשרת אינו
+ * מזהה שזו אותה פעולה — ותרומה שנרשמה והתשובה שלה אבדה תיכתב פעמיים.
+ * המזהה חייב להיות זהה לזה של הניסיון הראשון.
+ */
+export async function apiPost(action: string, data: any, reqId?: string) {
   try {
     // חשוב: שולחים כ-text/plain ולא application/json.
     // דפדפנים שולחים קודם בקשת "preflight" (OPTIONS) לכל בקשת POST עם
@@ -211,8 +220,8 @@ export async function apiPost(action: string, data: any) {
     // התשובה השמורה במקום לבצע שוב. בלי זה כל תקלה רגעית — עומס, רשת, או
     // תוסף בדפדפן שמשכפל בקשות — הפילה את הפעולה, כי לא היה בטוח לנסות
     // שנית ולסכן רישום כפול של אותה תרומה.
-    const reqId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-    const payload = JSON.stringify({ ...data, action, reqId });
+    const id = reqId || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+    const payload = JSON.stringify({ ...data, action, reqId: id });
 
     let lastErr: any;
     for (let i = 0; i < 3; i++) {
@@ -368,7 +377,7 @@ export async function getCRMDataCloud(): Promise<Record<string, any>> {
 
 export async function saveCRMDataCloud(data: Record<string, any>): Promise<void> {
   saveCRMData(data);
-  apiPost('saveCRM', { data }).catch(console.error); // fire and forget
+  trackedPost('saveCRM', { data }, apiPost);
 }
 
 /**
@@ -423,7 +432,7 @@ export async function getEventsDataCloud(): Promise<any[]> {
 
 export async function saveEventsDataCloud(data: any[]): Promise<void> {
   saveEventsData(data);
-  apiPost('saveEvents', { data }).catch(console.error);
+  trackedPost('saveEvents', { data }, apiPost);
 }
 
 export async function getHolidayExtrasCloud(): Promise<Record<string, any>> {
@@ -439,7 +448,7 @@ export async function getHolidayExtrasCloud(): Promise<Record<string, any>> {
 
 export async function saveHolidayExtrasCloud(data: Record<string, any>): Promise<void> {
   saveHolidayExtras(data);
-  apiPost('saveHolidayExtras', { data }).catch(console.error);
+  trackedPost('saveHolidayExtras', { data }, apiPost);
 }
 
 export async function getHistoryDataCloud(): Promise<any[]> {
@@ -455,7 +464,7 @@ export async function getHistoryDataCloud(): Promise<any[]> {
 
 export async function saveHistoryDataCloud(data: any[]): Promise<void> {
   saveHistoryData(data);
-  apiPost('saveHistory', { data }).catch(console.error); // אם הפעולה עוד לא קיימת בשרת — נכשל בשקט, הנתונים עדיין נשמרים מקומית
+  trackedPost('saveHistory', { data }, apiPost);
 }
 
 export async function getHomeVisitsDataCloud(): Promise<any> {
@@ -471,7 +480,7 @@ export async function getHomeVisitsDataCloud(): Promise<any> {
 
 export async function saveHomeVisitsDataCloud(data: any): Promise<void> {
   saveHomeVisitsData(data);
-  apiPost('saveHomeVisits', { data }).catch(console.error); // אם הפעולה עוד לא קיימת בשרת — נכשל בשקט, הנתונים עדיין נשמרים מקומית
+  trackedPost('saveHomeVisits', { data }, apiPost);
 }
 
 export async function createHolidayDoc(holidayName: string, dateStr: string): Promise<{ url: string; title: string; error?: string } | null> {
@@ -501,7 +510,7 @@ export async function getProjectsCloud(): Promise<any[]> {
 
 export async function saveProjectsCloud(data: any[]): Promise<void> {
   saveProjects(data);
-  apiPost('saveProjects', { data }).catch(console.error);
+  trackedPost('saveProjects', { data }, apiPost);
 }
 
 // ── מרכז כספי ────────────────────────────────────────────────────────────────

@@ -90,6 +90,7 @@ const libBundles = [
   ['lib/dataOnboarding.ts', join(OUT, 'dataOnboarding.js')],
   ['lib/navigation.ts', join(OUT, 'navigation.js')],
   ['lib/donorDisplay.ts', join(OUT, 'donorDisplay.js')],
+  ['lib/writeQueue.ts', join(OUT, 'writeQueue.js')],
 ];
 for (const [source, outfile] of libBundles) await bundle(source, outfile);
 
