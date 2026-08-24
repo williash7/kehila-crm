@@ -1,6 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { Explain } from './Explain';
-import { Bot, X, Copy, Check, Sparkles, Trash2, Undo2, Download, AlertTriangle } from 'lucide-react';
+import { Bot, X, Copy, Check, Sparkles, Trash2, Undo2, Download, AlertTriangle, FileUp } from 'lucide-react';
 import { useAppStore } from '../store/AppContext';
 import { buildHolidayList } from '../lib/holidayList';
 import { getCustomHols, saveCustomHols, apiPost } from '../lib/api';
@@ -10,6 +10,7 @@ import { stampCreated, STANDALONE_TASKS_ID } from '../lib/tasks';
 import { getOrg } from '../lib/orgConfig';
 import { buildHistoryEntry } from '../lib/history';
 import { importAIFinanceTransactions } from '../lib/finance';
+import { homeVisitEntriesFromImport } from '../lib/homeVisits';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ייבוא דרך בינה מלאכותית — לכל סוגי המידע.
@@ -89,6 +90,7 @@ const PREVIEW_FIELDS: Record<string, string[]> = {
   solicitations: ['project', 'name', 'ask', 'status', 'notes'],
   history: ['type', 'name', 'occurrenceDate', 'summary', 'attendees', 'expenses', 'income', 'good', 'improve', 'plan'],
   finance: ['kind', 'status', 'title', 'amount', 'date', 'category', 'repeatMonths', 'scopeType', 'scopeName', 'method', 'notes'],
+  homeVisits: ['purpose', 'dateRangeStart', 'dateRangeEnd', 'people', 'prepTasks'],
 };
 
 const SECTION_LABELS: Record<string, string> = {
@@ -101,6 +103,7 @@ const SECTION_LABELS: Record<string, string> = {
   solicitations: '📊 רשימת התרמה לקמפיין',
   history: '📚 סיכומי פעילויות וחגים שעברו',
   finance: '💳 הכנסות והוצאות שוטפות',
+  homeVisits: '🏠 מערכי ביקורי בית',
 };
 
 /**
@@ -124,13 +127,14 @@ const TOPIC_HINTS: Record<string, string> = {
   solicitations: 'טבלת קמפיין: ממי לבקש, כמה, ומה הסטטוס',
   history: 'סיכומים, נוכחות, עלויות ותובנות מאירועים שכבר היו',
   finance: 'שכירות, חשמל, קניות, משכורת והכנסות שאינן תרומות',
+  homeVisits: 'מטרת המערך, טווח תאריכים, אנשים ודגשים לביקור',
 };
 
 import { findDuplicates } from '../lib/importDupes';
 
 /** מה נכתב לגיליון דרך השרת, ומה נשמר בענן האפליקציה */
 const SHEET_SECTIONS = ['contacts', 'donations', 'standingOrders'] as const;
-const APP_SECTIONS = ['events', 'projects', 'holidays', 'solicitations', 'history', 'finance'] as const;
+const APP_SECTIONS = ['events', 'projects', 'holidays', 'solicitations', 'history', 'finance', 'homeVisits'] as const;
 const ALL_SECTIONS = [...SHEET_SECTIONS, ...APP_SECTIONS];
 
 interface GlobalAIImportModalProps {
@@ -144,8 +148,8 @@ interface GlobalAIImportModalProps {
 
 export function GlobalAIImportModal({ onClose, saveImmediately = false, onImported, initialTopics }: GlobalAIImportModalProps) {
   const {
-    holidays, eventsData, homeVisits, donors, holidayExtras, projects, donations, history, financeData,
-    updateHolidayExtras, updateEventsData, updateHomeVisitRoundMeta, updateProjects, addHistoryEntries, updateFinanceData, refresh,
+    holidays, eventsData, homeVisits, donors, crm, holidayExtras, projects, donations, history, financeData,
+    updateHolidayExtras, updateEventsData, startHomeVisitRound, updateHomeVisitRoundMeta, updateProjects, addHistoryEntries, updateFinanceData, refresh,
   } = useAppStore();
   const [step, setStep] = useState<'prompt' | 'review' | 'done'>('prompt');
   const [prompt, setPrompt] = useState('');
@@ -163,12 +167,16 @@ export function GlobalAIImportModal({ onClose, saveImmediately = false, onImport
   const [result, setResult] = useState<any | null>(null);
   const [undone, setUndone] = useState(false);
   const [autoCommit, setAutoCommit] = useState(false);
+  const jsonFileRef = useRef<HTMLInputElement>(null);
 
   const holidayOptions = useMemo(() => buildHolidayList(holidays, getCustomHols(), new Date()).filter(h => h.daysAway >= 0).map(h => ({ id: h.id, label: `${h.emoji} ${h.name} (בעוד ${h.daysAway} ימים)` })), [holidays]);
-  const roundOptions = useMemo(() => (homeVisits.rounds || []).filter((r: any) => r.status === 'active').map((r: any) => ({
-    id: r.id,
-    label: r.purpose || `מערך מ-${new Date(r.createdAt).toLocaleDateString('he-IL')}`,
-  })), [homeVisits]);
+  const roundOptions = useMemo(() => [
+    ...(homeVisits.rounds || []).filter((r: any) => r.status === 'active').map((r: any) => ({
+      id: r.id,
+      label: r.purpose || `מערך מ-${new Date(r.createdAt).toLocaleDateString('he-IL')}`,
+    })),
+    ...rows.homeVisits.map(r => ({ id: r.key, label: `🆕 ${r.data.purpose}` })),
+  ], [homeVisits, rows.homeVisits]);
   const contactNames = useMemo(() => Object.keys(donors).sort(), [donors]);
 
   // אירוע או פרויקט שנוצרים באותו ייבוא הם יעד חוקי למשימה שבאה איתם.
@@ -201,7 +209,7 @@ export function GlobalAIImportModal({ onClose, saveImmediately = false, onImport
     parts.push('אל תייצר שום סוג אחר, גם אם נראה לך שהוא מסתתר בקובץ. אם משהו בקובץ אינו שייך לסוגים האלה — התעלם ממנו.');
 
     // ההבחנה נחוצה רק כשיותר מאחד מהמבלבלים נבחר
-    const confusing = ['donations', 'events', 'holidays', 'projects', 'history', 'finance', 'items'].filter(on);
+    const confusing = ['donations', 'events', 'holidays', 'projects', 'history', 'finance', 'homeVisits', 'items'].filter(on);
     if (confusing.length > 1) {
       parts.push('\nההבחנה בין אלה שמתבלבלים הכי הרבה:');
       if (on('events')) parts.push('· **פעילות** = התכנסות עם שעה ומקום. activityKind הוא recurring לפעילות קבועה או special לאירוע מיוחד. פעילות חג נוצרת מתוך החג.');
@@ -210,12 +218,13 @@ export function GlobalAIImportModal({ onClose, saveImmediately = false, onImport
       if (on('history')) parts.push('· **סיכום עבר** = תיעוד של פעילות או חג שכבר התקיימו. אין ליצור ממנו פעילות חדשה; משייכים אותו בשם לפעילות או לחג הקיימים.');
       if (on('donations')) parts.push('· **תרומה** = כסף מתורם ונשמר ביומן התרומות. אין להעתיק אותה גם לתנועות הכספיות.');
       if (on('finance')) parts.push('· **תנועה כספית שוטפת** = הכנסה שאינה תרומה או הוצאה כמו שכירות, חשמל, משכורת וקניות. היא יכולה להיות כללית בלי שיוך לאירוע.');
+      if (on('homeVisits')) parts.push('· **מערך ביקורי בית** = קבוצה מתוכננת של אנשים לביקור סביב מטרה וטווח תאריכים. הוא אינו ביקור שכבר בוצע ואינו רשימת אנשי קשר חדשה.');
       if (on('items')) parts.push('· אם משהו הוא רק דבר לעשות ולא אחד מאלה — הוא **משימה**.');
     }
 
     // ── הקשר, גם הוא לפי הנבחר ────────────────────────────────────────────
     const ctx: string[] = [];
-    const needsNames = ['contacts', 'donations', 'standingOrders', 'solicitations'].some(on);
+    const needsNames = ['contacts', 'donations', 'standingOrders', 'solicitations', 'homeVisits'].some(on);
     if (needsNames && contactNames.length) {
       ctx.push(`אנשי קשר קיימים (אם שם במידע שלי הוא אחד מהם — כתוב אותו בדיוק כך): ${contactNames.slice(0, 150).join(', ')}`);
     }
@@ -226,7 +235,7 @@ export function GlobalAIImportModal({ onClose, saveImmediately = false, onImport
       ctx.push(`קמפיינים קיימים: ${(projects as any[]).map(p => p.name).join(', ')}`);
     }
     if (on('finance') && financeData.categories.length) ctx.push(`קטגוריות כספיות קיימות: ${financeData.categories.join(', ')}`);
-    if (on('items') && roundOptions.length) ctx.push(`מערכי ביקורי בית פעילים: ${roundOptions.map(r => r.label).join(', ')}`);
+    if ((on('items') || on('homeVisits')) && roundOptions.length) ctx.push(`מערכי ביקורי בית פעילים: ${roundOptions.map(r => r.label).join(', ')}`);
     if (ctx.length) {
       parts.push('\nהקשר קיים אצלי, כדי שתשייך אליו במקום להמציא שמות חדשים:');
       ctx.forEach(c => parts.push(c));
@@ -259,6 +268,12 @@ export function GlobalAIImportModal({ onClose, saveImmediately = false, onImport
       parts.push('· scopeType הוא general לשוטף שאינו שייך ליעד, event לפעילות, holiday לחג או project לקמפיין. בשוטף כמו שכירות כתוב general והשאר scopeName ריק.');
       parts.push('· repeatMonths הוא מספר החודשים הכולל ליצירה חודשית, למשל 12 לשכירות לשנה. אם זו תנועה חד-פעמית כתוב 1. date הוא מועד התשלום הראשון בפורמט yyyy-MM-dd.');
       parts.push('· תרומות מתורמים שייכות ל-donations בלבד ואסור להעתיק אותן גם ל-finance. finance מיועד להכנסות אחרות ולהוצאות, כדי לא לספור כסף פעמיים.');
+    }
+    if (on('homeVisits')) {
+      parts.push('· במערך ביקורי בית: purpose הוא מטרת המערך, dateRangeStart/dateRangeEnd בפורמט yyyy-MM-dd, people היא רשימת האנשים ו-prepTasks היא רשימת משימות הכנה קצרות.');
+      parts.push('· לכל אדם אפשר לכתוב name, category, topic, emphasis, scheduledDate, scheduledTime ו-visitedDate. אל תסמן visitedDate אם הביקור רק מתוכנן.');
+      parts.push('· טלפון, כתובת ופרטי קשר שייכים ל-contacts ולא לאדם בתוך homeVisits. אם הם מופיעים בקובץ ונבחר גם נושא אנשי קשר — כתוב אותם שם, בלי ליצור שם כפול.');
+      parts.push('· אם מערך עם אותה מטרה ואותו טווח תאריכים כבר קיים — אל תיצור אותו שוב.');
     }
     // ── מזהה מקור ──────────────────────────────────────────────────────
     //
@@ -305,6 +320,16 @@ export function GlobalAIImportModal({ onClose, saveImmediately = false, onImport
       { kind: 'expense', status: 'committed', title: 'שכירות בית חב״ד', amount: 4500, date: '2026-09-01', category: 'שכירות', repeatMonths: 12, scopeType: 'general', scopeName: '', method: 'העברה בנקאית', notes: '' },
       { kind: 'income', status: 'expected', title: 'החזר הוצאות', amount: 1200, date: '2026-09-15', category: 'פעילות שוטפת', repeatMonths: 1, scopeType: 'general', scopeName: '', method: '', notes: '' },
     ];
+    if (on('homeVisits')) schema.homeVisits = [{
+      purpose: 'לקראת ראש השנה',
+      dateRangeStart: '2026-08-25',
+      dateRangeEnd: '2026-09-10',
+      people: [
+        { name: 'ישראל ישראלי', category: '⭐ קרוב', topic: 'ראש השנה', emphasis: 'לבדוק מזוזות', scheduledDate: '', scheduledTime: '', visitedDate: '' },
+        { name: 'דוד כהן', category: '🔄 מתקרב', topic: 'ראש השנה', emphasis: '', scheduledDate: '2026-09-02', scheduledTime: '19:00', visitedDate: '' },
+      ],
+      prepTasks: ['להכין ערכות חג', 'לתאם מסלול ביקורים'],
+    }];
     if (on('items')) schema.items = [
       ...(on('holidays') ? [{ text: 'משימה הקשורה לחג', targetKind: 'holiday', targetLabel: 'שם החג' }] : []),
       ...(on('events') ? [{ text: 'לארגן כיבוד', targetKind: 'event', targetLabel: 'סעודת שבת' }] : []),
@@ -374,6 +399,21 @@ export function GlobalAIImportModal({ onClose, saveImmediately = false, onImport
         method: tx.method || '',
         notes: tx.notes || '',
       })),
+      homeVisits: (homeVisits.rounds || []).map(round => ({
+        purpose: round.purpose || '',
+        dateRangeStart: round.dateRangeStart || '',
+        dateRangeEnd: round.dateRangeEnd || '',
+        people: round.entries.map(entry => ({
+          name: entry.name,
+          category: entry.categoryIsCustom ? entry.category : '',
+          topic: entry.topic || '',
+          emphasis: entry.emphasis || '',
+          scheduledDate: entry.scheduledDate || '',
+          scheduledTime: entry.scheduledTime || '',
+          visitedDate: entry.visitedDate || '',
+        })),
+        prepTasks: (round.prepTasks || []).map(task => task.text),
+      })),
       items: Object.entries(holidayExtras).flatMap(([id, extra]: any) =>
         (extra?.tasks || []).filter((t: any) => !t.done).map((t: any) => ({
           text: t.text,
@@ -402,10 +442,11 @@ export function GlobalAIImportModal({ onClose, saveImmediately = false, onImport
     }
   };
 
-  const parsePasted = () => {
+  const parsePasted = (sourceText?: string) => {
     setParseError('');
-    const fenceMatch = pasteText.match(/```(?:json)?\s*([\s\S]*?)```/);
-    const jsonStr = (fenceMatch ? fenceMatch[1] : pasteText).trim();
+    const rawText = typeof sourceText === 'string' ? sourceText : pasteText;
+    const fenceMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)```/);
+    const jsonStr = (fenceMatch ? fenceMatch[1] : rawText).trim();
     let parsed: any;
     try {
       parsed = JSON.parse(jsonStr);
@@ -432,6 +473,7 @@ export function GlobalAIImportModal({ onClose, saveImmediately = false, onImport
       solicitations: pick(parsed.solicitations, 'name', 'sol'),
       history: pick(parsed.history, 'name', 'hist'),
       finance: pick(parsed.finance, 'title', 'fin'),
+      homeVisits: pick(parsed.homeVisits, 'purpose', 'visit'),
     };
 
     // ── משימות ──────────────────────────────────────────────────────────
@@ -445,6 +487,10 @@ export function GlobalAIImportModal({ onClose, saveImmediately = false, onImport
       ...(projects as any[]).map(p => ({ id: p.id, label: p.name })),
       ...nextRows.projects.map(r => ({ id: r.key, label: String(r.data.name) })),
     ];
+    const visitOpts = [
+      ...(homeVisits.rounds || []).filter(round => round.status === 'active').map(round => ({ id: round.id, label: round.purpose || round.id })),
+      ...nextRows.homeVisits.map(r => ({ id: r.key, label: String(r.data.purpose) })),
+    ];
 
     const rawItems: any[] = Array.isArray(parsed.items) ? parsed.items : [];
     const validItems = rawItems.filter(it => it && typeof it.text === 'string' && it.text.trim());
@@ -455,7 +501,7 @@ export function GlobalAIImportModal({ onClose, saveImmediately = false, onImport
       if (kind === 'holiday') targetId = bestMatch(label, holidayOptions);
       else if (kind === 'event') targetId = bestMatch(label, evOpts);
       else if (kind === 'project') targetId = bestMatch(label, projOpts);
-      else if (kind === 'homeVisit') targetId = bestMatch(label, roundOptions);
+      else if (kind === 'homeVisit') targetId = bestMatch(label, visitOpts);
       else if (kind === 'contact') targetId = bestMatch(label, contactNames.map(n => ({ id: n, label: n })));
       return { key: `item_${i}`, text: it.text.trim(), targetKind: kind, targetId };
     });
@@ -470,6 +516,18 @@ export function GlobalAIImportModal({ onClose, saveImmediately = false, onImport
     setRows(nextRows);
     setAutoCommit(saveImmediately);
     setStep('review');
+  };
+
+  const readJsonFile = async (file?: File) => {
+    if (!file) return;
+    setParseError('');
+    try {
+      const text = await file.text();
+      setPasteText(text);
+      parsePasted(text);
+    } catch {
+      setParseError(`לא הצלחתי לקרוא את הקובץ „${file.name}”. נסה/י לשמור אותו שוב כקובץ JSON בטקסט רגיל.`);
+    }
   };
 
   const patchItem = (key: string, patch: Partial<ParsedItem>) => {
@@ -550,6 +608,51 @@ export function GlobalAIImportModal({ onClose, saveImmediately = false, onImport
 
     if (newEvents.length) updateEventsData([...(eventsData as any[]), ...newEvents]);
     if (newProjects.length) updateProjects([...(projects as any[]), ...newProjects] as any);
+
+    // ── מערכי ביקורי בית ────────────────────────────────────────────────
+    // כל מערך מקבל מזהה אמיתי לפני ששומרים משימות, כדי שמשימה שמגיעה
+    // באותו JSON תוכל להשתייך מיד למערך החדש. זהות המערך מורכבת מהמטרה
+    // וטווח התאריכים — כך העלאה חוזרת של אותו קובץ אינה יוצרת כפילות.
+    const normalizeRoundPart = (value: any) => String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    const roundIdentity = (value: any) => [value.purpose, value.dateRangeStart, value.dateRangeEnd]
+      .map(normalizeRoundPart).join('|');
+    const roundIdsByIdentity = new Map<string, string>(
+      (homeVisits.rounds || []).map(round => [roundIdentity(round), round.id] as [string, string])
+    );
+    const newRoundPrepTasks = new Map<string, { text: string; done: boolean }[]>();
+    let createdHomeVisitCount = 0;
+    let skippedHomeVisitCount = 0;
+
+    rows.homeVisits.forEach(row => {
+      const d = row.data;
+      const identity = roundIdentity(d);
+      const entries = homeVisitEntriesFromImport(d.people, crm);
+      const existingRoundId = roundIdsByIdentity.get(identity);
+      if (existingRoundId) {
+        idMap[row.key] = existingRoundId;
+        skippedHomeVisitCount++;
+        return;
+      }
+      if (entries.length === 0) {
+        skippedHomeVisitCount++;
+        return;
+      }
+      const prepTasks = (Array.isArray(d.prepTasks) ? d.prepTasks : [])
+        .map((task: any) => typeof task === 'string' ? task : task?.text)
+        .map((text: any) => String(text || '').trim())
+        .filter(Boolean)
+        .map((text: string) => ({ text, done: false }));
+      const id = startHomeVisitRound(entries, {
+        purpose: String(d.purpose).trim(),
+        dateRangeStart: String(d.dateRangeStart || '').trim() || undefined,
+        dateRangeEnd: String(d.dateRangeEnd || '').trim() || undefined,
+        prepTasks,
+      });
+      idMap[row.key] = id;
+      newRoundPrepTasks.set(id, prepTasks);
+      roundIdsByIdentity.set(identity, id);
+      createdHomeVisitCount++;
+    });
 
     // ── רשימת התרמה ──────────────────────────────────────────────────────
     //
@@ -695,7 +798,8 @@ export function GlobalAIImportModal({ onClose, saveImmediately = false, onImport
     }
     byRound.forEach((its, id) => {
       const round = (homeVisits.rounds || []).find((r: any) => r.id === id);
-      updateHomeVisitRoundMeta(id, { prepTasks: [...(round?.prepTasks || []), ...its.map(it => ({ text: it.text, done: false }))] });
+      const existingPrepTasks = round?.prepTasks || newRoundPrepTasks.get(id) || [];
+      updateHomeVisitRoundMeta(id, { prepTasks: [...existingPrepTasks, ...its.map(it => ({ text: it.text, done: false }))] });
     });
     if (contactItems.length > 0 || standaloneItems.length > 0) {
       const existing = holidayExtras[STANDALONE_TASKS_ID]?.tasks || [];
@@ -717,6 +821,7 @@ export function GlobalAIImportModal({ onClose, saveImmediately = false, onImport
     setSaving(false);
     setResult({ tasks: items.length, sheet: sheetResult,
       events: newEvents.length, projects: newProjects.length, holidays: rows.holidays.length,
+      homeVisits: createdHomeVisitCount, homeVisitsSkipped: skippedHomeVisitCount,
       history: savedHistoryCount, finance: financeImport.added, financeSkipped: financeImport.skipped });
     setStep('done');
     onImported?.();
@@ -747,6 +852,17 @@ export function GlobalAIImportModal({ onClose, saveImmediately = false, onImport
           </h2>
           <button onClick={onClose} className="bg-gray-200/50 p-2 rounded-full text-gray-500 hover:bg-gray-200"><X size={16} /></button>
         </div>
+        <input
+          ref={jsonFileRef}
+          type="file"
+          accept=".json,.txt,application/json,text/plain"
+          className="hidden"
+          aria-label="בחירת קובץ JSON"
+          onChange={e => {
+            void readJsonFile(e.target.files?.[0]);
+            e.currentTarget.value = '';
+          }}
+        />
 
         {step === 'prompt' && (
           <div className="flex-1 overflow-y-auto pr-1 custom-scrollbar space-y-3">
@@ -758,6 +874,12 @@ export function GlobalAIImportModal({ onClose, saveImmediately = false, onImport
             </p>
             {!prompt ? (
               <>
+                <button onClick={() => jsonFileRef.current?.click()} className="w-full flex items-center justify-center gap-2 bg-white border-2 border-dashed border-purple-300 text-purple-700 text-sm font-bold py-3 rounded-xl hover:bg-purple-50">
+                  <FileUp size={16} /> יש לי קובץ JSON מוכן — העלה עכשיו
+                </button>
+                <p className="text-[10px] text-gray-400 text-center">הקובץ נקרא במכשיר בלבד ויעבור למסך אישור לפני השמירה.</p>
+                {parseError && <div className="text-xs rounded-lg p-2.5 bg-red-50 text-red-700">{parseError}</div>}
+                <div className="flex items-center gap-2 text-[10px] text-gray-400"><span className="h-px bg-[#EDE6D6] flex-1" /><span>או צור פרומפט לשיחה</span><span className="h-px bg-[#EDE6D6] flex-1" /></div>
                 {/* ── במה הקובץ נוגע ──────────────────────────────────
                     ההנחיה נבנית סביב הבחירה הזו בלבד. פחות נושאים =
                     הנחיה קצרה יותר, ופחות הזמנה למודל להמציא דברים
@@ -826,7 +948,12 @@ export function GlobalAIImportModal({ onClose, saveImmediately = false, onImport
                   </button>
                 </div>
                 <div>
-                  <label className="block text-[11px] font-bold text-gray-500 mb-1">הדביקו כאן את פלט ה-JSON שקיבלתם מה-AI:</label>
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <label className="block text-[11px] font-bold text-gray-500">הדביקו כאן את פלט ה-JSON שקיבלתם מה-AI:</label>
+                    <button onClick={() => jsonFileRef.current?.click()} className="shrink-0 flex items-center gap-1 text-[10px] font-bold text-purple-700 bg-purple-50 border border-purple-200 rounded-lg px-2 py-1">
+                      <FileUp size={11} /> העלה קובץ במקום
+                    </button>
+                  </div>
                   <textarea
                     value={pasteText}
                     onChange={e => setPasteText(e.target.value)}
@@ -836,7 +963,7 @@ export function GlobalAIImportModal({ onClose, saveImmediately = false, onImport
                     dir="ltr"
                   />
                 </div>
-                <button onClick={parsePasted} disabled={!pasteText.trim()} className="w-full bg-[#0D1B2A] text-[#E8C97A] text-sm font-bold py-2.5 rounded-xl disabled:opacity-40">
+                <button onClick={() => parsePasted()} disabled={!pasteText.trim()} className="w-full bg-[#0D1B2A] text-[#E8C97A] text-sm font-bold py-2.5 rounded-xl disabled:opacity-40">
                   {saveImmediately ? 'קלוט ושמור עכשיו' : 'המשך לאישור'}
                 </button>
                 {parseError && <div className="text-xs rounded-lg p-2.5 bg-red-50 text-red-700">{parseError}</div>}
@@ -1008,6 +1135,8 @@ export function GlobalAIImportModal({ onClose, saveImmediately = false, onImport
                 {result.events > 0 && <div>{result.events} פעילויות</div>}
                 {result.projects > 0 && <div>{result.projects} קמפיינים</div>}
                 {result.holidays > 0 && <div>{result.holidays} חגים ותאריכים</div>}
+                {result.homeVisits > 0 && <div>{result.homeVisits} מערכי ביקורי בית</div>}
+                {result.homeVisitsSkipped > 0 && <div className="text-amber-700">{result.homeVisitsSkipped} מערכי ביקורי בית דולגו כי כבר היו קיימים או שלא היו בהם אנשים</div>}
                 {result.history > 0 && <div>{result.history} סיכומי פעילויות וחגים שעברו</div>}
                 {result.finance > 0 && <div>{result.finance} תנועות במרכז הכספי</div>}
                 {result.financeSkipped > 0 && <div className="text-amber-700">{result.financeSkipped} תנועות כספיות דולגו כי היו כפולות או שחסר בהן תאריך, תיאור או סכום</div>}

@@ -1,0 +1,36 @@
+{
+  "homeVisits": [
+    {
+      "purpose": "בדיקת ייבוא ביקורי בית",
+      "dateRangeStart": "2026-09-01",
+      "dateRangeEnd": "2026-09-10",
+      "people": [
+        {
+          "name": "ישראל בדיקה",
+          "category": "⭐ קרוב",
+          "topic": "ראש השנה",
+          "emphasis": "להביא ערכת חג",
+          "scheduledDate": "2026-09-03",
+          "scheduledTime": "18:30"
+        },
+        {
+          "name": "דוד בדיקה",
+          "category": "🔄 מתקרב",
+          "topic": "ראש השנה",
+          "emphasis": "לבדוק מזוזות"
+        }
+      ],
+      "prepTasks": [
+        "להכין ערכות חג",
+        "לתאם מסלול"
+      ]
+    }
+  ],
+  "items": [
+    {
+      "text": "להדפיס רשימת כתובות",
+      "targetKind": "homeVisit",
+      "targetLabel": "בדיקת ייבוא ביקורי בית"
+    }
+  ]
+}

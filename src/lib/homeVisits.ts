@@ -58,6 +58,38 @@ export function emptyHomeVisitEntry(name: string, category: string): HomeVisitEn
   return { name, category, categoryIsCustom: false, scheduled: false, visited: false };
 }
 
+/** הופך רשימת אנשים חופשית מה-JSON לרשומות ביקור תקינות, בלי שמות כפולים. */
+export function homeVisitEntriesFromImport(value: unknown, crm: Record<string, any>): HomeVisitEntry[] {
+  const people = Array.isArray(value) ? value : [];
+  const seen = new Set<string>();
+  const result: HomeVisitEntry[] = [];
+  people.forEach(rawValue => {
+    const raw = typeof rawValue === 'string'
+      ? { name: rawValue }
+      : (rawValue && typeof rawValue === 'object' ? rawValue as Record<string, any> : {});
+    const name = String(raw.name || '').trim();
+    const key = name.toLowerCase().replace(/\s+/g, ' ');
+    if (!name || seen.has(key)) return;
+    seen.add(key);
+    const customCategory = String(raw.category || '').trim();
+    const scheduledDate = String(raw.scheduledDate || '').trim();
+    const visitedDate = String(raw.visitedDate || '').trim();
+    result.push({
+      name,
+      category: customCategory || liveCategoryFor(name, crm),
+      categoryIsCustom: !!customCategory,
+      topic: String(raw.topic || '').trim() || undefined,
+      emphasis: String(raw.emphasis || '').trim() || undefined,
+      scheduled: !!scheduledDate,
+      scheduledDate: scheduledDate || undefined,
+      scheduledTime: String(raw.scheduledTime || '').trim() || undefined,
+      visited: !!visitedDate || raw.visited === true,
+      visitedDate: visitedDate || undefined,
+    });
+  });
+  return result;
+}
+
 // בונה רשימת מועמדים ראשונית למערך חדש — לפי אותה עדיפות בדיוק כמו ה-widget
 // "לא יצרנו קשר" בדשבורד (מעגל קרבה + ימים מאז מפגש אחרון), כדי ש"מערך חדש"
 // יתחיל תמיד מהאנשים שהכי דחוף לבקר אצלם.

@@ -53,5 +53,10 @@ assert.ok(/קליטת נתוני התחלה/.test(settings) && /setDataWizardOpe
 assert.ok(/saveImmediately/.test(wizard), 'מסלול ה-AI באשף חייב לבקש שמירה מיידית');
 assert.ok(/קלוט ושמור עכשיו/.test(aiImport) && /setAutoCommit\(saveImmediately\)/.test(aiImport), 'פלט AI תקין חייב להישמר בפעולה אחת במצב ההתחלה');
 assert.ok(/עד חמש שאלות בכל פעם/.test(aiImport) && /קובצי Excel\/CSV/.test(aiImport), 'הפרומפט חייב לנהל שיחה ולקבל קבצים');
+assert.ok(/type="file"/.test(aiImport) && /accept="\.json,\.txt,application\/json,text\/plain"/.test(aiImport), 'חייבת להיות בחירה ישירה של קובץ JSON');
+assert.ok(/יש לי קובץ JSON מוכן — העלה עכשיו/.test(aiImport) && /העלה קובץ במקום/.test(aiImport), 'העלאת JSON צריכה להופיע גם במסך הראשון וגם ליד ההדבקה');
+assert.ok(/file\.text\(\)/.test(aiImport) && /parsePasted\(text\)/.test(aiImport), 'הקובץ צריך להיקרא מקומית ולעבור באותו פענוח ואישור');
+assert.ok(/schema\.homeVisits/.test(aiImport) && /homeVisitEntriesFromImport/.test(aiImport), 'ה-JSON חייב לתמוך במערך ביקורי בית');
+assert.ok(/startHomeVisitRound/.test(aiImport) && /newRoundPrepTasks/.test(aiImport), 'הייבוא חייב ליצור מערך ולשייך אליו משימות הכנה');
 
 console.log('✓ אשף קליטת נתוני התחלה מחובר ושומר דרך המודלים הקיימים');

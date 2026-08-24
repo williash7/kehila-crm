@@ -74,7 +74,7 @@ interface AppState {
   updateHistoryEntry: (id: string, data: Partial<HistoryEntry>) => void;
   addHistoryEntries: (entries: HistoryEntry[]) => number;
   deleteHistoryEntry: (id: string) => void;
-  startHomeVisitRound: (entries: HomeVisitEntry[]) => void;
+  startHomeVisitRound: (entries: HomeVisitEntry[], meta?: Pick<HomeVisitRound, 'purpose' | 'dateRangeStart' | 'dateRangeEnd' | 'prepTasks'>) => string;
   markHomeVisitDone: (roundId: string, name: string) => void;
   unmarkHomeVisitDone: (roundId: string, name: string) => void;
   createHomeVisitTaskForEntry: (roundId: string, name: string) => void;
@@ -677,8 +677,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   // כשמתחילים מערך ביקורים חדש — נוצרות אוטומטית משימות "ביקור בית" (kind:'homeVisit')
   // ל-5 האנשים הראשונים ברשימה, כדי שהמערך יופיע מייד בכרטיסיית "משימות".
-  const startHomeVisitRound = (entries: HomeVisitEntry[]) => {
-    const round = { id: `round_${Date.now()}`, createdAt: new Date().toISOString(), status: 'active' as const, entries };
+  const startHomeVisitRound = (entries: HomeVisitEntry[], meta: Pick<HomeVisitRound, 'purpose' | 'dateRangeStart' | 'dateRangeEnd' | 'prepTasks'> = {}) => {
+    const round = { ...meta, id: `round_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, createdAt: new Date().toISOString(), status: 'active' as const, entries };
     setHomeVisits(prev => {
       const next = { rounds: [...prev.rounds, round] };
       saveHomeVisitsDataCloud(next);
@@ -694,6 +694,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       });
       logAction('task_create', initialTasks.length);
     }
+    return round.id;
   };
 
   // מסמן איש קשר במערך ביקורים כ"בוצע" — גם ברשומת המערך עצמה וגם במשימה
