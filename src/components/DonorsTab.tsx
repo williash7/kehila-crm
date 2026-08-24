@@ -76,7 +76,10 @@ export function DonorsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
   else if (filter === 'hk') list = list.filter(d => hkNames.has(d.name));
   else if (filter === 'errors') list = list.filter(d => errNames.has(d.name));
 
-  if (search) list = list.filter(d => d.name.toLowerCase().includes(search.toLowerCase()));
+  const normalizedSearch = search.trim().toLocaleLowerCase('he');
+  if (normalizedSearch) {
+    list = list.filter(d => d.name.toLocaleLowerCase('he').includes(normalizedSearch));
+  }
 
   // סינון לפי פרטים קיימים/חסרים (טלפון, יום הולדת, יארצייט) — משתמש
   // באותם פונקציות מציאה שכבר קיימות בשאר האפליקציה (כרטיס איש קשר, תזכורות).
@@ -129,6 +132,12 @@ export function DonorsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
     else if (sort === 'date') cmp = getNearestDateDays(a) - getNearestDateDays(b);
     return sortDir === 'asc' ? cmp : -cmp;
   });
+
+  // במכשירי Android מסוימים, במיוחד בזמן הקלדה בעברית, הדפדפן עלול להשאיר
+  // את הכרטיסים הקודמים מצוירים אף שהמונה כבר חושב לפי הרשימה החדשה. המפתח
+  // כולל גם את התוצאות וגם את סדרן, ולכן כל שינוי חיפוש/סינון/מיון מחליף את
+  // המכולה כיחידה אחת ושומר את המונה והכרטיסים מסונכרנים.
+  const listRenderKey = list.map(d => d.name).join('\u001f');
 
   const circleLabel: Record<string, string> = { close: '⭐ קרוב', approach: '🔄 מתקרב', third: '⭕ שלישי', far: '' };
 
@@ -211,7 +220,7 @@ export function DonorsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
               className="flex-1 bg-transparent border-none outline-none text-sm text-[#0D1B2A]"
               placeholder="חיפוש לפי שם..."
               value={search}
-              onChange={e => setSearch(e.target.value)}
+              onInput={e => setSearch(e.currentTarget.value)}
             />
           </div>
 
@@ -294,7 +303,7 @@ export function DonorsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
       ) : (
         <>
           {/* Mobile card list */}
-          <div className="px-4 space-y-2 md:hidden">
+          <div key={`mobile:${listRenderKey}`} className="px-4 space-y-2 md:hidden">
             {list.map(d => {
               const crmData = crm[d.name] || {};
               const isHk = hkNames.has(d.name);
@@ -336,7 +345,7 @@ export function DonorsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
           </div>
 
           {/* Desktop table */}
-          <div className="hidden md:block px-6 pb-6">
+          <div key={`desktop:${listRenderKey}`} className="hidden md:block px-6 pb-6">
             <div className="bg-white rounded-2xl shadow-sm overflow-hidden border border-[#EDE6D6]">
               {/* Table header */}
               <div className="grid grid-cols-[2.5rem_1fr_8rem_7rem_7rem_5rem] gap-0 bg-[#0D1B2A]/5 border-b border-[#EDE6D6] text-[11px] font-bold text-gray-500 uppercase tracking-wide">
