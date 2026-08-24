@@ -31,6 +31,24 @@ jobs:
           # פשוט לא מוצג והאפליקציה עובדת בהגדרה ידנית.
           VITE_GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
 
+      # GitHub Pages עשוי להגיש index.html ישן מהמטמון במשך כמה דקות אחרי
+      # פריסה. שומרים רק את קובצי הכניסה שאליהם הפנו שמונה הפריסות האחרונות,
+      # כדי שהמטמון הישן לא יקבל 404 — בלי לצבור את כל ההיסטוריה לנצח.
+      - name: Preserve recent entry assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=8 origin gh-pages:refs/remotes/origin/gh-pages
+          while IFS= read -r rev; do
+            while IFS= read -r asset; do
+              [ -n "$asset" ] || continue
+              if git cat-file -e "${rev}:${asset}"; then
+                mkdir -p "dist/$(dirname "$asset")"
+                git show "${rev}:${asset}" > "dist/${asset}"
+              fi
+            done < <(git show "${rev}:index.html" | grep -oE 'assets/index-[^" ]+\.(js|css)' | sort -u || true)
+          done < <(git rev-list --max-count=8 origin/gh-pages)
+
       - uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}

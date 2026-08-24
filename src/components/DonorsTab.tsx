@@ -10,6 +10,7 @@ import { QuickLogButtons } from './QuickLogButtons';
 import { findGregorianBirthday, findHebrewBirthday, findYahrzeitEntries } from '../lib/donorDates';
 import { computeOverdueContacts, computeLastContactByName, formatLastContact } from '../lib/contactFocus';
 import { withCity } from '../lib/orgConfig';
+import { avatarGradient, hasDisplayName } from '../lib/donorDisplay';
 
 export function DonorsTab({ addTrigger }: { addTrigger?: { tab: string; count: number } } = {}) {
   const { donors, visibleDonors, hk, failures, crm, donations, refresh, updateCrm, nameMerges } = useAppStore();
@@ -64,24 +65,10 @@ export function DonorsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
     setSelectedDonor(name);
   };
 
-  const getAvatarColor = (name: string) => {
-    const c = [
-      'linear-gradient(135deg,#C9A84C,#9B7A2F)',
-      'linear-gradient(135deg,#4A2E8C,#2D1B69)',
-      'linear-gradient(135deg,#059669,#047857)',
-      'linear-gradient(135deg,#DC2626,#991B1B)',
-      'linear-gradient(135deg,#2563EB,#1D4ED8)',
-      'linear-gradient(135deg,#D97706,#92400E)'
-    ];
-    let h = 0;
-    for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) % c.length;
-    return c[Math.abs(h)];
-  };
-
   const hkNames = new Set(hk.filter(h => h.active).map(h => h.name));
   const errNames = new Set(failures.map(f => f.name));
 
-  let list: Donor[] = Object.values(visibleDonors);
+  let list: Donor[] = Object.values(visibleDonors || {}).filter(hasDisplayName) as Donor[];
   if (filter === 'close') list = list.filter(d => crm[d.name]?.circle === 'close');
   else if (filter === 'approach') list = list.filter(d => crm[d.name]?.circle === 'approach');
   else if (filter === 'third') list = list.filter(d => crm[d.name]?.circle === 'third');
@@ -320,7 +307,7 @@ export function DonorsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
                 >
                   <div
                     className="w-[42px] h-[42px] rounded-full flex justify-center items-center text-white font-['Frank_Ruhl_Libre'] font-bold text-lg shrink-0"
-                    style={{ background: getAvatarColor(d.name) }}
+                    style={{ background: avatarGradient(d.name) }}
                   >
                     {d.name.charAt(0)}
                   </div>
@@ -397,7 +384,7 @@ export function DonorsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
                     <div className="px-3 py-3">
                       <div
                         className="w-8 h-8 rounded-full flex justify-center items-center text-white font-['Frank_Ruhl_Libre'] font-bold text-sm"
-                        style={{ background: getAvatarColor(d.name) }}
+                        style={{ background: avatarGradient(d.name) }}
                       >
                         {d.name.charAt(0)}
                       </div>
@@ -537,7 +524,7 @@ export function DonorsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
                         <div key={i} className="bg-white rounded-xl p-3 border border-[#EDE6D6] flex items-center gap-3 shadow-sm">
                           <div
                             className="w-9 h-9 rounded-full flex justify-center items-center text-white font-['Frank_Ruhl_Libre'] font-bold text-sm shrink-0"
-                            style={{ background: getAvatarColor(d.name) }}
+                            style={{ background: avatarGradient(d.name) }}
                           >
                             {d.name.charAt(0)}
                           </div>

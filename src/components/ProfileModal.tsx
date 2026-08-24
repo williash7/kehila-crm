@@ -24,6 +24,7 @@ import { STANDALONE_TASKS_ID, createMeetingTask } from '../lib/tasks';
 import { logAction } from '../lib/score';
 import { CalendarPlus } from 'lucide-react';
 import { withCity } from '../lib/orgConfig';
+import { avatarGradient } from '../lib/donorDisplay';
 
 export function ProfileModal({ name, onClose, backLabel, siblings, onSelectSibling }: {
   name: string;
@@ -222,22 +223,6 @@ export function ProfileModal({ name, onClose, backLabel, siblings, onSelectSibli
     });
   };
 
-  const getAvatarColor = (name: string) => {
-    const c = [
-      'linear-gradient(135deg,#C9A84C,#9B7A2F)',
-      'linear-gradient(135deg,#4A2E8C,#2D1B69)',
-      'linear-gradient(135deg,#059669,#047857)',
-      'linear-gradient(135deg,#DC2626,#991B1B)',
-      'linear-gradient(135deg,#2563EB,#1D4ED8)',
-      'linear-gradient(135deg,#D97706,#92400E)'
-    ];
-    let h = 0;
-    for (let i = 0; i < name.length; i++) {
-      h = (h * 31 + name.charCodeAt(i)) % c.length;
-    }
-    return c[Math.abs(h)];
-  };
-
   const setCircle = (circle: string) => {
     updateCrm(name, { circle });
   };
@@ -305,7 +290,7 @@ export function ProfileModal({ name, onClose, backLabel, siblings, onSelectSibli
         <div className="flex flex-col items-center mb-6">
           <div 
             className="w-[76px] h-[76px] rounded-full flex items-center justify-center font-['Frank_Ruhl_Libre'] text-3xl font-bold text-white mb-3"
-            style={{ background: getAvatarColor(name) }}
+            style={{ background: avatarGradient(name) }}
           >
             {name.charAt(0)}
           </div>
