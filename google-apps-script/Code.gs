@@ -67,10 +67,12 @@
  *
  * **מעדכנים אותה בכל שינוי מהותי בקובץ.**
  */
-var CODE_VERSION = '2026-08-24b';
+var CODE_VERSION = '2026-08-24c';
 var EXPORT_SCHEMA_VERSION = 1;
 var EXPORT_MAX_LIMIT = 500;
 var CRM_MERGES_KEY = '__nameMerges__';
+var AUDIT_SYNC_KEY = 'auditLog';
+var AUDIT_KEEP = 250;
 
 // ── שמות הלשוניות ────────────────────────────────────────────────────────────
 var SH = {
@@ -552,20 +554,70 @@ function doPost(e) {
     // מחזירים את התשובה השמורה בלי לבצע שוב. כך שליחה חוזרת בטוחה
     // לחלוטין, וגם אם הבקשה נשלחה שלוש פעמים היא בוצעה בדיוק פעם אחת.
     var reqId = String(body.reqId || '').trim();
+    var claim = null;
     if (reqId) {
-      var cached = recallRequest_(reqId);
-      if (cached) return cached;
+      claim = claimRequest_(reqId);
+      if (claim.cached) return claim.response;
+      if (!claim.claimed) {
+        return {
+          success: false,
+          retryable: true,
+          code: 'REQUEST_IN_PROGRESS',
+          error: 'השינוי כבר נשלח וממתין לאישור מהגיליון; ננסה שוב אוטומטית',
+        };
+      }
     }
 
-    var res = route_(body.action || '', body);
-    flushWrites_();
-    if (reqId) rememberRequest_(reqId, res);
-    return res;
+    try {
+      var res = route_(body.action || '', body);
+      flushWrites_();
+      recordAuditSafe_(body.action || '', body, res);
+      if (reqId) finishRequest_(reqId, res);
+      return res;
+    } catch (err) {
+      // הפעולה נכשלה לפני שהוחזרה תשובה תקינה. מסירים את הסימון כדי שאותו
+      // reqId יוכל לנסות שוב; תשובה שאבדה אחרי finishRequest_ כבר שמורה.
+      if (reqId) releaseRequestClaim_(reqId);
+      throw err;
+    }
   }));
 }
 
 var REQ_LIST_KEY = 'recentRequests';
+var REQ_PENDING_PREFIX = 'req-pending:';
+var REQ_PENDING_MAX_AGE_MS = 2 * 60 * 1000;
 var REQ_KEEP = 40;   // מספיק לכיסוי ניסיונות חוזרים, בלי לנפח את האחסון
+
+/**
+ * תופס בקשה לפני ביצועה.
+ *
+ * הבדיקה והשמירה נעשות תחת נעילה קצרה אחת. בלי זה, שתי בקשות זהות שמגיעות
+ * באותה אלפית שנייה יכולות שתיהן לראות שאין תשובה שמורה ולבצע את הפעולה
+ * פעמיים. הנעילה משתחררת לפני הפעולה עצמה, כדי שפונקציות כגון שחזור,
+ * שמשתמשות בנעילה משלהן, לא ייתקעו בנעילה מקוננת.
+ */
+function claimRequest_(id) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var cached = recallRequest_(id);
+    if (cached) return { cached: true, response: cached, claimed: false };
+
+    var props = PropertiesService.getScriptProperties();
+    var pendingKey = REQ_PENDING_PREFIX + id;
+    var pendingAt = Number(props.getProperty(pendingKey) || 0);
+    if (pendingAt && Date.now() - pendingAt < REQ_PENDING_MAX_AGE_MS) {
+      return { cached: false, claimed: false };
+    }
+
+    // סימון ישן יכול להישאר רק אם ריצת Apps Script הופסקה בכוח. לאחר שתי
+    // דקות מאפשרים ניסיון חוזר; רוב הפעולות עצמן כבר מזוהות לפי מזהה נתון.
+    props.setProperty(pendingKey, String(Date.now()));
+    return { cached: false, claimed: true };
+  } finally {
+    lock.releaseLock();
+  }
+}
 
 function recallRequest_(id) {
   try {
@@ -576,17 +628,34 @@ function recallRequest_(id) {
   }
 }
 
-function rememberRequest_(id, res) {
+function finishRequest_(id, res) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
   try {
     var props = PropertiesService.getScriptProperties();
     props.setProperty('req:' + id, JSON.stringify(res));
+    props.deleteProperty(REQ_PENDING_PREFIX + id);
 
     var list = (props.getProperty(REQ_LIST_KEY) || '').split(',').filter(String);
-    list.push(id);
+    if (list.indexOf(id) < 0) list.push(id);
     while (list.length > REQ_KEEP) props.deleteProperty('req:' + list.shift());
     props.setProperty(REQ_LIST_KEY, list.join(','));
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function releaseRequestClaim_(id) {
+  try {
+    var lock = LockService.getScriptLock();
+    lock.waitLock(30000);
+    try {
+      PropertiesService.getScriptProperties().deleteProperty(REQ_PENDING_PREFIX + id);
+    } finally {
+      lock.releaseLock();
+    }
   } catch (err) {
-    Logger.log('שמירת מזהה הבקשה נכשלה: ' + err);
+    Logger.log('שחרור מזהה הבקשה נכשל: ' + err);
   }
 }
 
@@ -704,6 +773,7 @@ function route_(action, body) {
     case 'getHomeVisits':    return { data: readSync_('homeVisits') || { rounds: [] } };
     case 'getProjects':      return { data: readSync_('projects') || [] };
     case 'getFinance':       return { data: readSync_('finance') || null };
+    case 'getAudit':         return { data: readSync_(AUDIT_SYNC_KEY) || [] };
     // הגדרות הארגון נשמרות גם בגיליון, כדי שמכשיר נוסף יצטרך רק את
     // כתובת הגיליון ולא יעבור שוב את כל האשף.
     case 'getConfig':        return { data: readSync_('orgConfig') || null };
@@ -746,6 +816,87 @@ function route_(action, body) {
 
     default: return { error: 'פעולה לא מוכרת: ' + action };
   }
+}
+
+// ── יומן שינויים ──────────────────────────────────────────────────────────
+
+/**
+ * רק פעולות שבאמת משנות מידע. מסכי תצוגה מקדימה וקריאות אינם נכנסים ליומן.
+ * הערך הוא תיאור ברירת המחדל; הלקוח רשאי לשלוח `audit.label` מדויק יותר.
+ */
+var AUDITED_ACTIONS = {
+  saveCRM: 'שמירת אנשי קשר',
+  saveContactMerge: 'מיזוג שמות',
+  deleteContactMerge: 'ביטול מיזוג שמות',
+  saveEvents: 'שמירת פעילויות',
+  saveHolidayExtras: 'שמירת נתוני חגים',
+  saveHistory: 'שמירת סיכומי עבר',
+  saveHomeVisits: 'שמירת ביקורי בית',
+  saveProjects: 'שמירת קמפיינים ופרויקטים',
+  saveFinance: 'שמירת נתונים כספיים',
+  updateRebbe: 'עדכון תאריך כתיבה לרבי',
+  saveConfig: 'שמירת הגדרות',
+  addDonation: 'הוספת תרומה',
+  updateDonation: 'עריכת תרומה',
+  deleteDonation: 'מחיקת תרומה',
+  addMeeting: 'הוספת מפגש',
+  addStandingOrder: 'הוספת הוראת קבע',
+  cancelStandingOrder: 'ביטול הוראת קבע',
+  updateStandingOrderAmount: 'עדכון סכום הוראת קבע',
+  renewStandingOrder: 'חידוש הוראת קבע',
+  updateStandingOrder: 'עריכת הוראת קבע',
+  updateDonorField: 'עדכון איש קשר',
+  updatePersonalDate: 'עדכון תאריך אישי',
+  deleteContactColumns: 'מחיקת שדות אנשי קשר',
+  createHolidayDoc: 'יצירת מסמך חג',
+  importRows: 'ייבוא נתונים',
+  undoImport: 'ביטול ייבוא',
+  restoreBegin: 'תחילת שחזור',
+  restoreSheet: 'שחזור לשונית',
+  restoreSync: 'שחזור נתוני מערכת',
+  restoreFinish: 'השלמת שחזור',
+  restoreRollback: 'ביטול שחזור',
+};
+
+function auditText_(value, max) {
+  var text = String(value == null ? '' : value).trim();
+  return text.length > max ? text.slice(0, max - 1) + '…' : text;
+}
+
+/**
+ * כותב אירוע קטן בלבד — בלי כל גוף הבקשה, שעלול להכיל מידע אישי רב.
+ * נעילה קצרה מונעת משתי פעולות שונות לקרוא אותה רשימה ולדרוס זו את זו.
+ */
+function appendAudit_(action, body) {
+  var defaultLabel = AUDITED_ACTIONS[action];
+  if (!defaultLabel || body.audit === false) return;
+
+  var meta = body.audit && typeof body.audit === 'object' ? body.audit : {};
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var entries = readSync_(AUDIT_SYNC_KEY);
+    if (!Array.isArray(entries)) entries = [];
+    entries.push({
+      id: auditText_(body.reqId || Utilities.getUuid(), 100),
+      at: new Date().toISOString(),
+      action: action,
+      label: auditText_(meta.label || defaultLabel, 120),
+      subject: auditText_(meta.subject, 160),
+      details: auditText_(meta.details, 400),
+      source: auditText_(meta.source || 'app', 40),
+    });
+    writeSync_(AUDIT_SYNC_KEY, entries.slice(-AUDIT_KEEP));
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** יומן השינויים לעולם אינו רשאי להפיל את השמירה העיקרית. */
+function recordAuditSafe_(action, body, res) {
+  if ((res && res.error) || (res && res.success === false)) return;
+  try { appendAudit_(action, body); }
+  catch (err) { Logger.log('כתיבה ליומן השינויים נכשלה: ' + err); }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1241,7 +1392,7 @@ var RESTORE_PREFIX = 'restore:';
 var RESTORE_REQUEST_PREFIX = 'restore-request:';
 var RESTORE_MAX_AGE_MS = 2 * 60 * 60 * 1000;
 var RESTORE_SYNC_KEYS = ['crm', 'events', 'finance', 'history', 'holidayExtras', 'homeVisits',
-                         'orgConfig', 'projects', 'rebbeDate'];
+                         'orgConfig', 'projects', 'rebbeDate', AUDIT_SYNC_KEY];
 
 function restoreState_(token) {
   token = String(token || '').trim();
