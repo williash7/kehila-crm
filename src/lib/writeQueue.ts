@@ -43,10 +43,13 @@
 const QUEUE_KEY = 'write_queue_v1';
 
 /**
- * תקרה קשיחה. מעבר לה **חדשות נדחות בגלוי** — ישנות לעולם אינן נמחקות.
+ * תקרה קשיחה על פעולות **שאינן מחליפות** — תרומות, מפגשים וכדומה.
  *
- * הכיוון ההפוך היה נראה נדיב יותר, והוא היה מוחק פעולות שהמשתמש כבר
- * ראה מסומנות כשמורות.
+ * מעבר לה חדשות נדחות בגלוי; ישנות לעולם אינן נמחקות. הכיוון ההפוך היה
+ * נראה נדיב יותר, והוא היה מוחק פעולות שהמשתמש כבר ראה מסומנות כשמורות.
+ *
+ * שמירות הרקע אינן נספרות כאן: הן מוגבלות לפריט אחד לכל סוג, כלומר שבעה
+ * לכל היותר, וסך הפריטים בתור אינו עולה על 57.
  */
 const MAX_ENTRIES = 50;
 
@@ -204,6 +207,24 @@ function makeId(): string {
 }
 
 /**
+ * כמה פריטים נספרים מול התקרה.
+ *
+ * **רק פעולות שאינן מחליפות.** פעולה מחליפה מוגבלת ממילא לפריט אחד לכל
+ * סוג — שבעה בסך הכול — ולכן היא אינה יכולה להציף את התור. לספור אותה מול
+ * אותה תקרה היה גורם לעריכת הכרטיס האחרונה להידחות בגלל חמישים תרומות
+ * שממתינות, וזו תוצאה גרועה: היא מאבדת את מצב העריכה העדכני ביותר בלי
+ * להגן על שום דבר.
+ */
+function countPending(items: QueuedWrite[]): number {
+  return items.filter(i => !REPLACING.has(i.action)).length;
+}
+
+/** מכבה את האזהרה רק כשבאמת התפנה מקום. */
+function refreshFull(items: QueuedWrite[]): void {
+  if (queueFull && countPending(items) < MAX_ENTRIES) queueFull = false;
+}
+
+/**
  * מוסיף לתור.
  *
  * **פריט שאינו ב-REPLACING לעולם אינו נמחק כדי לפנות מקום.** הגרסה הראשונה
@@ -220,8 +241,7 @@ export function enqueue(action: string, data: any, error: string, reqId: string)
   const replacing = REPLACING.has(action);
   const kept = replacing ? items.filter(i => i.action !== action) : items;
 
-  // איחוד אינו מגדיל, ולכן פעולה מחליפה תמיד רשאית להיכנס.
-  if (!replacing && kept.length >= MAX_ENTRIES) {
+  if (!replacing && countPending(kept) >= MAX_ENTRIES) {
     queueFull = true;
     notify();
     return false;
@@ -229,7 +249,15 @@ export function enqueue(action: string, data: any, error: string, reqId: string)
 
   kept.push({ id: makeId(), action, data, reqId, queuedAt: Date.now(), attempts: 1, lastError: error });
   const okSaved = writeQueue(kept);
-  if (okSaved) queueFull = false;
+
+  // **לא** מכבים כאן על סמך הצלחת השמירה.
+  //
+  // הגרסה הקודמת עשתה `if (okSaved) queueFull = false`, וכך שמירת רקע אחת
+  // שנכנסה אחרי דחייה כיבתה את האזהרה — בזמן שהפעולה שנדחתה עדיין חסרה
+  // ולא התפנה שום מקום. אזהרה שנכבית לבד היא אזהרה שלא ראו.
+  //
+  // היא נכבית רק ב-`flushQueue`, אחרי ששליחה מוצלחת באמת פינתה מקום.
+  refreshFull(kept);
   return okSaved;
 }
 
@@ -298,7 +326,7 @@ export async function flushQueue(post: PostFn): Promise<{ sent: number; failed: 
       sent++;
       now.splice(at, 1);
       writeQueue(now);
-      if (now.length < MAX_ENTRIES) queueFull = false;
+      refreshFull(now);   // כאן, ורק כאן, באמת התפנה מקום
     }
   }
 
@@ -334,6 +362,64 @@ export function startAutoFlush(post: PostFn, intervalMs = 60_000): () => void {
     window.removeEventListener('online', run);
     document.removeEventListener('visibilitychange', onVisible);
   };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// שלב ב׳ — פעולות שינוי ישירות
+//
+// שמירות הרקע (`trackedPost`) נכשלו בשקט, ולכן די היה להן בתור. פעולה
+// שהמשתמש מבצע ורואה — הוספת תרומה, שמירה במרכז הכספי — היא מקרה אחר:
+// **המסך אומר לו משהו**, והשאלה היא מה.
+//
+// עד היום היא אמרה „נכשל”. וזו הודעה שמזמינה לחיצה נוספת — שיוצרת רישום
+// שני של אותה תרומה. כלומר הניסוח עצמו היה מקור לבאג.
+//
+// מכאן יש שלושה מצבים מפורשים, לפי החוזה שיוסי הגדיר. שלושה, ולא שני
+// בוליאנים, כי שני בוליאנים מאפשרים צירוף חסר משמעות („נכשל אבל בתור”)
+// שמחזיר בדיוק את הניסוח הבעייתי.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type WriteOutcome =
+  /** השרת אישר. */
+  | { status: 'saved'; res: any }
+  /**
+   * התקבל ונשמר בתור — **לא כישלון.**
+   *
+   * המסך צריך לומר „ממתין לשליחה”, להשאיר את מה שהמשתמש הזין, ולא להציע
+   * לנסות שוב. הפס העליון כבר מדווח על ההמתנה.
+   */
+  | { status: 'queued' }
+  /** גם השרת לא אישר וגם התור לא הצליח לשמור. **רק כאן מציגים שגיאה.** */
+  | { status: 'failed'; error: string };
+
+/**
+ * שולח פעולת שינוי ישירה, ומחזיר מצב מפורש.
+ *
+ * שים לב ש„התור הגיע לתקרה” מחזיר `failed` ולא `queued` — כי הפעולה באמת
+ * לא נשמרה בשום מקום, ובמצב כזה המשתמש חייב לדעת.
+ */
+export async function submitWrite(action: string, data: any, post: PostFn): Promise<WriteOutcome> {
+  const reqId = makeId();
+  let res: any;
+  try {
+    res = await post(action, data, reqId);
+  } catch (e: any) {
+    res = { success: false, error: String(e?.message || e) };
+  }
+
+  if (!isFailure(res)) return { status: 'saved', res };
+
+  const error = String(res?.error || 'שגיאה לא ידועה');
+  return enqueue(action, data, error, reqId)
+    ? { status: 'queued' }
+    : { status: 'failed', error };
+}
+
+/** מה להציג למשתמש עבור כל מצב. */
+export function outcomeMessage(o: WriteOutcome): string {
+  if (o.status === 'saved') return '';
+  if (o.status === 'queued') return 'נשמר במכשיר וממתין לשליחה';
+  return `לא נשמר: ${o.error}`;
 }
 
 /** תיאור קריא לאדם, למחוון. */

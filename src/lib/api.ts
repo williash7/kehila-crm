@@ -1,5 +1,5 @@
 import { getOrg, hebcalUrl } from './orgConfig';
-import { trackedPost } from './writeQueue';
+import { trackedPost, submitWrite, WriteOutcome } from './writeQueue';
 
 export const HEBCAL_API = () => hebcalUrl('shabbat');
 
@@ -534,12 +534,18 @@ export async function getFinanceDataCloud(): Promise<any> {
   return getFinanceData();
 }
 
-/** שמירה כספית מאושרת: המסך יודע אם הנתונים הגיעו לענן ואינו מציג הצלחה שקרית. */
-export async function saveFinanceDataCloud(data: any): Promise<boolean> {
+/**
+ * שמירה כספית — עם מצב מפורש.
+ *
+ * החזירה קודם `boolean`, וזה איבד את ההבחנה החשובה ביותר: „לא הגיע לענן
+ * **ולא נשמר בשום מקום**” לעומת „לא הגיע לענן **אבל ממתין בתור**”. השני
+ * אינו כישלון, והצגתו ככישלון מזמינה לחיצה חוזרת — שיוצרת רישום כפול.
+ */
+export async function saveFinanceDataCloud(data: any): Promise<WriteOutcome> {
   saveFinanceData(data);
-  if (!gsUrl()) return true; // מצב הדגמה: שמירה מקומית היא השמירה היחידה והתקינה
-  const res = await apiPost('saveFinance', { data });
-  return !(res?.error || res?.success === false);
+  // מצב הדגמה: שמירה מקומית היא השמירה היחידה, וגם התקינה.
+  if (!gsUrl()) return { status: 'saved', res: { local: true } };
+  return submitWrite('saveFinance', { data }, apiPost);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

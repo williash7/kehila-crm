@@ -2,7 +2,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle, ArrowDownLeft, ArrowUpRight, CalendarClock, CheckCircle2,
   Download, FileUp, Landmark, Pencil, Plus, Printer, RefreshCw, Save, Settings,
-  ShieldCheck, SlidersHorizontal, Undo2, WalletCards, X, Bot,
+  ShieldCheck, SlidersHorizontal, Undo2, WalletCards, X, Bot, Clock,
 } from 'lucide-react';
 import { useAppStore } from '../store/AppContext';
 import {
@@ -54,14 +54,21 @@ export function FinanceTab() {
   const [pane, setPane] = useState<Pane>('overview');
   const [editing, setEditing] = useState<Partial<FinanceTransaction> | null>(null);
   const [saving, setSaving] = useState(false);
-  const [saveState, setSaveState] = useState<'idle' | 'ok' | 'error'>('idle');
+  // שלושה מצבים, לא שניים: „ממתין” אינו „נכשל”.
+  const [saveState, setSaveState] = useState<'idle' | 'ok' | 'queued' | 'error'>('idle');
+  const [saveError, setSaveError] = useState('');
   const [aiImportOpen, setAiImportOpen] = useState(false);
 
   const persist = async (next: FinanceData) => {
-    setSaving(true); setSaveState('idle');
-    const ok = await updateFinanceData(next);
-    setSaving(false); setSaveState(ok ? 'ok' : 'error');
-    return ok;
+    setSaving(true); setSaveState('idle'); setSaveError('');
+    const outcome = await updateFinanceData(next);
+    setSaving(false);
+    setSaveState(outcome.status === 'saved' ? 'ok' : outcome.status === 'queued' ? 'queued' : 'error');
+    if (outcome.status === 'failed') setSaveError(outcome.error);
+
+    // „ממתין בתור” נחשב הצלחה לצורך המשך הזרימה: הפעולה **התקבלה**,
+    // והמסך לא צריך להתנהג כאילו לא קרה כלום ולעודד לחיצה נוספת.
+    return outcome.status !== 'failed';
   };
 
   const begin = (kind: FinanceKind, status: FinanceStatus = 'actual') => setEditing({
@@ -117,7 +124,8 @@ export function FinanceTab() {
         <div className="text-[11px] min-h-5">
           {saving && <span className="text-gray-500 flex items-center gap-1"><RefreshCw size={12} className="animate-spin" /> שומר…</span>}
           {!saving && saveState === 'ok' && <span className="text-emerald-700 flex items-center gap-1"><CheckCircle2 size={12} /> נשמר</span>}
-          {!saving && saveState === 'error' && <span className="text-red-600 flex items-center gap-1"><AlertTriangle size={12} /> נשמר במכשיר, הסנכרון נכשל</span>}
+          {!saving && saveState === 'queued' && <span className="text-amber-600 flex items-center gap-1"><Clock size={12} /> נשמר במכשיר וממתין לשליחה</span>}
+          {!saving && saveState === 'error' && <span className="text-red-600 flex items-center gap-1"><AlertTriangle size={12} /> לא נשמר{saveError ? `: ${saveError}` : ''}</span>}
         </div>
       </header>
 

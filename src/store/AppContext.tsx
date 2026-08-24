@@ -33,7 +33,7 @@ import { Activity, normalizeActivities } from '../lib/activities';
 import { hebcalUrl } from '../lib/orgConfig';
 import { chabadHolidayItems } from '../lib/chabadDates';
 import { FinanceData, emptyFinanceData, normalizeFinanceData } from '../lib/finance';
-import { trackedPost, startAutoFlush } from '../lib/writeQueue';
+import { trackedPost, startAutoFlush, WriteOutcome } from '../lib/writeQueue';
 
 interface AppState {
   summary: ReportSummary | null;
@@ -59,7 +59,7 @@ interface AppState {
   settings: AppSettings;
   homeVisits: HomeVisitsData;
   financeData: FinanceData;
-  updateFinanceData: (data: FinanceData) => Promise<boolean>;
+  updateFinanceData: (data: FinanceData) => Promise<WriteOutcome>;
   updateSettings: (partial: Partial<AppSettings>) => void;
   refresh: () => void;
   addManualDonation: (donation: any) => void;
@@ -572,7 +572,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     saveProjectsCloud(normalized);
   };
 
-  const updateFinanceData = async (data: FinanceData): Promise<boolean> => {
+  const updateFinanceData = async (data: FinanceData): Promise<WriteOutcome> => {
     const normalized = normalizeFinanceData(data);
     setFinanceData(normalized);
     return saveFinanceDataCloud(normalized);

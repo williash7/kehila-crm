@@ -209,14 +209,34 @@ const throwFail = async () => { throw new Error('נפילה'); };
     ok(accepted !== undefined, 'הקורא מקבל תשובה ולא נתקע');
   }
 
-  console.log('\nיח. פעולה מחליפה נכנסת גם כשהתור מלא:');
+  console.log('\nיח. פעולה מחליפה נכנסת גם כשהתור מלא — בלי לכבות את האזהרה:');
   {
-    // איחוד אינו מגדיל את התור, ולכן אין סיבה לחסום — ולהפך, חסימה כאן
-    // הייתה מאבדת את עריכת הכרטיס האחרונה בלי צורך.
+    // התקרה נספרת על פעולות **שאינן מחליפות** בלבד. שמירת רקע מוגבלת
+    // ממילא לפריט אחד לכל סוג, ולכן חסימתה הייתה מאבדת את עריכת הכרטיס
+    // האחרונה בלי להגן על דבר.
     reset();
     for (let i = 0; i < Q.QUEUE_LIMIT; i++) await Q.trackedPost('addDonation', { amount: i }, valueFail);
+    await Q.trackedPost('addDonation', { amount: 999 }, valueFail);   // נדחית
+    ok(Q.queueState().queueFull === true, 'האזהרה דלוקה');
+
     await Q.trackedPost('saveCRM', { data: { x: 1 } }, valueFail);
     ok(Q.loadQueue().some(i => i.action === 'saveCRM'), 'saveCRM נכנס');
+    ok(Q.loadQueue().length === Q.QUEUE_LIMIT + 1, 'והתור אכן גדל ל-51 פריטים');
+
+    // הבאג שיוסי מצא: שמירת רקע שנכנסה בהצלחה כיבתה את האזהרה, למרות
+    // שלא התפנה מקום והפעולה שנדחתה עדיין חסרה. אזהרה שנכבית לבד היא
+    // אזהרה שלא ראו.
+    ok(Q.queueState().queueFull === true,
+       '**והאזהרה עדיין דלוקה** — לא התפנה מקום, והפעולה שנדחתה עדיין חסרה');
+
+    // נכבית רק כששליחה מוצלחת באמת מפנה מקום.
+    let once = false;
+    await Q.flushQueue(async (a) => {
+      if (a === 'addDonation' && !once) { once = true; return { success: true }; }
+      return { success: false, error: 'עדיין' };
+    });
+    ok(Q.queueState().queueFull === false,
+       'וכבתה רק אחרי שאחת מ-50 הפעולות נשלחה בהצלחה');
   }
 
   console.log('\nיט. מכסה מלאה — הרשימה הקודמת נשארת בשלמותה:');
@@ -244,6 +264,58 @@ const throwFail = async () => { throw new Error('נפילה'); };
     ok(Q.queueState().persistFailed === true, 'עדיין דלוק אחרי הכישלון');
     await Q.flushQueue(okPost);
     ok(Q.queueState().persistFailed === false, 'וכבה רק אחרי שכתיבה מלאה הצליחה');
+  }
+
+
+  console.log('\nכא. חוזה WriteOutcome — „ממתין” אינו „נכשל”:');
+  {
+    // הניסוח הוא הבאג. „נכשל” מזמין לחיצה נוספת, והלחיצה הנוספת יוצרת
+    // רישום שני של אותה תרומה. שלושה מצבים מפורשים במקום שני בוליאנים,
+    // כי שני בוליאנים מאפשרים את הצירוף חסר המשמעות „נכשל אבל בתור”.
+    reset();
+    const saved = await Q.submitWrite('saveFinance', { data: {} }, okPost);
+    ok(saved.status === 'saved', 'השרת אישר → saved');
+
+    const queued = await Q.submitWrite('saveFinance', { data: {} }, valueFail);
+    ok(queued.status === 'queued', 'נכשל אך נשמר בתור → queued, **לא** failed');
+    ok(Q.queueSize() === 1, 'והוא באמת בתור');
+    ok(/ממתין/.test(Q.outcomeMessage(queued)) && !/נכשל/.test(Q.outcomeMessage(queued)),
+       'וההודעה למשתמש אינה אומרת „נכשל”');
+  }
+
+  console.log('\nכב. failed רק כשבאמת לא נשמר בשום מקום:');
+  {
+    reset();
+    quotaFull = true;
+    const r = await Q.submitWrite('addDonation', { amount: 1 }, valueFail);
+    quotaFull = false;
+    ok(r.status === 'failed', 'התור לא הצליח לשמור → failed');
+    ok(r.status === 'failed' && !!r.error, 'ויש סיבה להציג');
+  }
+
+  console.log('\nכג. תור בתקרה → failed ולא queued:');
+  {
+    // המקרה שיוסי ביקש לוודא במפורש: הפעולה לא נשמרה בשום מקום, ולכן
+    // אסור שתיראה למשתמש כמי שהתקבלה.
+    reset();
+    for (let i = 0; i < Q.QUEUE_LIMIT; i++) await Q.trackedPost('addDonation', { amount: i }, valueFail);
+    const r = await Q.submitWrite('addDonation', { amount: 999 }, valueFail);
+    ok(r.status === 'failed', 'תקרה → failed');
+    ok(Q.queueState().queueFull === true, 'והאזהרה דלוקה');
+  }
+
+  console.log('\nכד. המרכז הכספי משתמש בחוזה:');
+  {
+    const root = path.join(__dirname, '..');
+    const api = fs.readFileSync(root + '/src/lib/api.ts', 'utf8');
+    const tab = fs.readFileSync(root + '/src/components/FinanceTab.tsx', 'utf8');
+    ok(/saveFinanceDataCloud\(data: any\): Promise<WriteOutcome>/.test(api),
+       'saveFinanceDataCloud מחזירה WriteOutcome ולא boolean');
+    ok(/submitWrite\('saveFinance'/.test(api), 'ועוברת דרך submitWrite');
+    ok(/'queued'/.test(tab), 'המסך מכיר את מצב ההמתנה');
+    ok(/ממתין לשליחה/.test(tab), 'ומציג אותו כהמתנה');
+    ok(!/הסנכרון נכשל/.test(tab),
+       'והניסוח הישן „הסנכרון נכשל” הוסר — הוא הזמין לחיצה כפולה');
   }
 
   console.log('\nיג. החיבור בפועל:');
