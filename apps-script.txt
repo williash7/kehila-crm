@@ -67,9 +67,10 @@
  *
  * **מעדכנים אותה בכל שינוי מהותי בקובץ.**
  */
-var CODE_VERSION = '2026-08-24a';
+var CODE_VERSION = '2026-08-24b';
 var EXPORT_SCHEMA_VERSION = 1;
 var EXPORT_MAX_LIMIT = 500;
+var CRM_MERGES_KEY = '__nameMerges__';
 
 // ── שמות הלשוניות ────────────────────────────────────────────────────────────
 var SH = {
@@ -696,7 +697,7 @@ function route_(action, body) {
     case 'getHK':            return { hk: getHK_() };
     case 'getFailures':      return { failures: getFailures_() };
     case 'getRebbe':         return { date: readSync_('rebbeDate') || '' };
-    case 'getCRM':           return { data: readSync_('crm') || {} };
+    case 'getCRM':           return { data: readCRM_() };
     case 'getEvents':        return { data: readSync_('events') || [] };
     case 'getHolidayExtras': return { data: readSync_('holidayExtras') || {} };
     case 'getHistory':       return { data: readSync_('history') || [] };
@@ -708,7 +709,9 @@ function route_(action, body) {
     case 'getConfig':        return { data: readSync_('orgConfig') || null };
 
     // כתיבה
-    case 'saveCRM':           writeSync_('crm', body.data);           return { success: true };
+    case 'saveCRM':           saveCRM_(body.data);                     return { success: true };
+    case 'saveContactMerge':  return saveContactMerge_(body);
+    case 'deleteContactMerge': return deleteContactMerge_(body);
     case 'saveEvents':        writeSync_('events', body.data);        return { success: true };
     case 'saveHolidayExtras': writeSync_('holidayExtras', body.data); return { success: true };
     case 'saveHistory':       writeSync_('history', body.data);       return { success: true };
@@ -1029,7 +1032,7 @@ function getAll_() {
     hk:            attempt(getHK_, []),
     failures:      attempt(getFailures_, []),
     rebbeDate:     attempt(function () { return readSync_('rebbeDate') || ''; }, ''),
-    crm:           attempt(function () { return readSync_('crm') || {}; }, {}),
+    crm:           attempt(readCRM_, {}),
     events:        attempt(function () { return readSync_('events') || []; }, []),
     holidayExtras: attempt(function () { return readSync_('holidayExtras') || {}; }, {}),
     history:       attempt(function () { return readSync_('history') || []; }, []),
@@ -3439,6 +3442,141 @@ function migrateContact_(obj) {
 // ═══════════════════════════════════════════════════════════════════════════
 //  "ארון" נתוני האפליקציה
 // ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * חיבורי שמות נשמרים בלשונית "מיפוי שמות", שורה אחת לכל חיבור.
+ * בעבר כל המפה נשמרה בתוך __nameMerges__ בתא ה-CRM. די היה במכשיר עם
+ * עותק ישן או בעריכת CRM רגילה כדי לדרוס את התא ולהעלים את כל החיבורים.
+ */
+function readNameMerges_() {
+  var out = {};
+  var t = table_(SH.ALIASES);
+  t.rows.forEach(function (row) {
+    var alias = String(get_(row, t, 'שם שגוי / כפילות') || row[0] || '').trim();
+    var canonical = String(get_(row, t, 'השם התקין') || row[1] || '').trim();
+    if (alias && canonical && alias !== canonical) out[alias] = canonical;
+  });
+  return out;
+}
+
+function crmParts_(data) {
+  var source = data && typeof data === 'object' && !Array.isArray(data) ? data : {};
+  var base = {};
+  var merges = {};
+  Object.keys(source).forEach(function (key) {
+    if (key === CRM_MERGES_KEY) {
+      var raw = source[key];
+      if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+        Object.keys(raw).forEach(function (alias) {
+          var canonical = String(raw[alias] || '').trim();
+          alias = String(alias || '').trim();
+          if (alias && canonical && alias !== canonical) merges[alias] = canonical;
+        });
+      }
+    } else {
+      base[key] = source[key];
+    }
+  });
+  return { base: base, merges: merges };
+}
+
+/** מחזיר ללקוח חוזה תואם-עבר: CRM רגיל + מפת החיבורים המחושבת מהשורות. */
+function readCRM_() {
+  var parts = crmParts_(readSync_('crm'));
+  var fromRows = readNameMerges_();
+  Object.keys(fromRows).forEach(function (alias) { parts.merges[alias] = fromRows[alias]; });
+  if (Object.keys(parts.merges).length) parts.base[CRM_MERGES_KEY] = parts.merges;
+  return parts.base;
+}
+
+/** מוסיף או מעדכן כל חיבור בנפרד. חיבור שלא נשלח לעולם אינו נמחק כאן. */
+function writeNameMerges_(merges) {
+  merges = merges || {};
+  var t = table_(SH.ALIASES);
+  if (!t.sheet) return;
+
+  var values = t.sheet.getDataRange().getValues();
+  var aliasCol = t.col('שם שגוי / כפילות');
+  var canonicalCol = t.col('השם התקין');
+  if (aliasCol < 0) aliasCol = 0;
+  if (canonicalCol < 0) canonicalCol = 1;
+  var existing = {};
+  for (var row = 1; row < values.length; row++) {
+    var existingAlias = String(values[row][aliasCol] || '').trim();
+    if (!existingAlias) continue;
+    if (!existing[existingAlias]) existing[existingAlias] = [];
+    existing[existingAlias].push(row + 1);
+  }
+
+  Object.keys(merges).forEach(function (alias) {
+    var cleanAlias = String(alias || '').trim();
+    var canonical = String(merges[alias] || '').trim();
+    if (!cleanAlias || !canonical || cleanAlias === canonical) return;
+    var rows = existing[cleanAlias] || [];
+    if (rows.length) {
+      rows.forEach(function (sheetRow) {
+        t.sheet.getRange(sheetRow, canonicalCol + 1).setValue(canonical);
+      });
+    } else {
+      appendByName_(SH.ALIASES, {
+        'שם שגוי / כפילות': cleanAlias,
+        'השם התקין': canonical,
+      });
+    }
+  });
+  flushWrites_();
+  invalidateTable_(SH.ALIASES);
+  _aliases = null;
+}
+
+function deleteNameMerge_(aliasName) {
+  var alias = String(aliasName || '').trim();
+  if (!alias) return;
+  var t = table_(SH.ALIASES);
+  if (!t.sheet) return;
+  var values = t.sheet.getDataRange().getValues();
+  var aliasCol = t.col('שם שגוי / כפילות');
+  if (aliasCol < 0) aliasCol = 0;
+  // מלמטה למעלה, כדי שמחיקת שורה לא תשנה את המספר של הבאה.
+  for (var row = values.length - 1; row >= 1; row--) {
+    if (String(values[row][aliasCol] || '').trim() === alias) t.sheet.deleteRow(row + 1);
+  }
+  invalidateTable_(SH.ALIASES);
+  _aliases = null;
+}
+
+/**
+ * שמירת CRM רגילה מעדכנת רק את בסיס ה-CRM. אם הגיע מבנה ישן, הוא מועבר
+ * תחילה לשורות הנפרדות; לעולם לא מוחקים חיבורים רק מפני שמכשיר לא שלח אותם.
+ */
+function saveCRM_(data) {
+  var oldParts = crmParts_(readSync_('crm'));
+  var nextParts = crmParts_(data);
+  var migrate = {};
+  Object.keys(oldParts.merges).forEach(function (alias) { migrate[alias] = oldParts.merges[alias]; });
+  Object.keys(nextParts.merges).forEach(function (alias) { migrate[alias] = nextParts.merges[alias]; });
+  writeNameMerges_(migrate);
+  writeSync_('crm', nextParts.base);
+}
+
+function saveContactMerge_(body) {
+  var alias = String(body.aliasName || '').trim();
+  var canonical = String(body.canonicalName || '').trim();
+  if (!alias || !canonical || alias === canonical) throw new Error('חיבור אנשי קשר אינו תקין');
+  saveCRM_(body.data);
+  var one = {};
+  one[alias] = canonical;
+  writeNameMerges_(one);
+  return { success: true, aliasName: alias, canonicalName: canonical };
+}
+
+function deleteContactMerge_(body) {
+  var alias = String(body.aliasName || '').trim();
+  if (!alias) throw new Error('חסר שם מקושר לביטול');
+  saveCRM_(body.data);
+  deleteNameMerge_(alias);
+  return { success: true, aliasName: alias };
+}
 
 function readSync_(key) {
   var t = table_(SH.SYNC);
