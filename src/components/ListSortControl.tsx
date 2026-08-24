@@ -41,6 +41,11 @@ export function ListSortControl({
   fields?: ListSortField[];
 }) {
   const labels: Record<ListSortField, string> = { date: 'תאריך', amount: 'סכום', name: 'א׳–ב׳' };
+  const directionLabels: Record<ListSortField, { desc: string; asc: string }> = {
+    date: { desc: 'מהחדש לישן', asc: 'מהישן לחדש' },
+    amount: { desc: 'מהגדול לקטן', asc: 'מהקטן לגדול' },
+    name: { desc: 'מת׳ עד א׳', asc: 'מא׳ עד ת׳' },
+  };
   return (
     <div className="grid grid-cols-2 gap-2">
       <label className="block"><span className="block text-[10px] font-bold text-gray-500 mb-1">מיון לפי</span>
@@ -50,8 +55,8 @@ export function ListSortControl({
       </label>
       <label className="block"><span className="block text-[10px] font-bold text-gray-500 mb-1">סדר</span>
         <select value={value.direction} onChange={e => onChange({ ...value, direction: e.target.value as ListSortDirection })} className="w-full bg-gray-50 border border-[#EDE6D6] rounded-lg px-2 py-2 text-xs outline-none focus:border-[#C9A84C]">
-          <option value="desc">יורד — מהגדול/חדש</option>
-          <option value="asc">עולה — מהקטן/ישן</option>
+          <option value="desc">יורד — {directionLabels[value.field].desc}</option>
+          <option value="asc">עולה — {directionLabels[value.field].asc}</option>
         </select>
       </label>
     </div>

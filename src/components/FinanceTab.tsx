@@ -16,7 +16,9 @@ import { activityDonations, Activity } from '../lib/activities';
 import { projectDonations, projectPurposeTags, Project } from '../lib/projects';
 import { Donation } from '../types';
 import { cashDestinationLabel } from '../lib/cashDonations';
+import { parseDdMmYyyy } from '../lib/dateUtils';
 import { GlobalAIImportModal } from './GlobalAIImportModal';
+import { compareListValues, ListSortControl, usePersistentListSort } from './ListSortControl';
 
 type Pane = 'overview' | 'transactions' | 'cashflow' | 'scopes' | 'import' | 'settings';
 type BudgetSource = { id?: string; title?: string; name?: string; budget?: { expenses?: unknown[]; income?: unknown[] } };
@@ -229,14 +231,27 @@ function Transactions({ data, donations, onAdd, onEdit, onCancel }: {
 }) {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<FinanceStatus | 'all'>('all');
-  const [month, setMonth] = useState(todayIso().slice(0, 7));
+  const [dateFrom, setDateFrom] = useState(`${todayIso().slice(0, 7)}-01`);
+  const [dateTo, setDateTo] = useState('');
+  const [amountFrom, setAmountFrom] = useState('');
+  const [amountTo, setAmountTo] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
+  const [sort, setSort] = usePersistentListSort('kehila:list-sort:finance-transactions');
   const flowRows = useMemo(() => buildFinanceFlowRows(data, donations), [data, donations]);
   const list = flowRows.filter(row => {
     if (status !== 'all' && row.status !== status) return false;
-    if (month && !row.date.startsWith(month)) return false;
+    if (dateFrom && (!row.date || row.date < dateFrom)) return false;
+    if (dateTo && (!row.date || row.date > dateTo)) return false;
+    if (amountFrom && row.amount < Number(amountFrom)) return false;
+    if (amountTo && row.amount > Number(amountTo)) return false;
     const haystack = `${row.title} ${row.category} ${row.scopeName} ${row.method} ${row.notes}`.toLowerCase();
     return haystack.includes(search.trim().toLowerCase());
-  });
+  }).sort((a, b) => compareListValues(
+    { name: a.title, amount: a.amount, date: a.date },
+    { name: b.title, amount: b.amount, date: b.date },
+    sort, parseDdMmYyyy,
+  ));
+  const activeFilters = [status !== 'all', !!dateFrom, !!dateTo, !!amountFrom, !!amountTo].filter(Boolean).length;
   const totals = list.reduce((sum, row) => {
     if (row.status === 'actual') sum[row.direction] += row.amount;
     if (row.status === 'committed' && row.direction === 'expense') sum.committed += row.amount;
@@ -246,12 +261,18 @@ function Transactions({ data, donations, onAdd, onEdit, onCancel }: {
     <div className="p-4 border-b border-[#EDE6D6] flex flex-wrap items-center gap-2">
       <button onClick={() => onAdd('expense')} className="bg-[#0D1B2A] text-white px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1"><Plus size={14} /> תנועה</button>
       <input value={search} onChange={e => setSearch(e.target.value)} placeholder="חיפוש" className="flex-1 min-w-36 bg-gray-50 border border-[#EDE6D6] rounded-xl px-3 py-2 text-sm outline-none" />
-      <select value={status} onChange={e => setStatus(e.target.value as FinanceStatus | 'all')} className="bg-gray-50 border border-[#EDE6D6] rounded-xl px-2 py-2 text-xs">
-        <option value="all">כל המצבים</option>{Object.entries(STATUS_LABELS).map(([id, label]) => <option key={id} value={id}>{label}</option>)}
-      </select>
-      <input type="month" value={month} onChange={e => setMonth(e.target.value)} className="bg-gray-50 border border-[#EDE6D6] rounded-xl px-2 py-2 text-xs" aria-label="חודש" />
-      {month && <button onClick={() => setMonth('')} className="text-[11px] text-gray-500 font-bold">כל הזמנים</button>}
+      <button onClick={() => setShowFilters(value => !value)} className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1 border ${showFilters || activeFilters ? 'bg-[#0D1B2A] text-[#C9A84C] border-[#0D1B2A]' : 'bg-gray-50 text-gray-600 border-[#EDE6D6]'}`}><SlidersHorizontal size={14} /> מיון וסינון{activeFilters ? ` (${activeFilters})` : ''}</button>
     </div>
+    {showFilters && <div className="p-4 border-b border-[#EDE6D6] bg-[#FAF6EE] space-y-3">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-2">
+        <Field label="מצב"><select value={status} onChange={e => setStatus(e.target.value as FinanceStatus | 'all')} className={INPUT}><option value="all">כל המצבים</option>{Object.entries(STATUS_LABELS).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></Field>
+        <Field label="מתאריך"><input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className={INPUT} /></Field>
+        <Field label="עד תאריך"><input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className={INPUT} /></Field>
+        <Field label="מסכום"><MoneyFilter value={amountFrom} onChange={setAmountFrom} /></Field>
+        <Field label="עד סכום"><MoneyFilter value={amountTo} onChange={setAmountTo} /></Field>
+      </div>
+      <div className="flex flex-col sm:flex-row gap-2 sm:items-end"><div className="flex-1"><ListSortControl value={sort} onChange={setSort} /></div><button onClick={() => { setStatus('all'); setDateFrom(''); setDateTo(''); setAmountFrom(''); setAmountTo(''); }} className="text-xs text-[#9B7A2F] font-bold px-3 py-2">נקה סינונים</button></div>
+    </div>}
     <div className="bg-[#FAF6EE] px-4 py-2.5 flex flex-wrap gap-x-5 gap-y-1 text-xs"><span>הכנסות בפועל <b className="text-emerald-700">{money(totals.income)}</b></span><span>הוצאות בפועל <b className="text-red-600">{money(totals.expense)}</b></span><span>עוד מחויב לצאת <b className="text-amber-700">{money(totals.committed)}</b></span></div>
     {list.length === 0 ? <p className="p-8 text-center text-sm text-gray-400">לא נמצאו תנועות</p> : <div className="divide-y divide-[#F1ECE1]">
       {list.map(row => {
@@ -287,6 +308,10 @@ function Cashflow({ data, donations }: { data: FinanceData; donations: Donation[
   const [purpose, setPurpose] = useState('');
   const [method, setMethod] = useState('');
   const [search, setSearch] = useState('');
+  const [amountFrom, setAmountFrom] = useState('');
+  const [amountTo, setAmountTo] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
+  const [sort, setSort] = usePersistentListSort('kehila:list-sort:finance-cashflow');
   const purposes = useMemo(() => Array.from(new Set<string>(rows.map(row => row.purpose || row.category).filter((value): value is string => !!value))).sort((a, b) => a.localeCompare(b, 'he')), [rows]);
   const methods = useMemo(() => Array.from(new Set<string>(rows.map(row => row.method).filter((value): value is string => !!value))).sort((a, b) => a.localeCompare(b, 'he')), [rows]);
   const filtered = rows.filter(row => {
@@ -297,9 +322,15 @@ function Cashflow({ data, donations }: { data: FinanceData; donations: Donation[
     if (source !== 'all' && row.source !== source) return false;
     if (purpose && (row.purpose || row.category) !== purpose) return false;
     if (method && row.method !== method) return false;
+    if (amountFrom && row.amount < Number(amountFrom)) return false;
+    if (amountTo && row.amount > Number(amountTo)) return false;
     const haystack = `${row.title} ${row.purpose} ${row.category} ${row.method} ${row.notes}`.toLowerCase();
     return haystack.includes(search.trim().toLowerCase());
-  });
+  }).sort((a, b) => compareListValues(
+    { name: a.title, amount: a.amount, date: a.date },
+    { name: b.title, amount: b.amount, date: b.date },
+    sort, parseDdMmYyyy,
+  ));
   const months = summarizeFinanceFlowMonths(filtered);
   const totals = months.reduce((sum, month) => ({
     income: sum.income + month.income,
@@ -307,12 +338,13 @@ function Cashflow({ data, donations }: { data: FinanceData; donations: Donation[
   }), { income: 0, expense: 0 });
   const reset = () => {
     setDateFrom(''); setDateTo(''); setDirection('all'); setStatus('actual');
-    setSource('all'); setPurpose(''); setMethod(''); setSearch('');
+    setSource('all'); setPurpose(''); setMethod(''); setSearch(''); setAmountFrom(''); setAmountTo('');
   };
+  const activeFilters = [!!dateFrom, !!dateTo, direction !== 'all', status !== 'all', source !== 'all', !!purpose, !!method, !!search, !!amountFrom, !!amountTo].filter(Boolean).length;
   return <div className="space-y-4">
     <section className="bg-white border border-[#EDE6D6] rounded-2xl p-4 space-y-3">
-      <div className="flex items-start justify-between gap-3"><div><h2 className="font-bold text-[#0D1B2A]">תזרים הפעילות</h2><p className="text-xs text-gray-500 mt-1">כל התרומות וכל ההכנסות וההוצאות במקום אחד. כאן אפשר לראות גם היסטוריה שלפני נקודת הפתיחה, בלי לשנות את היתרה הנוכחית.</p></div><button onClick={reset} className="text-xs text-[#9B7A2F] font-bold shrink-0">נקה סינונים</button></div>
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+      <div className="flex items-start justify-between gap-3"><div><h2 className="font-bold text-[#0D1B2A]">תזרים הפעילות</h2><p className="text-xs text-gray-500 mt-1">כל התרומות וכל ההכנסות וההוצאות במקום אחד. כאן אפשר לראות גם היסטוריה שלפני נקודת הפתיחה, בלי לשנות את היתרה הנוכחית.</p></div><button onClick={() => setShowFilters(value => !value)} className={`text-xs font-bold shrink-0 px-3 py-2 rounded-xl border flex items-center gap-1 ${showFilters || activeFilters ? 'bg-[#0D1B2A] text-[#C9A84C] border-[#0D1B2A]' : 'text-gray-600 border-[#EDE6D6]'}`}><SlidersHorizontal size={14} /> מיון וסינון{activeFilters ? ` (${activeFilters})` : ''}</button></div>
+      {showFilters && <div className="space-y-3 pt-2 border-t border-[#EDE6D6]"><div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
         <Field label="מתאריך"><input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className={INPUT} /></Field>
         <Field label="עד תאריך"><input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className={INPUT} /></Field>
         <Field label="כניסה / יציאה"><select value={direction} onChange={e => setDirection(e.target.value as typeof direction)} className={INPUT}><option value="all">הכול</option><option value="income">נכנס</option><option value="expense">יצא</option></select></Field>
@@ -321,7 +353,9 @@ function Cashflow({ data, donations }: { data: FinanceData; donations: Donation[
         <Field label="ייעוד / קטגוריה"><select value={purpose} onChange={e => setPurpose(e.target.value)} className={INPUT}><option value="">הכול</option>{purposes.map(value => <option key={value} value={value}>{value}</option>)}</select></Field>
         <Field label="אמצעי תשלום"><select value={method} onChange={e => setMethod(e.target.value)} className={INPUT}><option value="">הכול</option>{methods.map(value => <option key={value} value={value}>{value}</option>)}</select></Field>
         <Field label="חיפוש"><input value={search} onChange={e => setSearch(e.target.value)} placeholder="שם, תיאור או הערה" className={INPUT} /></Field>
-      </div>
+        <Field label="מסכום"><MoneyFilter value={amountFrom} onChange={setAmountFrom} /></Field>
+        <Field label="עד סכום"><MoneyFilter value={amountTo} onChange={setAmountTo} /></Field>
+      </div><div className="flex flex-col sm:flex-row gap-2 sm:items-end"><div className="flex-1"><ListSortControl value={sort} onChange={setSort} /></div><button onClick={reset} className="text-xs text-[#9B7A2F] font-bold px-3 py-2">נקה סינונים</button></div></div>}
     </section>
 
     <div className="grid grid-cols-3 gap-2.5">
@@ -563,6 +597,7 @@ function Quick({ label, icon, onClick }: { label: string; icon: React.ReactNode;
 function Line({ label, value }: { label: string; value: string }) { return <div className="flex justify-between gap-3"><span className="text-gray-500">{label}</span><b className="text-[#0D1B2A]">{value}</b></div>; }
 function Field({ label, children }: { label: string; children: React.ReactNode }) { return <label className="block space-y-1"><span className="block text-xs font-bold text-gray-600">{label}</span>{children}</label>; }
 function MoneyInput({ value, onChange }: { value: number; onChange: (value: number) => void }) { return <div className="relative"><span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">₪</span><input type="number" inputMode="decimal" value={value || ''} onChange={e => onChange(Number(e.target.value) || 0)} className={`${INPUT} pr-8`} /></div>; }
+function MoneyFilter({ value, onChange }: { value: string; onChange: (value: string) => void }) { return <div className="relative"><span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">₪</span><input type="number" min="0" inputMode="decimal" value={value} onChange={e => onChange(e.target.value)} className={`${INPUT} pr-8`} /></div>; }
 function Toggle({ label, on, set }: { label: string; on: boolean; set: (value: boolean) => void }) { return <button type="button" onClick={() => set(!on)} className="w-full flex items-center justify-between gap-3 text-right"><span className="text-sm font-bold text-[#0D1B2A]">{label}</span><span className={`w-11 h-6 rounded-full relative ${on ? 'bg-[#C9A84C]' : 'bg-gray-200'}`}><span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${on ? 'left-0.5' : 'right-0.5'}`} /></span></button>; }
 function isIncoming(kind: FinanceKind) { return kind === 'income' || kind === 'cash_income' || kind === 'settlement_to_org'; }
 

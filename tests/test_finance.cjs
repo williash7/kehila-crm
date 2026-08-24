@@ -147,5 +147,8 @@ assert.ok(/תזרים הפעילות/.test(financeUi) && /חלוקה לפי חו
 assert.ok(/מה כלול בזמין כרגע/.test(financeUi) && /מה מחויב לצאת/.test(financeUi), 'ארבע המשבצות חייבות לפתוח פירוט');
 assert.ok(/נקראת אוטומטית מיומן התרומות/.test(financeUi), 'תרומות חייבות להופיע בתוך רשימת התנועות');
 assert.ok(/לא מודדים רווח/.test(financeUi) && /מעקב תקציב ומימון/.test(financeUi), 'מעקב פעילות אינו מסך רווח');
+assert.ok(/kehila:list-sort:finance-transactions/.test(financeUi) && /kehila:list-sort:finance-cashflow/.test(financeUi), 'תנועות ותזרים שומרים כל אחד את המיון האחרון');
+assert.ok(/מיון וסינון/.test(financeUi) && /מסכום/.test(financeUi) && /עד סכום/.test(financeUi), 'בכספים חייבים להיות מיון וסינון לפי תאריך וסכום');
+assert.ok(/ListSortControl value=\{sort\}/.test(financeUi), 'בכספים חייבים להציע תאריך, סכום וא׳–ב׳ עם סדר עולה או יורד');
 
 console.log('✓ חוזה המרכז הכספי תקין');
