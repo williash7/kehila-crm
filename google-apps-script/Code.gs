@@ -628,17 +628,45 @@ function recallRequest_(id) {
   }
 }
 
+/**
+ * ל־Script Properties יש תקרה לערך יחיד. תוצאת ייבוא עם מאות דחיות יכולה
+ * לעבור אותה, ואז הפעולה כבר בוצעה אבל אי אפשר לשמור את תשובתה — ובניסיון
+ * הבא היא תתבצע שוב. במקרה כזה שומרים תשובת שחזור קטנה עם השדות שהלקוח
+ * צריך כדי להמשיך, במקום את הרשימה הענקית.
+ */
+function requestResponseJson_(res) {
+  var raw = JSON.stringify(res);
+  if (raw.length <= 7500) return raw;
+
+  var compact = {
+    success: !(res && (res.success === false || res.error)),
+    replayed: true,
+    message: 'הפעולה כבר בוצעה; הוחזרה תשובה מקוצרת',
+  };
+  ['id', 'tag', 'added', 'deleted', 'url', 'title', 'token', 'snapshotId',
+   'snapshotName', 'nextOffset', 'complete', 'key'].forEach(function (key) {
+    if (res && res[key] !== undefined) compact[key] = res[key];
+  });
+  if (res && res.error) compact.error = auditText_(res.error, 500);
+  return JSON.stringify(compact);
+}
+
 function finishRequest_(id, res) {
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
     var props = PropertiesService.getScriptProperties();
-    props.setProperty('req:' + id, JSON.stringify(res));
+    var list = (props.getProperty(REQ_LIST_KEY) || '').split(',').filter(String);
+    // מפנים מקום לפני setProperty. אם האחסון קרוב לתקרה, כתיבה לפני מחיקה
+    // עלולה להיכשל אף שמיד אחריה התכוונו למחוק את הישן ביותר.
+    while (list.length >= REQ_KEEP && list.indexOf(id) < 0) {
+      props.deleteProperty('req:' + list.shift());
+    }
+
+    props.setProperty('req:' + id, requestResponseJson_(res));
     props.deleteProperty(REQ_PENDING_PREFIX + id);
 
-    var list = (props.getProperty(REQ_LIST_KEY) || '').split(',').filter(String);
     if (list.indexOf(id) < 0) list.push(id);
-    while (list.length > REQ_KEEP) props.deleteProperty('req:' + list.shift());
     props.setProperty(REQ_LIST_KEY, list.join(','));
   } finally {
     lock.releaseLock();
