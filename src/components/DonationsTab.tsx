@@ -14,6 +14,8 @@ import { activeProjects } from '../lib/projects';
 import { ThankYouLetterModal } from './ThankYouLetterModal';
 import { PaymentLedgerView } from './PaymentLedgerView';
 import { Donation } from '../types';
+import { CASH_DESTINATION_OPTIONS, cashDestinationLabel, cleanPaymentMethod, isCashPaymentMethod } from '../lib/cashDonations';
+import { compareListValues, ListSortControl, usePersistentListSort } from './ListSortControl';
 
 type MainTab = 'donations' | 'hk' | 'errors' | 'payments';
 
@@ -43,7 +45,7 @@ export function DonationsTab({ onAddDonation }: { onAddDonation: () => void }) {
   const [dateTo, setDateTo] = useState('');
   const [method, setMethod] = useState('');
   const [purpose, setPurpose] = useState('');
-  const [sortBy, setSortBy] = useState<'date' | 'amount'>('date');
+  const [donationSort, setDonationSort] = usePersistentListSort('kehila:list-sort:donations');
   const [showFilters, setShowFilters] = useState(false);
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 30;
@@ -66,24 +68,25 @@ export function DonationsTab({ onAddDonation }: { onAddDonation: () => void }) {
       const to = new Date(dateTo); to.setHours(23, 59, 59, 999);
       list = list.filter(d => { const dt = parseDdMmYyyy(d.date); return !dt || dt.getTime() <= to.getTime(); });
     }
-    list.sort((a, b) => {
-      if (sortBy === 'amount') return (b.amount || 0) - (a.amount || 0);
-      const ta = parseDdMmYyyy(a.date)?.getTime() || 0;
-      const tb = parseDdMmYyyy(b.date)?.getTime() || 0;
-      return tb - ta;
-    });
+    list.sort((a, b) => compareListValues(a, b, donationSort, parseDdMmYyyy));
     return list;
-  }, [donationRecords, search, method, purpose, dateFrom, dateTo, sortBy]);
+  }, [donationRecords, search, method, purpose, dateFrom, dateTo, donationSort]);
 
   const pagedDonations = filteredDonations.slice(0, (page + 1) * PAGE_SIZE);
   const filteredTotal = filteredDonations.reduce((s, d) => s + (d.amount || 0), 0);
 
-  const clearFilters = () => { setSearch(''); setDateFrom(''); setDateTo(''); setMethod(''); setPurpose(''); setSortBy('date'); };
+  const clearFilters = () => { setSearch(''); setDateFrom(''); setDateTo(''); setMethod(''); setPurpose(''); };
   const hasActiveFilters = !!(search || dateFrom || dateTo || method || purpose);
 
   // ── הוראות קבע ──────────────────────────────────────────────────────────
   const [hkFilter, setHkFilter] = useState<'all' | HkStatus | 'errors'>('active');
   const [hkSearch, setHkSearch] = useState('');
+  const [hkDateFrom, setHkDateFrom] = useState('');
+  const [hkDateTo, setHkDateTo] = useState('');
+  const [hkSort, setHkSort] = usePersistentListSort('kehila:list-sort:standing-orders');
+  const [errorDateFrom, setErrorDateFrom] = useState('');
+  const [errorDateTo, setErrorDateTo] = useState('');
+  const [errorSort, setErrorSort] = usePersistentListSort('kehila:list-sort:charge-failures');
   const threshold = settings.hkExpiringThreshold ?? 2;
   const failIdx = useMemo(() => indexFailures(failures), [failures]);
   // רק כשלים שעדיין פתוחים — ראה openFailureFor. כשל שנפתר מזמן לא צריך
@@ -101,6 +104,23 @@ export function DonationsTab({ onAddDonation }: { onAddDonation: () => void }) {
     const q = hkSearch.toLowerCase();
     hkList = hkList.filter(h => h.name?.toLowerCase().includes(q) || String(h.id || '').includes(q));
   }
+  const dateInside = (value: string | undefined, from: string, to: string) => {
+    const time = parseDdMmYyyy(value)?.getTime();
+    if (!time) return !from && !to;
+    if (from && time < new Date(`${from}T00:00:00`).getTime()) return false;
+    if (to && time > new Date(`${to}T23:59:59`).getTime()) return false;
+    return true;
+  };
+  hkList = hkList
+    .filter(h => dateInside(h.nextCharge || h.startDate || h.lastBilled, hkDateFrom, hkDateTo))
+    .sort((a, b) => compareListValues(
+      { ...a, date: a.nextCharge || a.startDate || a.lastBilled },
+      { ...b, date: b.nextCharge || b.startDate || b.lastBilled },
+      hkSort, parseDdMmYyyy,
+    ));
+  const errorList = [...failures]
+    .filter(f => dateInside(f.date, errorDateFrom, errorDateTo))
+    .sort((a, b) => compareListValues(a, b, errorSort, parseDdMmYyyy));
 
   const mainTabs: { id: MainTab; label: string; count?: number }[] = [
     { id: 'donations', label: 'תרומות', count: donationRecords.length },
@@ -199,13 +219,7 @@ export function DonationsTab({ onAddDonation }: { onAddDonation: () => void }) {
                     </select>
                   </div>
                 )}
-                <div>
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">מיון</label>
-                  <div className="flex gap-2">
-                    <button onClick={() => setSortBy('date')} className={`flex-1 py-1.5 rounded-lg text-xs font-bold border ${sortBy === 'date' ? 'bg-[#0D1B2A] text-[#C9A84C] border-[#0D1B2A]' : 'bg-gray-50 text-gray-500 border-[#EDE6D6]'}`}>לפי תאריך</button>
-                    <button onClick={() => setSortBy('amount')} className={`flex-1 py-1.5 rounded-lg text-xs font-bold border ${sortBy === 'amount' ? 'bg-[#0D1B2A] text-[#C9A84C] border-[#0D1B2A]' : 'bg-gray-50 text-gray-500 border-[#EDE6D6]'}`}>לפי סכום</button>
-                  </div>
-                </div>
+                <ListSortControl value={donationSort} onChange={setDonationSort} />
                 {hasActiveFilters && (
                   <button onClick={clearFilters} className="w-full flex items-center justify-center gap-1.5 text-xs font-bold text-red-500 py-1.5">
                     <X size={12} /> נקה סינונים
@@ -300,6 +314,16 @@ export function DonationsTab({ onAddDonation }: { onAddDonation: () => void }) {
                 </button>
               ))}
             </div>
+            <details className="bg-white border border-[#EDE6D6] rounded-xl mb-3">
+              <summary className="cursor-pointer px-3 py-2 text-xs font-bold text-gray-600">מיון וסינון לפי תאריך</summary>
+              <div className="p-3 pt-1 space-y-2 border-t border-[#EDE6D6]">
+                <div className="grid grid-cols-2 gap-2">
+                  <input aria-label="הוראות קבע מתאריך" type="date" value={hkDateFrom} onChange={e => setHkDateFrom(e.target.value)} className="bg-gray-50 border border-[#EDE6D6] rounded-lg px-2 py-2 text-xs" />
+                  <input aria-label="הוראות קבע עד תאריך" type="date" value={hkDateTo} onChange={e => setHkDateTo(e.target.value)} className="bg-gray-50 border border-[#EDE6D6] rounded-lg px-2 py-2 text-xs" />
+                </div>
+                <ListSortControl value={hkSort} onChange={setHkSort} />
+              </div>
+            </details>
             <div className="space-y-2">
               {hkList.length === 0 ? (
                 <EmptyState icon="🔄" title="אין הוראות קבע להצגה" hint="הוראות נקלטות לבד ממיילי הספק. אפשר גם להוסיף אחת ידנית." />
@@ -361,9 +385,19 @@ export function DonationsTab({ onAddDonation }: { onAddDonation: () => void }) {
 
         {mainTab === 'errors' && (
           <div className="space-y-2">
-            {failures.length === 0 ? (
+            <details className="bg-white border border-[#EDE6D6] rounded-xl">
+              <summary className="cursor-pointer px-3 py-2 text-xs font-bold text-gray-600">מיון וסינון לפי תאריך</summary>
+              <div className="p-3 pt-1 space-y-2 border-t border-[#EDE6D6]">
+                <div className="grid grid-cols-2 gap-2">
+                  <input aria-label="שגיאות מתאריך" type="date" value={errorDateFrom} onChange={e => setErrorDateFrom(e.target.value)} className="bg-gray-50 border border-[#EDE6D6] rounded-lg px-2 py-2 text-xs" />
+                  <input aria-label="שגיאות עד תאריך" type="date" value={errorDateTo} onChange={e => setErrorDateTo(e.target.value)} className="bg-gray-50 border border-[#EDE6D6] rounded-lg px-2 py-2 text-xs" />
+                </div>
+                <ListSortControl value={errorSort} onChange={setErrorSort} />
+              </div>
+            </details>
+            {errorList.length === 0 ? (
               <EmptyState icon="✓" tone="good" title="אין שגיאות חיוב" hint="כל החיובים בחודש האחרון עברו בהצלחה." />
-            ) : failures.map((f: ChargeFailure, i: number) => (
+            ) : errorList.map((f: ChargeFailure, i: number) => (
               <div key={i} onClick={() => setSelectedDonor(f.name)} className="bg-red-50 rounded-xl p-3 shadow-sm border border-red-100 flex items-center justify-between cursor-pointer">
                 <div>
                   <div className="font-bold text-red-900 text-sm">{f.name}</div>
@@ -389,7 +423,7 @@ export function DonationsTab({ onAddDonation }: { onAddDonation: () => void }) {
           onClose={() => { setSelectedDonation(null); setIsEditing(false); setEditError(''); }}
           actions={!isEditing ? (
             <button
-              onClick={() => { setIsEditing(true); setEditFields({ ...selectedDonation }); }}
+              onClick={() => { setIsEditing(true); setEditFields({ ...selectedDonation, method: cleanPaymentMethod(selectedDonation.method) }); }}
               className="flex items-center gap-1.5 h-9 px-3 rounded-full text-white/70 hover:bg-white/10 text-xs font-bold transition-colors"
             >
               <Pencil size={14} /> <span className="hidden md:inline">עריכה</span>
@@ -431,6 +465,14 @@ export function DonationsTab({ onAddDonation }: { onAddDonation: () => void }) {
                   <div className="bg-white border border-[#EDE6D6] rounded-xl p-3 shadow-sm">
                     <div className="text-[10px] text-gray-400 uppercase font-bold mb-1">אפיק גבייה</div>
                     <div className="text-sm text-[#0D1B2A]">{selectedDonation.method}</div>
+                  </div>
+                )}
+
+                {isCashPaymentMethod(selectedDonation.method) && (
+                  <div className={`border rounded-xl p-3 shadow-sm ${selectedDonation.cashDestination ? 'bg-white border-[#EDE6D6]' : 'bg-amber-50 border-amber-200'}`}>
+                    <div className="text-[10px] text-gray-400 uppercase font-bold mb-1">היכן המזומן נמצא</div>
+                    <div className="text-sm font-bold text-[#0D1B2A]">{cashDestinationLabel(selectedDonation.cashDestination)}</div>
+                    {!selectedDonation.cashDestination && <div className="text-[10px] text-amber-800 mt-1">זו תרומה ישנה שטרם סווגה. אפשר ללחוץ „עריכה” ולבחור את המיקום הנכון.</div>}
                   </div>
                 )}
 
@@ -483,15 +525,30 @@ export function DonationsTab({ onAddDonation }: { onAddDonation: () => void }) {
                   <div className="grid grid-cols-2 gap-1.5">
                     {EDIT_METHODS.map(m => (
                       <button key={m} type="button"
-                        onClick={() => setEditFields(f => ({ ...f, method: m }))}
+                        onClick={() => setEditFields(f => ({ ...f, method: cleanPaymentMethod(m) }))}
                         className={`text-xs font-bold py-2 rounded-lg border transition-colors ${
-                          editFields.method === m ? 'bg-[#0D1B2A] text-[#C9A84C] border-[#0D1B2A]' : 'bg-white text-gray-600 border-[#EDE6D6]'
+                          cleanPaymentMethod(editFields.method) === cleanPaymentMethod(m) ? 'bg-[#0D1B2A] text-[#C9A84C] border-[#0D1B2A]' : 'bg-white text-gray-600 border-[#EDE6D6]'
                         }`}>
                         {m}
                       </button>
                     ))}
                   </div>
                 </div>
+
+                {isCashPaymentMethod(editFields.method) && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+                    <label className="block text-[10px] text-amber-900 uppercase font-bold mb-2">היכן המזומן נמצא בפועל?</label>
+                    <div className="space-y-1.5">
+                      {CASH_DESTINATION_OPTIONS.map(option => (
+                        <button key={option.value} type="button"
+                          onClick={() => setEditFields(f => ({ ...f, cashDestination: option.value }))}
+                          className={`w-full text-right rounded-lg border px-3 py-2 ${editFields.cashDestination === option.value ? 'bg-[#0D1B2A] text-[#C9A84C] border-[#0D1B2A]' : 'bg-white text-gray-700 border-amber-200'}`}>
+                          <b className="block text-xs">{option.label}</b><span className="text-[10px] opacity-75">{option.hint}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-[10px] text-gray-500 uppercase font-bold mb-1.5">ייעוד</label>
@@ -535,7 +592,8 @@ export function DonationsTab({ onAddDonation }: { onAddDonation: () => void }) {
                         id: selectedDonation.id,
                         amount: editFields.amount,
                         date: editFields.date,
-                        method: editFields.method,
+                        method: cleanPaymentMethod(editFields.method),
+                        cashDestination: isCashPaymentMethod(editFields.method) ? editFields.cashDestination || 'unclassified' : '',
                         purpose: editFields.purpose,
                         notes: editFields.notes,
                       });

@@ -67,7 +67,7 @@
  *
  * **מעדכנים אותה בכל שינוי מהותי בקובץ.**
  */
-var CODE_VERSION = '2026-08-23e';
+var CODE_VERSION = '2026-08-24a';
 var EXPORT_SCHEMA_VERSION = 1;
 var EXPORT_MAX_LIMIT = 500;
 
@@ -92,7 +92,7 @@ var COLS = {
   // יומן משולב: אותה שורה יכולה להיות תרומה, מפגש, או שניהם.
   LOG: ['מזהה', 'שם', 'תאריך תרומה', 'סכום', 'ייעוד', 'אפיק גבייה',
         'תאריך מפגש', 'מיקום מפגש', 'מטרת המפגש', 'סיכום ותובנות',
-        'מקור', 'סטטוס'],
+        'מקור', 'סטטוס', 'מיקום מזומן'],
 
   // שים לב: אין כאן "חיוב אחרון" ואין "נותרו" — שניהם מחושבים מהיומן.
   //
@@ -787,6 +787,7 @@ function getDonations_() {
       amount:      asNumber_(get_(r, t, 'סכום')),
       purpose:     fmt_(get_(r, t, 'ייעוד')),
       method:      fmt_(get_(r, t, 'אפיק גבייה')),
+      cashDestination: fmt_(get_(r, t, 'מיקום מזומן')),
       meetDate:    asDate_(get_(r, t, 'תאריך מפגש')),
       location:    fmt_(get_(r, t, 'מיקום מפגש')),
       meetPurpose: fmt_(get_(r, t, 'מטרת המפגש')),
@@ -827,6 +828,7 @@ function getPaymentLedger_() {
       amount:      asNumber_(get_(r, t, 'סכום')),
       purpose:     fmt_(get_(r, t, 'ייעוד')),
       method:      method,
+      cashDestination: fmt_(get_(r, t, 'מיקום מזומן')),
       notes:       fmt_(get_(r, t, 'סיכום ותובנות')),
       source:      fmt_(get_(r, t, 'מקור')),
       status:      status,
@@ -1695,6 +1697,7 @@ function addDonation_(body) {
   var amount = asNumber_(body.amount);
   if (!name || !amount) return { success: false, error: 'חסרים שם או סכום' };
 
+  if (body.cashDestination !== undefined) ensureSheet_(SpreadsheetApp.getActiveSpreadsheet(), SH.LOG, COLS.LOG);
   addLogRow_({
     'מזהה':        'man:' + new Date().getTime(),
     'שם':          name,
@@ -1702,6 +1705,7 @@ function addDonation_(body) {
     'סכום':        amount,
     'ייעוד':       body.purpose || '',
     'אפיק גבייה':  body.method || '',
+    'מיקום מזומן': cleanCashDestination_(body.cashDestination),
     'סיכום ותובנות': body.notes || '',
     'מקור':        'ידני',
   });
@@ -2156,6 +2160,10 @@ function updateDonation_(body) {
   var id = String(body.id || '').trim();
   if (!id) return { success: false, error: 'חסר מזהה התרומה' };
 
+  if (body.cashDestination !== undefined) {
+    ensureSheet_(SpreadsheetApp.getActiveSpreadsheet(), SH.LOG, COLS.LOG);
+    __tableCache = {};
+  }
   var t = table_(SH.LOG);
   if (!t.sheet) return { success: false, error: 'לשונית היומן לא נמצאה' };
 
@@ -2174,6 +2182,7 @@ function updateDonation_(body) {
     'סכום':          body.amount === undefined ? undefined : asNumber_(body.amount),
     'ייעוד':         body.purpose,
     'אפיק גבייה':    body.method,
+    'מיקום מזומן':   body.cashDestination === undefined ? undefined : cleanCashDestination_(body.cashDestination),
     'סיכום ותובנות': body.notes,
   };
 
@@ -2189,6 +2198,13 @@ function updateDonation_(body) {
   if (body.name) { ensureContact_(standardName(body.name), body.phone, body.address); flushWrites_(); }
   Logger.log('תרומה ' + id + ' עודכנה: ' + changed.join(', '));
   return { success: true, id: id, changed: changed };
+}
+
+/** ערך סגור כדי שטעות או קלט חיצוני לא ייצרו מצבי מזומן לא מוכרים. */
+function cleanCashDestination_(value) {
+  var allowed = ['org_account', 'personal', 'activity_cashbox', 'unclassified'];
+  var clean = String(value || '').trim();
+  return allowed.indexOf(clean) >= 0 ? clean : '';
 }
 
 /**
@@ -2452,6 +2468,10 @@ function importRows_(body) {
   var rejected = { donations: [], standingOrders: [] };
   var donationOrdinals = {};
   var orderOrdinals = {};
+  if ((body.donations || []).some(function (d) { return d && d.cashDestination !== undefined; })) {
+    ensureSheet_(SpreadsheetApp.getActiveSpreadsheet(), SH.LOG, COLS.LOG);
+    __tableCache = {};
+  }
 
   // אנשי הקשר נכתבים בשני מעברים, וזה הכרחי ולא סגנוני:
   //   · ensureContact_ מוסיף שורה ל**תור הכתיבה** (appendByName_), והיא
@@ -2493,6 +2513,7 @@ function importRows_(body) {
       'סכום':        asNumber_(d.amount),
       'ייעוד':       d.purpose || '',
       'אפיק גבייה':  d.method || '',
+      'מיקום מזומן': cleanCashDestination_(d.cashDestination),
       'סיכום ותובנות': d.notes || '',
       'מקור':        'ייבוא ' + tag,
     });

@@ -1,3 +1,5 @@
+export type CashDestination = 'org_account' | 'personal' | 'activity_cashbox' | 'unclassified';
+
 export interface Donation {
   id?: string;
   name: string;
@@ -5,6 +7,8 @@ export interface Donation {
   amount: number;
   purpose?: string;
   method?: string;
+  /** היכן נמצא הכסף בפועל. רלוונטי רק כשאפיק הגבייה הוא מזומן. */
+  cashDestination?: CashDestination;
   notes?: string;
   source?: string;
   meetDate?: string;

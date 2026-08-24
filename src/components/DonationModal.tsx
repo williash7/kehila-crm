@@ -4,6 +4,8 @@ import { useAppStore } from '../store/AppContext';
 import { apiPost } from '../lib/api';
 import { ThankYouModal } from './ThankYouModal';
 import { activeProjects } from '../lib/projects';
+import { CashDestination } from '../types';
+import { CASH_DESTINATION_OPTIONS, cleanPaymentMethod, isCashPaymentMethod } from '../lib/cashDonations';
 
 interface DonationModalProps {
   onClose: () => void;
@@ -18,6 +20,7 @@ export function DonationModal({ onClose, defaultName = '' }: DonationModalProps)
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [purpose, setPurpose] = useState('');
   const [method, setMethod] = useState('קישור ישיר');
+  const [cashDestination, setCashDestination] = useState<CashDestination | ''>('');
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
   
@@ -34,8 +37,12 @@ export function DonationModal({ onClose, defaultName = '' }: DonationModalProps)
     setLoading(true);
     const dateStr = date ? new Date(date).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '';
     
-    // strip out emojis for method
-    const cleanMethod = method.replace(/^[^\s]+\s+/, '');
+    const cleanMethod = cleanPaymentMethod(method);
+    if (isCashPaymentMethod(cleanMethod) && !cashDestination) {
+      alert('נא לבחור היכן נמצא המזומן בפועל');
+      setLoading(false);
+      return;
+    }
     
     const res = await apiPost('addDonation', {
       name: name.trim(),
@@ -43,6 +50,7 @@ export function DonationModal({ onClose, defaultName = '' }: DonationModalProps)
       amount: parseFloat(amount),
       purpose: purpose.trim(),
       method: cleanMethod,
+      cashDestination: isCashPaymentMethod(cleanMethod) ? cashDestination : '',
       notes: notes.trim()
     });
 
@@ -54,6 +62,7 @@ export function DonationModal({ onClose, defaultName = '' }: DonationModalProps)
         amount: parseFloat(amount),
         purpose: purpose.trim(),
         method: cleanMethod,
+        cashDestination: isCashPaymentMethod(cleanMethod) ? cashDestination || undefined : undefined,
         notes: notes.trim(),
       });
       refresh();
@@ -195,6 +204,26 @@ export function DonationModal({ onClose, defaultName = '' }: DonationModalProps)
               ))}
             </div>
           </div>
+
+          {isCashPaymentMethod(method) && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+              <label className="block text-[11px] font-bold text-amber-900 mb-2">היכן המזומן נמצא בפועל?</label>
+              <div className="space-y-1.5">
+                {CASH_DESTINATION_OPTIONS.map(option => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setCashDestination(option.value)}
+                    className={`w-full text-right rounded-lg border px-3 py-2 transition-colors ${cashDestination === option.value ? 'bg-[#0D1B2A] text-[#C9A84C] border-[#0D1B2A]' : 'bg-white text-gray-700 border-amber-200'}`}
+                  >
+                    <b className="block text-xs">{option.label}</b>
+                    <span className="text-[10px] opacity-75">{option.hint}</span>
+                  </button>
+                ))}
+              </div>
+              <p className="text-[10px] text-amber-800 mt-2">אפיק הגבייה אינו קובע בעלות. הבחירה הזו מונעת רישום שגוי בחשבון בינך לבין הפעילות.</p>
+            </div>
+          )}
 
           <div>
             <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">הערות</label>

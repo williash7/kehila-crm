@@ -27,8 +27,10 @@ const show = () => sheets['יומן תרומות ומפגשים'].values.slice(1
 console.log('לפני:'); show().forEach(x=>console.log('  '+x));
 
 console.log('\n1. תיקון אפיק גבייה + שיוך לפרויקט + הערה:');
-let r = updateDonation_({ id:'man-1', method:'💵 מזומן', purpose:'🎯 הדפסת לוח שנה', notes:'נמסר ביד' });
+let r = updateDonation_({ id:'man-1', method:'מזומן', cashDestination:'org_account', purpose:'🎯 הדפסת לוח שנה', notes:'נמסר ביד' });
 console.log('  ', JSON.stringify(r));
+const cashCol = sheets['יומן תרומות ומפגשים'].values[0].indexOf('מיקום מזומן');
+if (cashCol < 0 || sheets['יומן תרומות ומפגשים'].values[1][cashCol] !== 'org_account') throw new Error('מיקום המזומן לא נשמר בעמודה החדשה');
 
 console.log('\n2. תיקון סכום בלבד — אסור שידרוס שדות אחרים:');
 r = updateDonation_({ id:'man-1', amount:750 });

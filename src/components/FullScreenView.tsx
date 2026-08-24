@@ -41,12 +41,20 @@ let host: BackGuardWindow | null = null;
 // כמה אירועי popstate נגרמו על ידינו (סגירה מכפתור שבמסך) וצריך להתעלם מהם.
 let selfInflicted = 0;
 
+function detachHostIfIdle() {
+  if (stack.length || selfInflicted > 0 || !host) return;
+  host.removeEventListener('popstate', handlePop);
+  host.removeEventListener('keydown', handleKey);
+  host = null;
+}
+
 function handlePop() {
-  if (selfInflicted > 0) { selfInflicted--; return; }
+  if (selfInflicted > 0) { selfInflicted--; detachHostIfIdle(); return; }
   const g = stack.pop();
   if (!g) return;
   g.closedByBack = true;
   g.onClose();
+  detachHostIfIdle();
 }
 
 function handleKey(e: { key: string }) {
@@ -60,7 +68,10 @@ function handleKey(e: { key: string }) {
  * מחזירה פונקציית ניקוי.
  */
 export function createBackGuard(win: BackGuardWindow, onClose: () => void): () => void {
-  if (!stack.length) {
+  // אם יש popstate יזום שעדיין בדרך, המחסנית יכולה להיות ריקה בעוד המאזין
+  // עדיין מחובר. אין לרשום אותו שוב — סביבת בדיקה ואף עטיפות דפדפן מסוימות
+  // עלולות להפעיל מאזין כפול ולסגור את הכרטיס החדש.
+  if (!host) {
     host = win;
     win.addEventListener('popstate', handlePop);
     win.addEventListener('keydown', handleKey);
@@ -78,19 +89,24 @@ export function createBackGuard(win: BackGuardWindow, onClose: () => void): () =
     // אחרת "אחורה" הבא היה נבלע ולא עושה כלום.
     if (!guard.closedByBack) { selfInflicted++; win.history.back(); }
 
-    if (!stack.length && host) {
-      host.removeEventListener('popstate', handlePop);
-      host.removeEventListener('keydown', handleKey);
-      host = null;
-      selfInflicted = 0;
-    }
+    // history.back מפעיל popstate באיחור בדפדפן אמיתי. משאירים את המאזין
+    // עד שהאירוע שלנו נצרך; אחרת הוא עלול להגיע אחרי שכרטיס חדש כבר נפתח
+    // ולסגור דווקא אותו מיד.
+    detachHostIfIdle();
   };
 }
 
 export function useCloseOnBack(onClose: () => void) {
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
-  useEffect(() => createBackGuard(window, () => onCloseRef.current()), []);
+  useEffect(() => {
+    // רישום בסבב הבא מונע ממצב הפיתוח של React לבצע push/back מזויף בזמן
+    // בדיקת mount→unmount→mount. בלי ההשהיה הכרטיס נראה פתוח, אך לחיצה על
+    // „חזרה” עלולה לצאת מהאפליקציה כי רשומת ההיסטוריה כבר נצרכה ברקע.
+    let cleanup: (() => void) | undefined;
+    const timer = window.setTimeout(() => { cleanup = createBackGuard(window, () => onCloseRef.current()); }, 0);
+    return () => { window.clearTimeout(timer); cleanup?.(); };
+  }, []);
 }
 
 export interface SiblingItem {

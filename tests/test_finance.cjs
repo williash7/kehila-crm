@@ -35,14 +35,24 @@ const donations = [
   { id: 'cash', name: 'ב', amount: 1000, date: '06/08/2026', method: 'מזומן' },
 ];
 const summary = F.summarizeFinance(scenario, donations);
-assert.strictEqual(summary.currentBalance, 11000, 'מזומן אישי אינו מגדיל יתרה זמינה');
-assert.strictEqual(summary.personalBalance, -200, '1000 אצל המשתמש פחות 300 הוצאה ופחות 500 משכורת');
+assert.strictEqual(summary.currentBalance, 10500, 'משכורת ששולמה יוצאת מהיתרה; מזומן שמוחזק אישית אינו נכנס אליה');
+assert.strictEqual(summary.personalBalance, -700, '1000 מזומן אצל המשתמש פחות 300 החזר שמגיע לו; משכורת אינה יוצרת חוב');
 assert.strictEqual(summary.actualIncome, 2000, 'שתי התרומות הן הכנסה אמיתית');
 assert.strictEqual(summary.actualExpense, 800, 'הוצאה פרטית ומשכורת נספרות כהוצאות');
-assert.strictEqual(summary.guaranteedBalance, 7000, 'השכירות המחויבת יורדת מהתחזית הבטוחה');
-assert.strictEqual(summary.optimisticBalance, 8000, 'הכנסה צפויה מופיעה רק בתרחיש הצפוי');
+assert.strictEqual(summary.guaranteedBalance, 6500, 'השכירות המחויבת יורדת מהתחזית הבטוחה');
+assert.strictEqual(summary.optimisticBalance, 7500, 'הכנסה צפויה מופיעה רק בתרחיש הצפוי');
 assert.strictEqual(summary.protectedAmount, 1000, 'שכירות שכבר נרשמה כהתחייבות אינה מוגנת פעמיים');
-assert.strictEqual(summary.safeToUse, 6000);
+assert.strictEqual(summary.safeToUse, 5500);
+
+const classifiedCash = [
+  { id: 'org', name: 'חשבון', amount: 3000, date: '07/08/2026', method: 'מזומן', cashDestination: 'org_account' },
+  { id: 'mine', name: 'אצלי', amount: 500, date: '08/08/2026', method: 'מזומן', cashDestination: 'personal' },
+  { id: 'unknown', name: 'לא ידוע', amount: 900, date: '09/08/2026', method: 'מזומן', cashDestination: 'unclassified' },
+];
+const cashSummary = F.summarizeFinance(F.normalizeFinanceData({ ...base, nextRentAmount: 0, nextRentDate: '', safetyReserve: 0 }), classifiedCash);
+assert.strictEqual(cashSummary.currentBalance, 13000, 'מזומן שהופקד בחשבון העמותה זמין לפעילות');
+assert.strictEqual(cashSummary.personalBalance, -500, 'רק מזומן שסומן במפורש כנמצא אצלי נרשם כמוחזק אצלי');
+assert.strictEqual(cashSummary.actualIncome, 3500, 'תרומה לא מסווגת אינה נספרת עד לבירור');
 const owed = F.summarizeFinance(F.normalizeFinanceData({
   ...base, nextRentAmount: 0, nextRentDate: '',
   transactions: [tx('personal_expense', 300, 'הוצאה פרטית')],

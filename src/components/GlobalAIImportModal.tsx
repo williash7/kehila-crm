@@ -247,7 +247,10 @@ export function GlobalAIImportModal({ onClose, saveImmediately = false, onImport
     parts.push('· ביומן תרומות והוראות קבע תאריכים הם dd/MM/yyyy; בפעילויות, חגים, סיכומי עבר וכספים הם yyyy-MM-dd, כפי שמופיע בדוגמאות. אם התאריך במקור חלקי או לא ברור — השאר את השדה ריק, אל תנחש.');
     parts.push('· סכומים כמספר בלבד, בלי ₪ ובלי פסיקים.');
     parts.push('· אל תמציא נתונים שלא כתובים אצלי. שדה שאין לו מקור — פשוט אל תכלול אותו.');
-    if (on('donations')) parts.push('· "אפיק גבייה" (method) הוא אחד מ: מזומן, ביט/פייבוקס, העברה בנקאית, קישור ישיר, הוראת קבע, צ\'ק.');
+    if (on('donations')) {
+      parts.push('· "אפיק גבייה" (method) הוא אחד מ: מזומן, ביט/פייבוקס, העברה בנקאית, קישור ישיר, הוראת קבע, צ\'ק.');
+      parts.push('· בתרומת מזומן בלבד אפשר להוסיף cashDestination: org_account אם הופקד בחשבון העמותה, personal אם הכסף נמצא אצלי, activity_cashbox אם הוא בקופת הפעילות, או unclassified אם לא ידוע. אמצעי התשלום לבדו אינו אומר שהכסף נמצא אצלי; אל תנחש.');
+    }
     if (on('standingOrders')) parts.push('· בהוראת קבע: amount הוא הסכום **החודשי**, payments מספר החיובים. אם כתוב "ללא הגבלה" — כתוב payments: "ללא הגבלה".');
     if (on('events')) parts.push(`· בפעילות: activityKind הוא recurring או special; type אחד מתוך ${EVENT_TYPES.join('/')}; freq רלוונטי רק ל-recurring ואחד מתוך ${EVENT_FREQS.join('/')}. date בפורמט yyyy-MM-dd, time בפורמט HH:mm. אפשר location ו-entryPrice.`);
     if (on('projects')) parts.push('· בקמפיין: goal הוא היעד בשקלים כמספר, deadline בפורמט yyyy-MM-dd.');
@@ -263,7 +266,7 @@ export function GlobalAIImportModal({ onClose, saveImmediately = false, onImport
       parts.push('· summary מתאר בקצרה מה היה בפועל. good = מה הצליח, improve = מה לשפר, plan = המלצות לפעם הבאה. אפשר להחזיר כמה סיכומים, אחד לכל מופע או שנה.');
     }
     if (on('finance')) {
-      parts.push('· בתנועה כספית: kind הוא income להכנסה נוספת, expense להוצאה מכספי הפעילות, personal_expense להוצאה ששילמתי מכיסי, cash_income למזומן שנכנס אליי, salary למשכורת מתוך המזומן שאצלי, settlement_to_me כשהפעילות החזירה לי כסף, או settlement_to_org כשהחזרתי כסף לפעילות.');
+      parts.push('· בתנועה כספית: kind הוא income להכנסה נוספת, expense להוצאה מכספי הפעילות, personal_expense להוצאה ששילמתי מכיסי, cash_income למזומן של הפעילות שנמצא אצלי, salary למשכורת שכבר שולמה לי, settlement_to_me כשהפעילות החזירה לי הוצאה ששילמתי מכיסי, או settlement_to_org כשהחזרתי מזומן לפעילות. משכורת ששולמה היא הוצאת פעילות ואינה חוב של בית חב״ד כלפיי.');
       parts.push('· status הוא actual אם כבר בוצע, committed להתחייבות ודאית שטרם שולמה, או expected לצפי שעדיין אינו ודאי. שכירות עתידית שסוכמה היא expense עם status: committed.');
       parts.push('· scopeType הוא general לשוטף שאינו שייך ליעד, event לפעילות, holiday לחג או project לקמפיין. בשוטף כמו שכירות כתוב general והשאר scopeName ריק.');
       parts.push('· repeatMonths הוא מספר החודשים הכולל ליצירה חודשית, למשל 12 לשכירות לשנה. אם זו תנועה חד-פעמית כתוב 1. date הוא מועד התשלום הראשון בפורמט yyyy-MM-dd.');
@@ -295,7 +298,7 @@ export function GlobalAIImportModal({ onClose, saveImmediately = false, onImport
     // ── הסכימה, רק לנבחרים ────────────────────────────────────────────────
     const schema: Record<string, any> = {};
     if (on('contacts')) schema.contacts = [{ 'שם מלא': 'ישראל ישראלי', 'טלפון': '050-1234567', 'כתובת': 'הרצל 5', 'בן/בת זוג': 'שרה', 'הערות': '' }];
-    if (on('donations')) schema.donations = [{ id: '12345', name: 'ישראל ישראלי', amount: 500, date: '15/05/2026', method: 'מזומן', purpose: 'תרומה כללית', notes: '' }];
+    if (on('donations')) schema.donations = [{ id: '12345', name: 'ישראל ישראלי', amount: 500, date: '15/05/2026', method: 'מזומן', cashDestination: 'org_account', purpose: 'תרומה כללית', notes: '' }];
     if (on('standingOrders')) schema.standingOrders = [{ id: '1866314', name: 'דוד כהן', amount: 100, startDate: '01/09/2025', payments: 12, phone: '', campaign: '' }];
     if (on('events')) schema.events = [{ name: 'שיעור תניא', activityKind: 'recurring', type: 'class', freq: 'weekly', date: '2026-08-14', time: '19:30', location: 'בית חב״ד', entryPrice: 0 }];
     if (on('projects')) schema.projects = [{ name: 'הדפסת לוח שנה', goal: 12000, deadline: '2026-09-01', notes: '' }];

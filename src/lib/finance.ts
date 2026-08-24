@@ -1,4 +1,5 @@
 import { Donation } from '../types';
+import { normalizeCashDestination } from './cashDonations';
 
 export type FinanceStatus = 'actual' | 'committed' | 'expected' | 'cancelled';
 export type FinanceKind =
@@ -49,7 +50,8 @@ export interface FinanceData {
   openingDate: string;
   openingRecordedAt: string;
   openingBalance: number;
-  openingPersonalBalance: number; // חיובי = הפעילות חייבת לי; שלילי = אני חייב לפעילות
+  openingPersonalBalance: number; // החזרי הוצאות שהפעילות חייבת לי בנקודת הפתיחה
+  openingHeldCashBalance: number; // מזומן של הפעילות שנמצא אצלי בנקודת הפתיחה
   safetyReserve: number;
   nextRentAmount: number;
   nextRentDate: string;
@@ -96,6 +98,7 @@ export interface FinanceFlowRow {
   id: string;
   source: 'donation' | 'finance';
   sourceId: string;
+  financeKind?: FinanceKind;
   date: string;
   title: string;
   amount: number;
@@ -104,6 +107,7 @@ export interface FinanceFlowRow {
   category: string;
   purpose: string;
   method: string;
+  cashDestination?: Donation['cashDestination'];
   scopeName: string;
   notes: string;
   currentBalanceEffect: number;
@@ -161,6 +165,7 @@ export function emptyFinanceData(): FinanceData {
     openingRecordedAt: '',
     openingBalance: 0,
     openingPersonalBalance: 0,
+    openingHeldCashBalance: 0,
     safetyReserve: 0,
     nextRentAmount: 0,
     nextRentDate: '',
@@ -192,6 +197,7 @@ export function normalizeFinanceData(value: unknown): FinanceData {
   const transactions = Array.isArray(raw.transactions)
     ? raw.transactions.map(normalizeTransaction).filter((x): x is FinanceTransaction => !!x)
     : [];
+  const legacyPersonalBalance = number(raw.openingPersonalBalance);
   return {
     ...base,
     ...raw,
@@ -199,7 +205,10 @@ export function normalizeFinanceData(value: unknown): FinanceData {
     openingDate: normalizeDate(raw.openingDate || ''),
     openingRecordedAt: String(raw.openingRecordedAt || ''),
     openingBalance: number(raw.openingBalance),
-    openingPersonalBalance: number(raw.openingPersonalBalance),
+    openingPersonalBalance: Math.max(0, legacyPersonalBalance),
+    openingHeldCashBalance: raw.openingHeldCashBalance === undefined
+      ? Math.max(0, -legacyPersonalBalance)
+      : Math.max(0, number(raw.openingHeldCashBalance)),
     safetyReserve: Math.max(0, number(raw.safetyReserve)),
     nextRentAmount: Math.max(0, number(raw.nextRentAmount)),
     nextRentDate: normalizeDate(raw.nextRentDate || ''),
@@ -301,11 +310,9 @@ export function transactionEffects(tx: FinanceTransaction, projection = false): 
     case 'expense': return { income: 0, expense: amount, cash: -amount, personal: 0 };
     case 'cash_income': return { income: amount, expense: 0, cash: 0, personal: isActual ? -amount : 0 };
     case 'personal_expense': return { income: 0, expense: amount, cash: 0, personal: isActual ? amount : 0 };
-    case 'salary': return {
-      income: 0, expense: amount,
-      cash: isActual ? 0 : -amount,
-      personal: isActual ? amount : 0,
-    };
+    // משכורת שכבר שולמה היא הוצאה של הפעילות, לא חוב חדש כלפי העובד.
+    // החזר הוצאות אישיות מנוהל בנפרד דרך personal_expense/settlement_to_me.
+    case 'salary': return { income: 0, expense: amount, cash: -amount, personal: 0 };
     case 'settlement_to_me': return { income: 0, expense: 0, cash: -amount, personal: isActual ? -amount : 0 };
     case 'settlement_to_org': return { income: 0, expense: 0, cash: amount, personal: isActual ? amount : 0 };
   }
@@ -317,6 +324,14 @@ export function donationEffects(donation: Donation, data: FinanceData): Effects 
     return { income: 0, expense: 0, cash: 0, personal: 0 };
   }
   if (!donationIsCash(donation)) return { income: amount, expense: 0, cash: amount, personal: 0 };
+  const destination = normalizeCashDestination(donation.cashDestination);
+  if (destination === 'unclassified') return { income: 0, expense: 0, cash: 0, personal: 0 };
+  if (destination === 'org_account' || destination === 'activity_cashbox') {
+    return { income: amount, expense: 0, cash: amount, personal: 0 };
+  }
+  if (destination === 'personal') return { income: amount, expense: 0, cash: 0, personal: -amount };
+
+  // רק תרומות ישנות שאין להן סיווג מפורש משתמשות בברירת המחדל הכללית.
   if (data.cashDonations === 'ignore') return { income: 0, expense: 0, cash: 0, personal: 0 };
   if (data.cashDonations === 'available') return { income: amount, expense: 0, cash: amount, personal: 0 };
   return { income: amount, expense: 0, cash: 0, personal: -amount };
@@ -361,12 +376,13 @@ export function buildFinanceFlowRows(dataInput: unknown, donations: Donation[] =
         category: String(donation.purpose || 'תרומה כללית'),
         purpose: String(donation.purpose || 'תרומה כללית'),
         method: String(donation.method || ''),
+        cashDestination: donation.cashDestination,
         scopeName: String(donation.purpose || ''),
         notes: String(donation.notes || ''),
         currentBalanceEffect: effects.cash,
         personalBalanceEffect: effects.personal,
         projectedBalanceEffect: effects.cash,
-        includedAfterOpening: afterOpening && data.includeDonations && !(donationIsCash(donation) && data.cashDonations === 'ignore'),
+        includedAfterOpening: afterOpening && data.includeDonations && effects.income > 0,
       };
     });
 
@@ -382,6 +398,7 @@ export function buildFinanceFlowRows(dataInput: unknown, donations: Donation[] =
       id: `finance_${tx.id}`,
       source: 'finance',
       sourceId: tx.id,
+      financeKind: tx.kind,
       date: tx.date,
       title: tx.title,
       amount: tx.amount,
@@ -423,7 +440,9 @@ export function summarizeFinanceFlowMonths(rows: FinanceFlowRow[]): MonthlyFinan
 export function summarizeFinance(dataInput: unknown, donations: Donation[] = []): FinanceSummary {
   const data = normalizeFinanceData(dataInput);
   let currentBalance = data.openingBalance;
-  let personalBalance = data.openingPersonalBalance;
+  // נשמר פנימית כנטו לצורך הגנת התזרים: החזרים שמגיעים לי פחות מזומן
+  // של הפעילות שכבר נמצא אצלי. במסך שני הסכומים מוצגים בנפרד.
+  let personalBalance = data.openingPersonalBalance - data.openingHeldCashBalance;
   let actualIncome = 0;
   let actualExpense = 0;
   let donationIncome = 0;

@@ -17,6 +17,22 @@ function makeWindow() {
   };
 }
 
+function makeAsyncWindow() {
+  const stack = ['/app'];
+  const listeners = {};
+  const pending = [];
+  return {
+    stack, listeners, pending,
+    history: {
+      pushState: () => stack.push('#card'),
+      back() { stack.pop(); pending.push(() => (listeners['popstate']||[]).slice().forEach(f => f())); },
+    },
+    addEventListener: (t,f) => { (listeners[t] = listeners[t] || []).push(f); },
+    removeEventListener: (t,f) => { listeners[t] = (listeners[t]||[]).filter(x => x !== f); },
+    flush: () => { while (pending.length) pending.shift()(); },
+  };
+}
+
 console.log('1. פתיחה וסגירה בכפתור שבמסך:');
 let w = makeWindow(), closed = 0;
 let cleanup = createBackGuard(w, () => closed++);
@@ -71,3 +87,15 @@ w.history.back();
 ok(log2.length === 1 && log2[0] === 'חג', 'אחורה עכשיו סוגר את החג');
 o2();
 ok(w.stack.length === 1, 'ההיסטוריה נקייה');
+
+console.log('\n6. פתיחת כרטיס חדש לפני ש-popstate של הסגירה הקודמת הגיע:');
+w = makeAsyncWindow();
+const asyncLog = [];
+const first = createBackGuard(w, () => asyncLog.push('ראשון'));
+first();
+const second = createBackGuard(w, () => asyncLog.push('שני'));
+w.flush();
+ok(asyncLog.length === 0, 'אירוע הסגירה הישן נצרך ואינו סוגר את הכרטיס החדש');
+ok(w.stack.length === 2, 'הכרטיס החדש נשאר פתוח');
+second(); w.flush();
+ok(w.stack.length === 1, 'גם הכרטיס החדש נסגר וניקה את ההיסטוריה');

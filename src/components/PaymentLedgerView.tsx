@@ -10,6 +10,7 @@ import {
 } from '../lib/reconciliation';
 import { EmptyState } from './EmptyState';
 import { parseDdMmYyyy } from '../lib/dateUtils';
+import { compareListValues, ListSortControl, usePersistentListSort } from './ListSortControl';
 
 const PAGE_SIZE = 50;
 const STATUSES: PaymentStatus[] = ['received', 'future', 'failed', 'cancelled'];
@@ -135,6 +136,9 @@ export function PaymentLedgerView() {
   const [status, setStatus] = useState<PaymentStatus | 'all'>('all');
   const [search, setSearch] = useState('');
   const [month, setMonth] = useState(currentMonth);
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [sort, setSort] = usePersistentListSort('kehila:list-sort:payment-ledger');
   const [page, setPage] = useState(0);
 
   const load = React.useCallback(async () => {
@@ -150,12 +154,19 @@ export function PaymentLedgerView() {
   }, []);
 
   React.useEffect(() => { load(); }, [load]);
-  React.useEffect(() => { setPage(0); }, [status, search, month]);
+  React.useEffect(() => { setPage(0); }, [status, search, month, dateFrom, dateTo, sort]);
 
   const monthRows = useMemo(() => filterPaymentRows(rows, { month, search }), [rows, month, search]);
   const summary = useMemo(() => summarizePaymentRows(monthRows), [monthRows]);
   const filtered = useMemo(() => filterPaymentRows(monthRows, { status })
-    .sort((a, b) => (parseDdMmYyyy(b.date)?.getTime() || 0) - (parseDdMmYyyy(a.date)?.getTime() || 0)), [monthRows, status]);
+    .filter(row => {
+      const time = parseDdMmYyyy(row.date)?.getTime();
+      if (!time) return !dateFrom && !dateTo;
+      if (dateFrom && time < new Date(`${dateFrom}T00:00:00`).getTime()) return false;
+      if (dateTo && time > new Date(`${dateTo}T23:59:59`).getTime()) return false;
+      return true;
+    })
+    .sort((a, b) => compareListValues(a, b, sort, parseDdMmYyyy)), [monthRows, status, dateFrom, dateTo, sort]);
   const shown = filtered.slice(0, (page + 1) * PAGE_SIZE);
 
   if (loading) return <div className="py-14 flex items-center justify-center gap-2 text-sm text-gray-500"><Loader2 size={17} className="animate-spin" /> טוען מצבי חיוב...</div>;
@@ -182,6 +193,16 @@ export function PaymentLedgerView() {
         <input type="month" value={month} onChange={e => setMonth(e.target.value)} className="flex-1 bg-white border border-[#EDE6D6] rounded-xl px-3 py-2 text-sm outline-none focus:border-[#C9A84C]" />
         {month && <button onClick={() => setMonth('')} className="px-3 py-2 text-xs font-bold bg-gray-100 text-gray-600 rounded-xl">כל הזמנים</button>}
       </div>
+      <details className="bg-white border border-[#EDE6D6] rounded-xl mb-3">
+        <summary className="cursor-pointer px-3 py-2 text-xs font-bold text-gray-600">מיון וסינון מדויק</summary>
+        <div className="p-3 pt-1 space-y-2 border-t border-[#EDE6D6]">
+          <div className="grid grid-cols-2 gap-2">
+            <input aria-label="חיובים מתאריך" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="bg-gray-50 border border-[#EDE6D6] rounded-lg px-2 py-2 text-xs" />
+            <input aria-label="חיובים עד תאריך" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="bg-gray-50 border border-[#EDE6D6] rounded-lg px-2 py-2 text-xs" />
+          </div>
+          <ListSortControl value={sort} onChange={setSort} />
+        </div>
+      </details>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
         {STATUSES.map(key => (
           <button key={key} onClick={() => setStatus(status === key ? 'all' : key)} className={`rounded-xl p-2.5 text-center border transition-all ${PAYMENT_STATUS_COLOR[key]} ${status === key ? 'ring-2 ring-[#C9A84C]' : ''}`}>

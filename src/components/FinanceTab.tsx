@@ -15,6 +15,7 @@ import { sumBudget } from '../lib/history';
 import { activityDonations, Activity } from '../lib/activities';
 import { projectDonations, projectPurposeTags, Project } from '../lib/projects';
 import { Donation } from '../types';
+import { cashDestinationLabel } from '../lib/cashDonations';
 import { GlobalAIImportModal } from './GlobalAIImportModal';
 
 type Pane = 'overview' | 'transactions' | 'cashflow' | 'scopes' | 'import' | 'settings';
@@ -26,7 +27,7 @@ const KIND_LABELS: Record<FinanceKind, string> = {
   expense: 'הוצאה מהפעילות',
   cash_income: 'מזומן שנכנס אליי',
   personal_expense: 'הוצאה ששילמתי מכיסי',
-  salary: 'משכורת מתוך המזומן שאצלי',
+  salary: 'משכורת ששולמה לי',
   settlement_to_me: 'הפעילות שילמה לי',
   settlement_to_org: 'החזרתי כסף לפעילות',
 };
@@ -168,20 +169,19 @@ function Overview({ summary, data, donations, onAdd, onSettings, transactions }:
   transactions: FinanceTransaction[];
 }) {
   const [detail, setDetail] = useState<'current' | 'committed' | 'safe' | 'personal' | null>(null);
+  const flowRows = useMemo(() => buildFinanceFlowRows(data, donations), [data, donations]);
+  const reimbursementRows = flowRows.filter(row => row.financeKind === 'personal_expense' || row.financeKind === 'settlement_to_me');
+  const reimbursementBalance = Math.max(0, Math.max(0, data.openingPersonalBalance) + reimbursementRows.reduce((sum, row) => sum + row.personalBalanceEffect, 0));
+  const heldCashBalance = Math.max(0, reimbursementBalance - summary.personalBalance);
   const upcoming = transactions.filter(tx => tx.status === 'committed' || tx.status === 'expected')
     .sort((a, b) => a.date.localeCompare(b.date)).slice(0, 6);
-  const personalText = summary.personalBalance > 0
-    ? `הפעילות חייבת לך ${money(summary.personalBalance)}`
-    : summary.personalBalance < 0
-      ? `אתה מחזיק עבור הפעילות ${money(Math.abs(summary.personalBalance))}`
-      : 'ההתחשבנות מאוזנת';
   const rentCovered = summary.currentBalance >= data.nextRentAmount + data.safetyReserve + Math.max(0, summary.personalBalance);
   return <div className="space-y-4">
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
       <Metric title="זמין כרגע" value={money(summary.currentBalance)} hint="לחץ לפירוט מה כלול בסכום" icon={<Landmark size={18} />} tone={summary.currentBalance >= 0 ? 'blue' : 'red'} onClick={() => setDetail('current')} />
       <Metric title="מחויב לצאת" value={money(summary.committedExpense)} hint="לחץ לרשימת כל ההתחייבויות" icon={<CalendarClock size={18} />} tone="amber" onClick={() => setDetail('committed')} />
       <Metric title="בטוח לשימוש" value={money(summary.safeToUse)} hint="לחץ לראות את החישוב המלא" icon={<ShieldCheck size={18} />} tone={summary.safeToUse > 0 ? 'green' : 'red'} onClick={() => setDetail('safe')} />
-      <Metric title="ביני לבין הפעילות" value={summary.personalBalance === 0 ? 'מאוזן' : money(Math.abs(summary.personalBalance))} hint={`${personalText} · לחץ לפירוט`} icon={<WalletCards size={18} />} tone={summary.personalBalance >= 0 ? 'purple' : 'amber'} onClick={() => setDetail('personal')} />
+      <Metric title="החזרים שמגיעים לי" value={reimbursementBalance === 0 ? 'אין יתרה' : money(reimbursementBalance)} hint="רק הוצאות ששילמתי מכיסי, פחות החזרים" icon={<WalletCards size={18} />} tone={reimbursementBalance > 0 ? 'purple' : 'green'} onClick={() => setDetail('personal')} />
     </div>
 
     <div className="grid lg:grid-cols-2 gap-3">
@@ -208,7 +208,7 @@ function Overview({ summary, data, donations, onAdd, onSettings, transactions }:
           <Quick label="מזומן שקיבלתי" icon={<ArrowUpRight size={17} />} onClick={() => onAdd('cash_income')} />
           <Quick label="הוצאה עתידית" icon={<CalendarClock size={17} />} onClick={() => onAdd('expense', 'committed')} />
           <Quick label="הכנסה צפויה" icon={<Plus size={17} />} onClick={() => onAdd('income', 'expected')} />
-          <Quick label="משכורת מהמזומן" icon={<Landmark size={17} />} onClick={() => onAdd('salary')} />
+          <Quick label="משכורת ששולמה" icon={<Landmark size={17} />} onClick={() => onAdd('salary')} />
         </div>
       </section>
     </div>
@@ -219,7 +219,7 @@ function Overview({ summary, data, donations, onAdd, onSettings, transactions }:
         {upcoming.map(tx => <div key={tx.id} className="py-2.5 flex items-center justify-between gap-3 text-sm"><span className="min-w-0"><b className="block truncate text-[#0D1B2A]">{tx.title}</b><small className="text-gray-500">{dateLabel(tx.date)} · {STATUS_LABELS[tx.status]}</small></span><b className={tx.kind.includes('income') ? 'text-emerald-700' : 'text-red-600'}>{money(tx.amount)}</b></div>)}
       </div>}
     </section>
-    {detail && <FinanceMetricDetails kind={detail} summary={summary} data={data} donations={donations} onClose={() => setDetail(null)} />}
+    {detail && <FinanceMetricDetails kind={detail} summary={summary} data={data} donations={donations} reimbursementBalance={reimbursementBalance} heldCashBalance={heldCashBalance} onClose={() => setDetail(null)} />}
   </div>;
 }
 
@@ -437,13 +437,14 @@ function FinanceSettings({ data, persist }: { data: FinanceData; persist: (data:
       <h2 className="font-bold text-[#0D1B2A]">נקודת פתיחה והגנות</h2>
       <Field label="תאריך התחלה"><input type="date" value={draft.openingDate} onChange={e => patch('openingDate', e.target.value)} className={INPUT} /></Field>
       <Field label="כמה זמין עכשיו"><MoneyInput value={draft.openingBalance} onChange={v => patch('openingBalance', v)} /><small className="text-gray-500">מה שכבר נכנס היום נחשב כחלק מהסכום הזה; רק תנועות חדשות יתווספו אליו</small></Field>
-      <Field label="התחשבנות בתחילת הדרך"><MoneyInput value={draft.openingPersonalBalance} onChange={v => patch('openingPersonalBalance', v)} /><small className="text-gray-500">חיובי = הפעילות חייבת לך; שלילי = אתה חייב לפעילות</small></Field>
+      <Field label="החזרי הוצאות שמגיעים לי בתחילת הדרך"><MoneyInput value={draft.openingPersonalBalance} onChange={v => patch('openingPersonalBalance', v)} /><small className="text-gray-500">רק הוצאות שכבר שילמת מכיסך ועדיין לא הוחזרו</small></Field>
+      <Field label="מזומן של הפעילות שנמצא אצלי בתחילת הדרך"><MoneyInput value={draft.openingHeldCashBalance} onChange={v => patch('openingHeldCashBalance', v)} /><small className="text-gray-500">מוצג בנפרד ואינו חוב של בית חב״ד כלפיך</small></Field>
       <Field label="רזרבת ביטחון"><MoneyInput value={draft.safetyReserve} onChange={v => patch('safetyReserve', v)} /></Field>
       <div className="grid grid-cols-2 gap-2"><Field label="שכירות קרובה"><MoneyInput value={draft.nextRentAmount} onChange={v => patch('nextRentAmount', v)} /></Field><Field label="מועד שכירות"><input type="date" value={draft.nextRentDate} onChange={e => patch('nextRentDate', e.target.value)} className={INPUT} /></Field></div>
       <Field label="כמה ימים קדימה"><input type="number" min="7" max="730" value={draft.forecastDays} onChange={e => patch('forecastDays', Number(e.target.value))} className={INPUT} /></Field>
     </section>
     <section className="space-y-4">
-      <div className="bg-white border border-[#EDE6D6] rounded-2xl p-4 space-y-3"><h2 className="font-bold text-[#0D1B2A]">תרומות קיימות</h2><Toggle label="כלול תרומות אוטומטית החל מתאריך הפתיחה" on={draft.includeDonations} set={v => patch('includeDonations', v)} /><Field label="תרומת מזומן שנרשמה באפליקציה"><select value={draft.cashDonations} onChange={e => patch('cashDonations', e.target.value)} className={INPUT}><option value="personal">נמצאת אצלי — חלק מההתחשבנות</option><option value="available">זמינה לפעילות</option><option value="ignore">לא לכלול בחישוב</option></select></Field><p className="text-xs text-gray-500">תרומות אינן מועתקות ואינן משתנות. המרכז רק קורא אותן כדי למנוע הזנה כפולה.</p></div>
+      <div className="bg-white border border-[#EDE6D6] rounded-2xl p-4 space-y-3"><h2 className="font-bold text-[#0D1B2A]">תרומות קיימות</h2><Toggle label="כלול תרומות אוטומטית החל מתאריך הפתיחה" on={draft.includeDonations} set={v => patch('includeDonations', v)} /><Field label="ברירת מחדל לתרומות מזומן ישנות שלא סווגו"><select value={draft.cashDonations} onChange={e => patch('cashDonations', e.target.value)} className={INPUT}><option value="personal">נמצאות אצלי — מזומן של הפעילות</option><option value="available">זמינות לפעילות</option><option value="ignore">לא לכלול עד לבירור</option></select></Field><p className="text-xs text-gray-500">בתרומה חדשה או בעריכת תרומה בוחרים היכן המזומן נמצא בפועל. ההגדרה הזו משפיעה רק על רשומות ישנות שאין בהן בחירה.</p></div>
       <div className="bg-white border border-[#EDE6D6] rounded-2xl p-4 space-y-3"><h2 className="font-bold text-[#0D1B2A]">קטגוריות</h2><div className="flex flex-wrap gap-1.5">{draft.categories.map(category => <span key={category} className="bg-[#FAF6EE] border border-[#EDE6D6] rounded-lg px-2 py-1 text-xs">{category}</span>)}</div><div className="flex gap-2"><input value={newCategory} onChange={e => setNewCategory(e.target.value)} placeholder="קטגוריה חדשה" className={`${INPUT} flex-1`} /><button onClick={() => { const value = newCategory.trim(); if (!value) return; patch('categories', Array.from(new Set([...draft.categories, value]))); setNewCategory(''); }} className="bg-gray-100 px-3 rounded-xl text-xs font-bold">הוסף</button></div></div>
       <button onClick={() => persist(normalizeFinanceData({ ...draft, openingRecordedAt:
         draft.openingDate !== data.openingDate || draft.openingBalance !== data.openingBalance
@@ -481,18 +482,21 @@ function TransactionEditor({ value, categories, scopeSuggestions, onClose, onSav
   </div>;
 }
 
-function FinanceMetricDetails({ kind, summary, data, donations, onClose }: {
+function FinanceMetricDetails({ kind, summary, data, donations, reimbursementBalance, heldCashBalance, onClose }: {
   kind: 'current' | 'committed' | 'safe' | 'personal';
-  summary: ReturnType<typeof summarizeFinance>; data: FinanceData; donations: Donation[]; onClose: () => void;
+  summary: ReturnType<typeof summarizeFinance>; data: FinanceData; donations: Donation[];
+  reimbursementBalance: number; heldCashBalance: number; onClose: () => void;
 }) {
   const rows = buildFinanceFlowRows(data, donations);
   const end = new Date(`${todayIso()}T12:00:00`); end.setDate(end.getDate() + data.forecastDays);
   const horizon = end.toISOString().slice(0, 10);
   const currentRows = rows.filter(row => row.status === 'actual' && row.includedAfterOpening && (row.currentBalanceEffect !== 0 || row.source === 'donation'));
   const committedRows = rows.filter(row => row.status === 'committed' && row.direction === 'expense' && row.date <= horizon);
-  const personalRows = rows.filter(row => row.personalBalanceEffect !== 0);
+  const reimbursementRows = rows.filter(row =>
+    (row.financeKind === 'personal_expense' || row.financeKind === 'settlement_to_me') && row.personalBalanceEffect !== 0
+  );
   const rentProtection = Math.max(0, summary.protectedAmount - data.safetyReserve - Math.max(0, summary.personalBalance));
-  const titles = { current: 'מה כלול בזמין כרגע', committed: 'מה מחויב לצאת', safe: 'איך חושב בטוח לשימוש', personal: 'החשבון ביני לבין הפעילות' };
+  const titles = { current: 'מה כלול בזמין כרגע', committed: 'מה מחויב לצאת', safe: 'איך חושב בטוח לשימוש', personal: 'החזרים שמגיעים לי' };
   return <div className="fixed inset-0 z-[90] bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4" onMouseDown={event => event.target === event.currentTarget && onClose()}>
     <div className="bg-white w-full sm:max-w-lg max-h-[88vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl p-5" dir="rtl">
       <div className="flex items-center justify-between gap-3 mb-3"><div><h2 className="font-['Frank_Ruhl_Libre'] text-xl font-black text-[#0D1B2A]">{titles[kind]}</h2><p className="text-xs text-gray-500">כל שורה מסבירה מאיפה הגיע המספר.</p></div><button onClick={onClose} className="p-2 bg-gray-100 rounded-full"><X size={18} /></button></div>
@@ -522,10 +526,11 @@ function FinanceMetricDetails({ kind, summary, data, donations, onClose }: {
       </div>}
 
       {kind === 'personal' && <div className="space-y-3">
-        <p className="text-xs bg-purple-50 text-purple-800 rounded-xl p-3">זה אינו חוב מחשבון בנק. זה חשבון פנימי בינך לבין הפעילות: הוצאות ששילמת, מזומן של הפעילות שנמצא אצלך, משכורת והחזרים. מספר חיובי פירושו שהפעילות חייבת לך; שלילי פירושו שכסף של הפעילות נמצא אצלך.</p>
-        <DetailLine label="התחשבנות שהוזנה בנקודת הפתיחה" value={data.openingPersonalBalance} />
-        <div className="max-h-72 overflow-y-auto divide-y divide-[#F1ECE1]">{personalRows.map(row => <div key={row.id}><DetailLine label={`${row.title} · ${dateLabel(row.date)}`} value={row.personalBalanceEffect} /></div>)}</div>
-        <DetailTotal label={summary.personalBalance >= 0 ? 'הפעילות חייבת לך' : 'אתה מחזיק עבור הפעילות'} value={Math.abs(summary.personalBalance)} />
+        <p className="text-xs bg-purple-50 text-purple-800 rounded-xl p-3">כאן נרשמות רק הוצאות ששילמת מכיסך עבור הפעילות, פחות כספים שבית חב״ד כבר החזיר לך. משכורת ששולמה אינה מגדילה את הסכום הזה.</p>
+        <DetailLine label="החזרים שהוגדרו בנקודת הפתיחה" value={Math.max(0, data.openingPersonalBalance)} />
+        <div className="max-h-72 overflow-y-auto divide-y divide-[#F1ECE1]">{reimbursementRows.map(row => <div key={row.id}><DetailLine label={`${row.title} · ${dateLabel(row.date)}`} value={row.personalBalanceEffect} /></div>)}</div>
+        <DetailTotal label="נותר להחזיר לי" value={reimbursementBalance} />
+        <div className="bg-amber-50 text-amber-800 rounded-xl p-3 text-xs"><b className="block">מזומן של הפעילות שנמצא אצלך: {money(heldCashBalance)}</b><span>זה מוצג בנפרד ואינו נחשב חוב של בית חב״ד כלפיך.</span></div>
       </div>}
     </div>
   </div>;
@@ -543,7 +548,8 @@ function FlowTotal({ title, value, tone }: { title: string; value: number; tone:
 }
 function FlowRow({ row }: { row: FinanceFlowRow }) {
   const statusText = row.source === 'donation' ? 'תרומה' : STATUS_LABELS[row.status];
-  return <div className="p-3 flex items-center gap-3 text-xs"><span className={`w-8 h-8 rounded-lg shrink-0 flex items-center justify-center ${row.direction === 'income' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>{row.direction === 'income' ? <ArrowUpRight size={15} /> : <ArrowDownLeft size={15} />}</span><span className="min-w-0 flex-1"><b className="block text-sm text-[#0D1B2A] truncate">{row.title}</b><small className="text-gray-500 block truncate">{dateLabel(row.date)} · {statusText} · {row.purpose || row.category}{row.method ? ` · ${row.method}` : ''}</small></span><b className={row.direction === 'income' ? 'text-emerald-700 shrink-0' : 'text-red-600 shrink-0'}>{row.direction === 'income' ? '+' : '−'}{money(row.amount)}</b></div>;
+  const cashLocation = row.source === 'donation' && row.method.includes('מזומן') ? ` · ${cashDestinationLabel(row.cashDestination)}` : '';
+  return <div className="p-3 flex items-center gap-3 text-xs"><span className={`w-8 h-8 rounded-lg shrink-0 flex items-center justify-center ${row.direction === 'income' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>{row.direction === 'income' ? <ArrowUpRight size={15} /> : <ArrowDownLeft size={15} />}</span><span className="min-w-0 flex-1"><b className="block text-sm text-[#0D1B2A] truncate">{row.title}</b><small className="text-gray-500 block truncate">{dateLabel(row.date)} · {statusText} · {row.purpose || row.category}{row.method ? ` · ${row.method}` : ''}{cashLocation}</small></span><b className={row.direction === 'income' ? 'text-emerald-700 shrink-0' : 'text-red-600 shrink-0'}>{row.direction === 'income' ? '+' : '−'}{money(row.amount)}</b></div>;
 }
 
 function Metric({ title, value, hint, icon, tone, onClick }: { title: string; value: string; hint: string; icon: React.ReactNode; tone: string; onClick?: () => void }) {
