@@ -7,15 +7,17 @@ import {
 import { useAppStore } from '../store/AppContext';
 import {
   FinanceData, FinanceKind, FinanceScopeType, FinanceStatus, FinanceTransaction,
-  ParsedFinanceRow, cancelTransaction, emptyFinanceData, financeCsv, importFinanceRows,
-  normalizeFinanceData, parseFinanceFile, saveTransaction, summarizeFinance,
-  summarizeScopes, todayIso, transactionEffects,
+  FinanceFlowRow, ParsedFinanceRow, buildFinanceFlowRows, cancelTransaction, emptyFinanceData,
+  financeCsv, importFinanceRows, normalizeFinanceData, parseFinanceFile, saveTransaction,
+  summarizeFinance, summarizeFinanceFlowMonths, summarizeScopes, todayIso, transactionEffects,
 } from '../lib/finance';
 import { sumBudget } from '../lib/history';
+import { activityDonations, Activity } from '../lib/activities';
+import { projectDonations, projectPurposeTags, Project } from '../lib/projects';
 import { Donation } from '../types';
 import { GlobalAIImportModal } from './GlobalAIImportModal';
 
-type Pane = 'overview' | 'transactions' | 'scopes' | 'import' | 'settings';
+type Pane = 'overview' | 'transactions' | 'cashflow' | 'scopes' | 'import' | 'settings';
 type BudgetSource = { id?: string; title?: string; name?: string; budget?: { expenses?: unknown[]; income?: unknown[] } };
 type BudgetReference = { key: string; type: string; name: string; planned: number; actual: number; income: number };
 
@@ -93,7 +95,8 @@ export function FinanceTab() {
   const tabs: { id: Pane; label: string }[] = [
     { id: 'overview', label: 'תמונה עכשיו' },
     { id: 'transactions', label: 'תנועות' },
-    { id: 'scopes', label: 'פעילויות ויעדים' },
+    { id: 'cashflow', label: 'תזרים' },
+    { id: 'scopes', label: 'מעקב פעילות' },
     { id: 'import', label: 'ייבוא ודוחות' },
     { id: 'settings', label: 'הגדרות' },
   ];
@@ -130,9 +133,10 @@ export function FinanceTab() {
         </button>
       )}
 
-      {pane === 'overview' && <Overview summary={summary} data={data} onAdd={begin} onSettings={() => setPane('settings')} transactions={data.transactions} />}
-      {pane === 'transactions' && <Transactions data={data} onAdd={begin} onEdit={setEditing} onCancel={async id => persist(cancelTransaction(data, id))} />}
-      {pane === 'scopes' && <Scopes scopes={scopes} budgets={existingBudgets} onAdd={() => begin('expense', 'committed')} />}
+      {pane === 'overview' && <Overview summary={summary} data={data} donations={donations} onAdd={begin} onSettings={() => setPane('settings')} transactions={data.transactions} />}
+      {pane === 'transactions' && <Transactions data={data} donations={donations} onAdd={begin} onEdit={setEditing} onCancel={async id => persist(cancelTransaction(data, id))} />}
+      {pane === 'cashflow' && <Cashflow data={data} donations={donations} />}
+      {pane === 'scopes' && <Scopes scopes={scopes} budgets={existingBudgets} donations={donations} events={eventsData as Activity[]} projects={projects as Project[]} onAdd={() => begin('expense', 'committed')} />}
       {pane === 'import' && <ImportAndReports data={data} donations={donations} persist={persist} onAI={() => setAiImportOpen(true)} />}
       {pane === 'settings' && <FinanceSettings data={data} persist={persist} />}
 
@@ -158,11 +162,12 @@ export function FinanceTab() {
   );
 }
 
-function Overview({ summary, data, onAdd, onSettings, transactions }: {
-  summary: ReturnType<typeof summarizeFinance>; data: FinanceData;
+function Overview({ summary, data, donations, onAdd, onSettings, transactions }: {
+  summary: ReturnType<typeof summarizeFinance>; data: FinanceData; donations: Donation[];
   onAdd: (kind: FinanceKind, status?: FinanceStatus) => void; onSettings: () => void;
   transactions: FinanceTransaction[];
 }) {
+  const [detail, setDetail] = useState<'current' | 'committed' | 'safe' | 'personal' | null>(null);
   const upcoming = transactions.filter(tx => tx.status === 'committed' || tx.status === 'expected')
     .sort((a, b) => a.date.localeCompare(b.date)).slice(0, 6);
   const personalText = summary.personalBalance > 0
@@ -173,10 +178,10 @@ function Overview({ summary, data, onAdd, onSettings, transactions }: {
   const rentCovered = summary.currentBalance >= data.nextRentAmount + data.safetyReserve + Math.max(0, summary.personalBalance);
   return <div className="space-y-4">
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
-      <Metric title="זמין כרגע" value={money(summary.currentBalance)} hint={`כולל ${money(summary.donationIncome)} תרומות מאז הפתיחה`} icon={<Landmark size={18} />} tone={summary.currentBalance >= 0 ? 'blue' : 'red'} />
-      <Metric title="מחויב לצאת" value={money(summary.committedExpense)} hint={`מול ${money(summary.committedIncome)} הכנסה מובטחת`} icon={<CalendarClock size={18} />} tone="amber" />
-      <Metric title="בטוח לשימוש" value={money(summary.safeToUse)} hint="לפעילות חדשה או משכורת, אחרי כל ההגנות" icon={<ShieldCheck size={18} />} tone={summary.safeToUse > 0 ? 'green' : 'red'} />
-      <Metric title="ההתחשבנות שלי" value={summary.personalBalance === 0 ? 'מאוזן' : money(Math.abs(summary.personalBalance))} hint={personalText} icon={<WalletCards size={18} />} tone={summary.personalBalance >= 0 ? 'purple' : 'amber'} />
+      <Metric title="זמין כרגע" value={money(summary.currentBalance)} hint="לחץ לפירוט מה כלול בסכום" icon={<Landmark size={18} />} tone={summary.currentBalance >= 0 ? 'blue' : 'red'} onClick={() => setDetail('current')} />
+      <Metric title="מחויב לצאת" value={money(summary.committedExpense)} hint="לחץ לרשימת כל ההתחייבויות" icon={<CalendarClock size={18} />} tone="amber" onClick={() => setDetail('committed')} />
+      <Metric title="בטוח לשימוש" value={money(summary.safeToUse)} hint="לחץ לראות את החישוב המלא" icon={<ShieldCheck size={18} />} tone={summary.safeToUse > 0 ? 'green' : 'red'} onClick={() => setDetail('safe')} />
+      <Metric title="ביני לבין הפעילות" value={summary.personalBalance === 0 ? 'מאוזן' : money(Math.abs(summary.personalBalance))} hint={`${personalText} · לחץ לפירוט`} icon={<WalletCards size={18} />} tone={summary.personalBalance >= 0 ? 'purple' : 'amber'} onClick={() => setDetail('personal')} />
     </div>
 
     <div className="grid lg:grid-cols-2 gap-3">
@@ -214,26 +219,27 @@ function Overview({ summary, data, onAdd, onSettings, transactions }: {
         {upcoming.map(tx => <div key={tx.id} className="py-2.5 flex items-center justify-between gap-3 text-sm"><span className="min-w-0"><b className="block truncate text-[#0D1B2A]">{tx.title}</b><small className="text-gray-500">{dateLabel(tx.date)} · {STATUS_LABELS[tx.status]}</small></span><b className={tx.kind.includes('income') ? 'text-emerald-700' : 'text-red-600'}>{money(tx.amount)}</b></div>)}
       </div>}
     </section>
+    {detail && <FinanceMetricDetails kind={detail} summary={summary} data={data} donations={donations} onClose={() => setDetail(null)} />}
   </div>;
 }
 
-function Transactions({ data, onAdd, onEdit, onCancel }: {
-  data: FinanceData; onAdd: (kind: FinanceKind, status?: FinanceStatus) => void;
+function Transactions({ data, donations, onAdd, onEdit, onCancel }: {
+  data: FinanceData; donations: Donation[]; onAdd: (kind: FinanceKind, status?: FinanceStatus) => void;
   onEdit: (tx: FinanceTransaction) => void; onCancel: (id: string) => void;
 }) {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<FinanceStatus | 'all'>('all');
   const [month, setMonth] = useState(todayIso().slice(0, 7));
-  const list = data.transactions.filter(tx => {
-    if (status !== 'all' && tx.status !== status) return false;
-    if (month && !tx.date.startsWith(month)) return false;
-    const haystack = `${tx.title} ${tx.category} ${tx.scopeName || ''} ${tx.notes || ''}`.toLowerCase();
+  const flowRows = useMemo(() => buildFinanceFlowRows(data, donations), [data, donations]);
+  const list = flowRows.filter(row => {
+    if (status !== 'all' && row.status !== status) return false;
+    if (month && !row.date.startsWith(month)) return false;
+    const haystack = `${row.title} ${row.category} ${row.scopeName} ${row.method} ${row.notes}`.toLowerCase();
     return haystack.includes(search.trim().toLowerCase());
-  }).sort((a, b) => b.date.localeCompare(a.date));
-  const totals = list.reduce((sum, tx) => {
-    const e = transactionEffects(tx);
-    sum.income += e.income; sum.expense += e.expense;
-    if (tx.status === 'committed') sum.committed += transactionEffects(tx, true).expense;
+  });
+  const totals = list.reduce((sum, row) => {
+    if (row.status === 'actual') sum[row.direction] += row.amount;
+    if (row.status === 'committed' && row.direction === 'expense') sum.committed += row.amount;
     return sum;
   }, { income: 0, expense: 0, committed: 0 });
   return <section className="bg-white border border-[#EDE6D6] rounded-2xl overflow-hidden">
@@ -248,26 +254,137 @@ function Transactions({ data, onAdd, onEdit, onCancel }: {
     </div>
     <div className="bg-[#FAF6EE] px-4 py-2.5 flex flex-wrap gap-x-5 gap-y-1 text-xs"><span>הכנסות בפועל <b className="text-emerald-700">{money(totals.income)}</b></span><span>הוצאות בפועל <b className="text-red-600">{money(totals.expense)}</b></span><span>עוד מחויב לצאת <b className="text-amber-700">{money(totals.committed)}</b></span></div>
     {list.length === 0 ? <p className="p-8 text-center text-sm text-gray-400">לא נמצאו תנועות</p> : <div className="divide-y divide-[#F1ECE1]">
-      {list.map(tx => <div key={tx.id} className={`p-3 sm:p-4 flex items-center gap-3 ${tx.status === 'cancelled' ? 'opacity-45' : ''}`}>
-        <span className={`w-9 h-9 rounded-xl shrink-0 flex items-center justify-center ${isIncoming(tx.kind) ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>{isIncoming(tx.kind) ? <ArrowUpRight size={17} /> : <ArrowDownLeft size={17} />}</span>
-        <span className="min-w-0 flex-1"><b className="block text-sm text-[#0D1B2A] truncate">{tx.title}</b><small className="text-gray-500 block truncate">{dateLabel(tx.date)} · {tx.category} · {STATUS_LABELS[tx.status]}{tx.scopeName ? ` · ${tx.scopeName}` : ''}{tx.history.length ? ` · ${tx.history.length} שינויים` : ''}</small></span>
-        <b className={`text-sm shrink-0 ${isIncoming(tx.kind) ? 'text-emerald-700' : 'text-red-600'}`}>{money(tx.amount)}</b>
-        <button onClick={() => onEdit(tx)} className="p-2 text-gray-500" aria-label="ערוך"><Pencil size={15} /></button>
-        {tx.status !== 'cancelled' && <button onClick={() => { if (confirm('לבטל את הרשומה? היא תישמר בהיסטוריה ולא תימחק.')) onCancel(tx.id); }} className="p-2 text-red-400" aria-label="בטל"><Undo2 size={15} /></button>}
-      </div>)}
+      {list.map(row => {
+        const tx = row.source === 'finance' ? data.transactions.find(item => item.id === row.sourceId) : undefined;
+        const donationState = row.source === 'donation'
+          ? !data.openingDate
+            ? 'מוצגת להיסטוריה; כדי לחשב יתרה צריך להגדיר נקודת פתיחה'
+            : row.includedAfterOpening
+              ? 'נקראת אוטומטית מיומן התרומות'
+              : row.date && row.date <= data.openingDate
+                ? 'כבר כלולה ביתרת הפתיחה ואינה נספרת שוב'
+                : 'אינה נכללת ביתרה לפי הגדרות התרומות'
+          : '';
+        return <div key={row.id} className={`p-3 sm:p-4 flex items-center gap-3 ${row.status === 'cancelled' ? 'opacity-45' : ''}`}>
+          <span className={`w-9 h-9 rounded-xl shrink-0 flex items-center justify-center ${row.direction === 'income' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>{row.direction === 'income' ? <ArrowUpRight size={17} /> : <ArrowDownLeft size={17} />}</span>
+          <span className="min-w-0 flex-1"><b className="block text-sm text-[#0D1B2A] truncate">{row.title}</b><small className="text-gray-500 block truncate">{dateLabel(row.date)} · {row.category} · {row.source === 'donation' ? donationState : STATUS_LABELS[row.status]}{row.method ? ` · ${row.method}` : ''}{tx?.history.length ? ` · ${tx.history.length} שינויים` : ''}</small></span>
+          <b className={`text-sm shrink-0 ${row.direction === 'income' ? 'text-emerald-700' : 'text-red-600'}`}>{money(row.amount)}</b>
+          {tx && <button onClick={() => onEdit(tx)} className="p-2 text-gray-500" aria-label="ערוך"><Pencil size={15} /></button>}
+          {tx && tx.status !== 'cancelled' && <button onClick={() => { if (confirm('לבטל את הרשומה? היא תישמר בהיסטוריה ולא תימחק.')) onCancel(tx.id); }} className="p-2 text-red-400" aria-label="בטל"><Undo2 size={15} /></button>}
+        </div>;
+      })}
     </div>}
   </section>;
 }
 
-function Scopes({ scopes, budgets, onAdd }: { scopes: ReturnType<typeof summarizeScopes>; budgets: BudgetReference[]; onAdd: () => void }) {
+function Cashflow({ data, donations }: { data: FinanceData; donations: Donation[] }) {
+  const rows = useMemo(() => buildFinanceFlowRows(data, donations), [data, donations]);
+  const [dateFrom, setDateFrom] = useState(`${todayIso().slice(0, 4)}-01-01`);
+  const [dateTo, setDateTo] = useState('');
+  const [direction, setDirection] = useState<'all' | 'income' | 'expense'>('all');
+  const [status, setStatus] = useState<FinanceStatus | 'all'>('actual');
+  const [source, setSource] = useState<'all' | 'donation' | 'finance'>('all');
+  const [purpose, setPurpose] = useState('');
+  const [method, setMethod] = useState('');
+  const [search, setSearch] = useState('');
+  const purposes = useMemo(() => Array.from(new Set<string>(rows.map(row => row.purpose || row.category).filter((value): value is string => !!value))).sort((a, b) => a.localeCompare(b, 'he')), [rows]);
+  const methods = useMemo(() => Array.from(new Set<string>(rows.map(row => row.method).filter((value): value is string => !!value))).sort((a, b) => a.localeCompare(b, 'he')), [rows]);
+  const filtered = rows.filter(row => {
+    if (dateFrom && (!row.date || row.date < dateFrom)) return false;
+    if (dateTo && (!row.date || row.date > dateTo)) return false;
+    if (direction !== 'all' && row.direction !== direction) return false;
+    if (status !== 'all' && row.status !== status) return false;
+    if (source !== 'all' && row.source !== source) return false;
+    if (purpose && (row.purpose || row.category) !== purpose) return false;
+    if (method && row.method !== method) return false;
+    const haystack = `${row.title} ${row.purpose} ${row.category} ${row.method} ${row.notes}`.toLowerCase();
+    return haystack.includes(search.trim().toLowerCase());
+  });
+  const months = summarizeFinanceFlowMonths(filtered);
+  const totals = months.reduce((sum, month) => ({
+    income: sum.income + month.income,
+    expense: sum.expense + month.expense,
+  }), { income: 0, expense: 0 });
+  const reset = () => {
+    setDateFrom(''); setDateTo(''); setDirection('all'); setStatus('actual');
+    setSource('all'); setPurpose(''); setMethod(''); setSearch('');
+  };
   return <div className="space-y-4">
-    <section className="bg-white border border-[#EDE6D6] rounded-2xl p-4">
-      <div className="flex justify-between items-center mb-3"><div><h2 className="font-bold text-[#0D1B2A]">מה עלה וכמה חסר</h2><p className="text-xs text-gray-500">לפי התנועות ששויכו במרכז הכספי</p></div><button onClick={onAdd} className="text-xs text-[#9B7A2F] font-bold flex items-center gap-1"><Plus size={13} /> תכנון</button></div>
-      {scopes.length === 0 ? <p className="text-sm text-gray-400 py-5 text-center">שייך תנועה לפעילות, חג או קמפיין כדי לראות כאן תמונה מלאה.</p> : <div className="grid md:grid-cols-2 gap-2">
-        {scopes.map(row => <div key={row.key} className="border border-[#EDE6D6] rounded-xl p-3"><div className="flex justify-between gap-2"><span><small className="text-gray-400">{SCOPE_LABELS[row.type]}</small><b className="block text-sm text-[#0D1B2A]">{row.name}</b></span><b className={row.projectedBalance >= 0 ? 'text-emerald-700' : 'text-red-600'}>{money(row.projectedBalance)}</b></div><div className="mt-2 text-[11px] text-gray-500 flex flex-wrap gap-x-3"><span>נכנס {money(row.actualIncome)}</span><span>יצא {money(row.actualExpense)}</span><span>עוד צפוי לצאת {money(row.futureExpense)}</span></div>{row.projectedBalance < 0 && <p className="text-[11px] text-red-600 font-bold mt-2">צריך להשיג {money(Math.abs(row.projectedBalance))} כדי שהיעד יכסה את עצמו</p>}</div>)}
+    <section className="bg-white border border-[#EDE6D6] rounded-2xl p-4 space-y-3">
+      <div className="flex items-start justify-between gap-3"><div><h2 className="font-bold text-[#0D1B2A]">תזרים הפעילות</h2><p className="text-xs text-gray-500 mt-1">כל התרומות וכל ההכנסות וההוצאות במקום אחד. כאן אפשר לראות גם היסטוריה שלפני נקודת הפתיחה, בלי לשנות את היתרה הנוכחית.</p></div><button onClick={reset} className="text-xs text-[#9B7A2F] font-bold shrink-0">נקה סינונים</button></div>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+        <Field label="מתאריך"><input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className={INPUT} /></Field>
+        <Field label="עד תאריך"><input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className={INPUT} /></Field>
+        <Field label="כניסה / יציאה"><select value={direction} onChange={e => setDirection(e.target.value as typeof direction)} className={INPUT}><option value="all">הכול</option><option value="income">נכנס</option><option value="expense">יצא</option></select></Field>
+        <Field label="מצב"><select value={status} onChange={e => setStatus(e.target.value as FinanceStatus | 'all')} className={INPUT}><option value="all">כל המצבים</option>{Object.entries(STATUS_LABELS).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></Field>
+        <Field label="מקור"><select value={source} onChange={e => setSource(e.target.value as typeof source)} className={INPUT}><option value="all">הכול</option><option value="donation">תרומות</option><option value="finance">תנועות כספיות</option></select></Field>
+        <Field label="ייעוד / קטגוריה"><select value={purpose} onChange={e => setPurpose(e.target.value)} className={INPUT}><option value="">הכול</option>{purposes.map(value => <option key={value} value={value}>{value}</option>)}</select></Field>
+        <Field label="אמצעי תשלום"><select value={method} onChange={e => setMethod(e.target.value)} className={INPUT}><option value="">הכול</option>{methods.map(value => <option key={value} value={value}>{value}</option>)}</select></Field>
+        <Field label="חיפוש"><input value={search} onChange={e => setSearch(e.target.value)} placeholder="שם, תיאור או הערה" className={INPUT} /></Field>
+      </div>
+    </section>
+
+    <div className="grid grid-cols-3 gap-2.5">
+      <FlowTotal title="נכנס" value={totals.income} tone="green" />
+      <FlowTotal title="יצא" value={totals.expense} tone="red" />
+      <FlowTotal title="הפרש" value={totals.income - totals.expense} tone={totals.income - totals.expense >= 0 ? 'blue' : 'red'} />
+    </div>
+
+    <section className="bg-white border border-[#EDE6D6] rounded-2xl overflow-hidden">
+      <div className="p-4 border-b border-[#EDE6D6]"><h2 className="font-bold text-[#0D1B2A]">חלוקה לפי חודשים</h2><p className="text-xs text-gray-500">הסכומים משתנים מיד לפי הסינונים שבחרת.</p></div>
+      {months.length === 0 ? <p className="p-8 text-center text-sm text-gray-400">אין תנועות שמתאימות לסינון</p> : <div className="divide-y divide-[#F1ECE1]">
+        <div className="grid grid-cols-4 gap-2 px-4 py-2 text-[10px] font-bold text-gray-400 bg-[#FAF6EE]"><span>חודש</span><span>נכנס</span><span>יצא</span><span>הפרש</span></div>
+        {months.map(month => <button key={month.month} onClick={() => { setDateFrom(`${month.month}-01`); const end = new Date(Number(month.month.slice(0, 4)), Number(month.month.slice(5, 7)), 0).getDate(); setDateTo(`${month.month}-${end}`); }} className="w-full grid grid-cols-4 gap-2 px-4 py-3 text-xs text-right hover:bg-[#FAF6EE]"><b>{new Date(`${month.month}-15T12:00:00`).toLocaleDateString('he-IL', { month: 'long', year: 'numeric' })}</b><span className="text-emerald-700">{money(month.income)}</span><span className="text-red-600">{money(month.expense)}</span><b className={month.net >= 0 ? 'text-[#0D1B2A]' : 'text-red-600'}>{money(month.net)}</b></button>)}
       </div>}
     </section>
-    {budgets.length > 0 && <section className="bg-[#FAF6EE] border border-[#EDE6D6] rounded-2xl p-4"><h2 className="font-bold text-[#0D1B2A]">תקציבים שכבר קיימים באפליקציה</h2><p className="text-xs text-gray-500 mb-3">מוצגים כהפניה בלבד ואינם נספרים שוב בתזרים.</p><div className="grid md:grid-cols-2 gap-2">{budgets.map(row => <div key={row.key} className="bg-white rounded-xl p-3 border border-[#EDE6D6]"><small className="text-gray-400">{row.type}</small><b className="block text-sm">{row.name}</b><p className="text-xs text-gray-500 mt-1">תוכנן {money(row.planned)} · יצא {money(row.actual)} · נכנס {money(row.income)}</p></div>)}</div></section>}
+
+    <section className="bg-white border border-[#EDE6D6] rounded-2xl overflow-hidden">
+      <div className="p-4 border-b border-[#EDE6D6]"><h2 className="font-bold text-[#0D1B2A]">פירוט ({filtered.length})</h2></div>
+      {filtered.length === 0 ? <p className="p-8 text-center text-sm text-gray-400">אין פירוט לתצוגה</p> : <div className="divide-y divide-[#F1ECE1] max-h-[560px] overflow-y-auto">
+        {filtered.map(row => <div key={row.id}><FlowRow row={row} /></div>)}
+      </div>}
+    </section>
+  </div>;
+}
+
+function Scopes({ scopes, budgets, donations, events, projects, onAdd }: {
+  scopes: ReturnType<typeof summarizeScopes>; budgets: BudgetReference[]; donations: Donation[];
+  events: Activity[]; projects: Project[]; onAdd: () => void;
+}) {
+  const tracked = useMemo(() => {
+    const map = new Map(scopes.map(row => [row.key, { ...row, donationIncome: 0 }]));
+    events.forEach(event => {
+      const linkedProjects = projects.filter(project => (project.activityIds || []).includes(event.id));
+      const donationIncome = activityDonations(event, donations, linkedProjects.flatMap(projectPurposeTags))
+        .reduce((sum, donation) => sum + (Number(donation.amount) || 0), 0);
+      if (!donationIncome) return;
+      const key = `event:${event.name}`;
+      const row = map.get(key) || { key, type: 'event' as const, name: event.name, actualIncome: 0, actualExpense: 0, futureIncome: 0, futureExpense: 0, actualBalance: 0, projectedBalance: 0, donationIncome: 0 };
+      map.set(key, { ...row, donationIncome });
+    });
+    projects.forEach(project => {
+      const donationIncome = projectDonations(project, donations).reduce((sum, donation) => sum + (Number(donation.amount) || 0), 0);
+      if (!donationIncome) return;
+      const key = `project:${project.name}`;
+      const row = map.get(key) || { key, type: 'project' as const, name: project.name, actualIncome: 0, actualExpense: 0, futureIncome: 0, futureExpense: 0, actualBalance: 0, projectedBalance: 0, donationIncome: 0 };
+      map.set(key, { ...row, donationIncome });
+    });
+    return [...map.values()].map(row => {
+      const fundingReceived = row.actualIncome + row.donationIncome;
+      const fundingExpected = row.futureIncome;
+      const spent = row.actualExpense;
+      const committed = row.futureExpense;
+      return { ...row, fundingReceived, fundingExpected, spent, committed, remaining: fundingReceived + fundingExpected - spent - committed };
+    }).sort((a, b) => Math.abs(b.spent + b.committed) - Math.abs(a.spent + a.committed));
+  }, [scopes, donations, events, projects]);
+  return <div className="space-y-4">
+    <section className="bg-white border border-[#EDE6D6] rounded-2xl p-4">
+      <div className="flex justify-between items-center mb-3"><div><h2 className="font-bold text-[#0D1B2A]">מעקב תקציב ומימון</h2><p className="text-xs text-gray-500">לא מודדים רווח. רואים מה תוכנן, מה כבר יצא, אילו תרומות נכנסו ומה עוד צריך לממן.</p></div><button onClick={onAdd} className="text-xs text-[#9B7A2F] font-bold flex items-center gap-1"><Plus size={13} /> הוצאה מתוכננת</button></div>
+      {tracked.length === 0 ? <p className="text-sm text-gray-400 py-5 text-center">כדי להתחיל, שייך הוצאה לפעילות, לחג או לקמפיין. תרומות עם ייעוד מתאים יופיעו כאן אוטומטית.</p> : <div className="grid md:grid-cols-2 gap-2">
+        {tracked.map(row => <div key={row.key} className="border border-[#EDE6D6] rounded-xl p-3"><div className="flex justify-between gap-2"><span><small className="text-gray-400">{SCOPE_LABELS[row.type]}</small><b className="block text-sm text-[#0D1B2A]">{row.name}</b></span><span className="text-left"><small className="block text-gray-400">מצב מימון</small><b className={row.remaining >= 0 ? 'text-emerald-700' : 'text-red-600'}>{row.remaining >= 0 ? `${money(row.remaining)} מיועדים להמשך` : `חסרים ${money(Math.abs(row.remaining))}`}</b></span></div><div className="mt-3 grid grid-cols-2 gap-1.5 text-[11px]"><span className="bg-emerald-50 text-emerald-800 rounded-lg p-2">התקבל {money(row.fundingReceived)}</span><span className="bg-red-50 text-red-700 rounded-lg p-2">יצא {money(row.spent)}</span><span className="bg-blue-50 text-blue-800 rounded-lg p-2">עוד צפוי להיכנס {money(row.fundingExpected)}</span><span className="bg-amber-50 text-amber-800 rounded-lg p-2">עוד צפוי לצאת {money(row.committed)}</span></div>{row.donationIncome > 0 && <p className="text-[10px] text-gray-400 mt-2">מתוך שהתקבל: {money(row.donationIncome)} נקראו אוטומטית מייעודי התרומות.</p>}</div>)}
+      </div>}
+    </section>
+    {budgets.length > 0 && <section className="bg-[#FAF6EE] border border-[#EDE6D6] rounded-2xl p-4"><h2 className="font-bold text-[#0D1B2A]">התכנון שנרשם בתוך הפעילויות</h2><p className="text-xs text-gray-500 mb-3">זהו תקציב המעקב של הפעילות. הוא מוצג להשוואה ואינו נרשם שוב כתנועה בחשבון.</p><div className="grid md:grid-cols-2 gap-2">{budgets.map(row => <div key={row.key} className="bg-white rounded-xl p-3 border border-[#EDE6D6]"><small className="text-gray-400">{row.type}</small><b className="block text-sm">{row.name}</b><p className="text-xs text-gray-500 mt-1">תוכנן להוציא {money(row.planned)} · יצא בפועל {money(row.actual)} · הכנסה שתועדה בפעילות {money(row.income)}</p></div>)}</div></section>}
   </div>;
 }
 
@@ -364,9 +481,77 @@ function TransactionEditor({ value, categories, scopeSuggestions, onClose, onSav
   </div>;
 }
 
-function Metric({ title, value, hint, icon, tone }: { title: string; value: string; hint: string; icon: React.ReactNode; tone: string }) {
+function FinanceMetricDetails({ kind, summary, data, donations, onClose }: {
+  kind: 'current' | 'committed' | 'safe' | 'personal';
+  summary: ReturnType<typeof summarizeFinance>; data: FinanceData; donations: Donation[]; onClose: () => void;
+}) {
+  const rows = buildFinanceFlowRows(data, donations);
+  const end = new Date(`${todayIso()}T12:00:00`); end.setDate(end.getDate() + data.forecastDays);
+  const horizon = end.toISOString().slice(0, 10);
+  const currentRows = rows.filter(row => row.status === 'actual' && row.includedAfterOpening && (row.currentBalanceEffect !== 0 || row.source === 'donation'));
+  const committedRows = rows.filter(row => row.status === 'committed' && row.direction === 'expense' && row.date <= horizon);
+  const personalRows = rows.filter(row => row.personalBalanceEffect !== 0);
+  const rentProtection = Math.max(0, summary.protectedAmount - data.safetyReserve - Math.max(0, summary.personalBalance));
+  const titles = { current: 'מה כלול בזמין כרגע', committed: 'מה מחויב לצאת', safe: 'איך חושב בטוח לשימוש', personal: 'החשבון ביני לבין הפעילות' };
+  return <div className="fixed inset-0 z-[90] bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4" onMouseDown={event => event.target === event.currentTarget && onClose()}>
+    <div className="bg-white w-full sm:max-w-lg max-h-[88vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl p-5" dir="rtl">
+      <div className="flex items-center justify-between gap-3 mb-3"><div><h2 className="font-['Frank_Ruhl_Libre'] text-xl font-black text-[#0D1B2A]">{titles[kind]}</h2><p className="text-xs text-gray-500">כל שורה מסבירה מאיפה הגיע המספר.</p></div><button onClick={onClose} className="p-2 bg-gray-100 rounded-full"><X size={18} /></button></div>
+
+      {kind === 'current' && <div className="space-y-3">
+        <p className="text-xs bg-blue-50 text-blue-800 rounded-xl p-3">זה אינו מספר שנקרא מחשבון הבנק. הוא מתחיל מהסכום שהוזן ב„כמה זמין עכשיו”, ומוסיף או מפחית רק תנועות שאחרי נקודת הפתיחה.</p>
+        <DetailLine label={`יתרת פתיחה · ${dateLabel(data.openingDate)}`} value={data.openingBalance} />
+        <div className="border-t border-[#EDE6D6] max-h-72 overflow-y-auto divide-y divide-[#F1ECE1]">{currentRows.map(row => <div key={row.id}><DetailLine label={`${row.title} · ${dateLabel(row.date)}${row.currentBalanceEffect === 0 ? ' · נמצא אצלך ולא ביתרת הפעילות' : ''}`} value={row.currentBalanceEffect} /></div>)}</div>
+        <DetailTotal label="זמין כרגע" value={summary.currentBalance} />
+      </div>}
+
+      {kind === 'committed' && <div className="space-y-3">
+        <p className="text-xs bg-amber-50 text-amber-800 rounded-xl p-3">הסכום מגיע מכל הרשומות שסומנו „התחייבות” ומועדן בתוך {data.forecastDays} הימים הקרובים. הוא אינו נלקח מחשבון בנק.</p>
+        {committedRows.length === 0 ? <p className="text-sm text-gray-400 py-5 text-center">אין התחייבויות בטווח החישוב.</p> : <div className="max-h-80 overflow-y-auto divide-y divide-[#F1ECE1]">{committedRows.map(row => <div key={row.id}><DetailLine label={`${row.title} · ${dateLabel(row.date)} · ${row.category}`} value={row.direction === 'expense' ? -row.amount : row.amount} /></div>)}</div>}
+        <DetailLine label="סה״כ הכנסות מובטחות" value={summary.committedIncome} />
+        <DetailTotal label="סה״כ מחויב לצאת" value={summary.committedExpense} negative />
+      </div>}
+
+      {kind === 'safe' && <div className="space-y-1">
+        <p className="text-xs bg-emerald-50 text-emerald-800 rounded-xl p-3 mb-3">זה הסכום שאפשר לשקול להפנות לפעילות חדשה או למשכורת בלי לגעת בהתחייבויות, בשכירות, ברזרבה או בכסף שהפעילות חייבת לך.</p>
+        <DetailLine label="זמין כרגע" value={summary.currentBalance} />
+        <DetailLine label="השפעת כל ההתחייבויות וההכנסות המובטחות" value={summary.guaranteedBalance - summary.currentBalance} />
+        <DetailLine label="רזרבת ביטחון" value={-data.safetyReserve} />
+        <DetailLine label="שכירות שעדיין לא נרשמה כהתחייבות" value={-rentProtection} />
+        <DetailLine label="כסף שהפעילות חייבת לך" value={-Math.max(0, summary.personalBalance)} />
+        <DetailTotal label="בטוח לשימוש" value={summary.safeToUse} />
+      </div>}
+
+      {kind === 'personal' && <div className="space-y-3">
+        <p className="text-xs bg-purple-50 text-purple-800 rounded-xl p-3">זה אינו חוב מחשבון בנק. זה חשבון פנימי בינך לבין הפעילות: הוצאות ששילמת, מזומן של הפעילות שנמצא אצלך, משכורת והחזרים. מספר חיובי פירושו שהפעילות חייבת לך; שלילי פירושו שכסף של הפעילות נמצא אצלך.</p>
+        <DetailLine label="התחשבנות שהוזנה בנקודת הפתיחה" value={data.openingPersonalBalance} />
+        <div className="max-h-72 overflow-y-auto divide-y divide-[#F1ECE1]">{personalRows.map(row => <div key={row.id}><DetailLine label={`${row.title} · ${dateLabel(row.date)}`} value={row.personalBalanceEffect} /></div>)}</div>
+        <DetailTotal label={summary.personalBalance >= 0 ? 'הפעילות חייבת לך' : 'אתה מחזיק עבור הפעילות'} value={Math.abs(summary.personalBalance)} />
+      </div>}
+    </div>
+  </div>;
+}
+
+function DetailLine({ label, value }: { label: string; value: number }) {
+  return <div className="flex items-center justify-between gap-3 py-2 text-xs"><span className="text-gray-600">{label}</span><b className={value < 0 ? 'text-red-600 shrink-0' : 'text-emerald-700 shrink-0'}>{value > 0 ? '+' : value < 0 ? '−' : ''}{money(Math.abs(value))}</b></div>;
+}
+function DetailTotal({ label, value, negative = false }: { label: string; value: number; negative?: boolean }) {
+  return <div className="flex items-center justify-between gap-3 bg-[#0D1B2A] text-white rounded-xl p-3 text-sm"><b>{label}</b><b className="text-[#E8C97A]">{(negative || value < 0) && value ? '−' : ''}{money(Math.abs(value))}</b></div>;
+}
+function FlowTotal({ title, value, tone }: { title: string; value: number; tone: string }) {
+  const colors: Record<string, string> = { green: 'bg-emerald-50 text-emerald-800', red: 'bg-red-50 text-red-700', blue: 'bg-blue-50 text-blue-800' };
+  return <div className={`rounded-2xl p-3 ${colors[tone] || colors.blue}`}><small className="font-bold opacity-75">{title}</small><b className="block text-lg sm:text-xl mt-1">{money(value)}</b></div>;
+}
+function FlowRow({ row }: { row: FinanceFlowRow }) {
+  const statusText = row.source === 'donation' ? 'תרומה' : STATUS_LABELS[row.status];
+  return <div className="p-3 flex items-center gap-3 text-xs"><span className={`w-8 h-8 rounded-lg shrink-0 flex items-center justify-center ${row.direction === 'income' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>{row.direction === 'income' ? <ArrowUpRight size={15} /> : <ArrowDownLeft size={15} />}</span><span className="min-w-0 flex-1"><b className="block text-sm text-[#0D1B2A] truncate">{row.title}</b><small className="text-gray-500 block truncate">{dateLabel(row.date)} · {statusText} · {row.purpose || row.category}{row.method ? ` · ${row.method}` : ''}</small></span><b className={row.direction === 'income' ? 'text-emerald-700 shrink-0' : 'text-red-600 shrink-0'}>{row.direction === 'income' ? '+' : '−'}{money(row.amount)}</b></div>;
+}
+
+function Metric({ title, value, hint, icon, tone, onClick }: { title: string; value: string; hint: string; icon: React.ReactNode; tone: string; onClick?: () => void }) {
   const colors: Record<string, string> = { blue: 'bg-blue-50 text-blue-800', red: 'bg-red-50 text-red-700', amber: 'bg-amber-50 text-amber-800', green: 'bg-emerald-50 text-emerald-800', purple: 'bg-purple-50 text-purple-800' };
-  return <div className={`rounded-2xl p-3.5 min-h-28 ${colors[tone] || colors.blue}`}><div className="flex items-center gap-1.5 text-xs font-bold opacity-80">{icon}{title}</div><div className="text-xl sm:text-2xl font-black mt-2">{value}</div><div className="text-[10px] mt-1 opacity-80 leading-tight">{hint}</div></div>;
+  const className = `rounded-2xl p-3.5 min-h-28 text-right w-full ${colors[tone] || colors.blue} ${onClick ? 'hover:ring-2 hover:ring-current/20 active:scale-[.99] transition' : ''}`;
+  return onClick
+    ? <button type="button" onClick={onClick} className={className}><div className="flex items-center gap-1.5 text-xs font-bold opacity-80">{icon}{title}</div><div className="text-xl sm:text-2xl font-black mt-2">{value}</div><div className="text-[10px] mt-1 opacity-80 leading-tight">{hint}</div></button>
+    : <div className={className}><div className="flex items-center gap-1.5 text-xs font-bold opacity-80">{icon}{title}</div><div className="text-xl sm:text-2xl font-black mt-2">{value}</div><div className="text-[10px] mt-1 opacity-80 leading-tight">{hint}</div></div>;
 }
 function Quick({ label, icon, onClick }: { label: string; icon: React.ReactNode; onClick: () => void }) { return <button onClick={onClick} className="border border-[#EDE6D6] hover:bg-[#FAF6EE] rounded-xl p-3 text-right text-xs font-bold text-[#0D1B2A] flex items-center gap-2">{icon}{label}</button>; }
 function Line({ label, value }: { label: string; value: string }) { return <div className="flex justify-between gap-3"><span className="text-gray-500">{label}</span><b className="text-[#0D1B2A]">{value}</b></div>; }

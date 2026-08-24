@@ -106,7 +106,19 @@ const aiAgain = F.importAIFinanceTransactions(aiImport.data, [
 assert.strictEqual(aiAgain.added, 0);
 assert.strictEqual(aiAgain.skipped, 3, 'ייבוא חוזר אינו מכפיל את חודשי השכירות');
 
-console.log('ו. המרכז אופציונלי והשרת כולל אותו בגיבוי:');
+console.log('ו. תזרים מאוחד כולל את כל היסטוריית התרומות ומסכם לפי חודש:');
+const historicalDonation = { id: 'old', name: 'ישן', amount: 700, date: '15/07/2026', method: 'העברה', purpose: 'פסח' };
+const flowRows = F.buildFinanceFlowRows(scenario, [...donations, historicalDonation]);
+assert.strictEqual(flowRows.filter(row => row.source === 'donation').length, 3, 'גם תרומה שלפני נקודת הפתיחה מוצגת בדוח');
+const oldRow = flowRows.find(row => row.sourceId === 'old');
+assert.strictEqual(oldRow.currentBalanceEffect, 0, 'תרומה היסטורית אינה נספרת שוב ביתרה הנוכחית');
+assert.strictEqual(oldRow.purpose, 'פסח');
+const flowMonths = F.summarizeFinanceFlowMonths(flowRows.filter(row => row.status === 'actual'));
+assert.strictEqual(flowMonths.find(row => row.month === '2026-07').income, 700);
+assert.strictEqual(flowMonths.find(row => row.month === '2026-08').income, 2000);
+assert.strictEqual(flowMonths.find(row => row.month === '2026-08').expense, 800);
+
+console.log('ז. המרכז אופציונלי והשרת כולל אותו בגיבוי:');
 const fs = require('fs');
 const settings = require('/tmp/settings.js');
 assert.strictEqual(settings.DEFAULT_SETTINGS.showFinanceCenter, false);
@@ -121,5 +133,9 @@ const aiUi = fs.readFileSync('src/components/GlobalAIImportModal.tsx', 'utf8');
 const financeUi = fs.readFileSync('src/components/FinanceTab.tsx', 'utf8');
 assert.ok(/הכנסות והוצאות שוטפות/.test(aiUi) && /schema\.finance/.test(aiUi));
 assert.ok(/קלוט הכנסות והוצאות עם AI/.test(financeUi) && /initialTopics=\{\['finance'\]\}/.test(financeUi));
+assert.ok(/תזרים הפעילות/.test(financeUi) && /חלוקה לפי חודשים/.test(financeUi), 'חייב להיות דוח תזרים חודשי עם סינונים');
+assert.ok(/מה כלול בזמין כרגע/.test(financeUi) && /מה מחויב לצאת/.test(financeUi), 'ארבע המשבצות חייבות לפתוח פירוט');
+assert.ok(/נקראת אוטומטית מיומן התרומות/.test(financeUi), 'תרומות חייבות להופיע בתוך רשימת התנועות');
+assert.ok(/לא מודדים רווח/.test(financeUi) && /מעקב תקציב ומימון/.test(financeUi), 'מעקב פעילות אינו מסך רווח');
 
 console.log('✓ חוזה המרכז הכספי תקין');

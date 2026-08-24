@@ -91,6 +91,35 @@ export interface FinanceProjectSummary {
   projectedBalance: number;
 }
 
+/** שורה אחידה לתצוגות התזרים — תרומה או תנועה פנימית, בלי להעתיק תרומות למאגר הכספי. */
+export interface FinanceFlowRow {
+  id: string;
+  source: 'donation' | 'finance';
+  sourceId: string;
+  date: string;
+  title: string;
+  amount: number;
+  direction: 'income' | 'expense';
+  status: FinanceStatus;
+  category: string;
+  purpose: string;
+  method: string;
+  scopeName: string;
+  notes: string;
+  currentBalanceEffect: number;
+  personalBalanceEffect: number;
+  projectedBalanceEffect: number;
+  includedAfterOpening: boolean;
+}
+
+export interface MonthlyFinanceFlow {
+  month: string;
+  income: number;
+  expense: number;
+  net: number;
+  count: number;
+}
+
 export interface ParsedFinanceRow {
   row: number;
   transaction: FinanceTransaction;
@@ -252,7 +281,7 @@ export function donationIsCash(donation: Donation): boolean {
   return method.includes('מזומן') || method.includes('cash') || method.includes('קופה');
 }
 
-function donationAfterOpening(donation: Donation, openingDate: string): boolean {
+export function donationAfterOpening(donation: Donation, openingDate: string): boolean {
   if (!openingDate || !donation.date) return false;
   const date = normalizeDate(donation.date);
   // יתרת הפתיחה היא "כמה יש עכשיו". תרומה מאותו יום כבר נמצאת ביתרה,
@@ -282,7 +311,7 @@ export function transactionEffects(tx: FinanceTransaction, projection = false): 
   }
 }
 
-function donationEffects(donation: Donation, data: FinanceData): Effects {
+export function donationEffects(donation: Donation, data: FinanceData): Effects {
   const amount = Math.max(0, number(donation.amount));
   if (!amount || !data.includeDonations || !donationAfterOpening(donation, data.openingDate)) {
     return { income: 0, expense: 0, cash: 0, personal: 0 };
@@ -297,6 +326,98 @@ function forecastUntil(data: FinanceData): string {
   const d = new Date(`${todayIso()}T12:00:00`);
   d.setDate(d.getDate() + data.forecastDays);
   return d.toISOString().slice(0, 10);
+}
+
+function transactionAfterOpening(tx: FinanceTransaction, data: FinanceData): boolean {
+  if (!data.openingDate || tx.date > data.openingDate) return true;
+  if (tx.date < data.openingDate) return false;
+  if (tx.source === 'import') return false;
+  return !data.openingRecordedAt || tx.createdAt > data.openingRecordedAt;
+}
+
+/**
+ * מאחד את יומן התרומות והתנועות לרשימת תזרים אחת. הרשימה כוללת את כל
+ * ההיסטוריה לצורכי דוח; שדות האפקט מציינים בנפרד מה באמת נכנס לחישוב
+ * היתרה הנוכחית, וכך תרומה ישנה יכולה להופיע בלי להיספר פעמיים.
+ */
+export function buildFinanceFlowRows(dataInput: unknown, donations: Donation[] = []): FinanceFlowRow[] {
+  const data = normalizeFinanceData(dataInput);
+  const donationRows = donations
+    .filter(donation => Number(donation.amount) > 0)
+    .map((donation, index): FinanceFlowRow => {
+      const date = normalizeDate(donation.date);
+      const afterOpening = donationAfterOpening(donation, data.openingDate);
+      const effects = donationEffects(donation, data);
+      const sourceId = String(donation.id || `${donation.name}_${donation.date}_${donation.amount}_${index}`);
+      return {
+        id: `donation_${sourceId}`,
+        source: 'donation',
+        sourceId,
+        date,
+        title: donation.name ? `תרומה — ${donation.name}` : 'תרומה',
+        amount: Math.max(0, number(donation.amount)),
+        direction: 'income',
+        status: 'actual',
+        category: String(donation.purpose || 'תרומה כללית'),
+        purpose: String(donation.purpose || 'תרומה כללית'),
+        method: String(donation.method || ''),
+        scopeName: String(donation.purpose || ''),
+        notes: String(donation.notes || ''),
+        currentBalanceEffect: effects.cash,
+        personalBalanceEffect: effects.personal,
+        projectedBalanceEffect: effects.cash,
+        includedAfterOpening: afterOpening && data.includeDonations && !(donationIsCash(donation) && data.cashDonations === 'ignore'),
+      };
+    });
+
+  const transactionRows = data.transactions.map((tx): FinanceFlowRow => {
+    const currentEffects = tx.status === 'actual' && transactionAfterOpening(tx, data)
+      ? transactionEffects(tx)
+      : { income: 0, expense: 0, cash: 0, personal: 0 };
+    const projected = transactionEffects(tx, true);
+    const direction: 'income' | 'expense' = ['income', 'cash_income', 'settlement_to_org'].includes(tx.kind)
+      ? 'income'
+      : 'expense';
+    return {
+      id: `finance_${tx.id}`,
+      source: 'finance',
+      sourceId: tx.id,
+      date: tx.date,
+      title: tx.title,
+      amount: tx.amount,
+      direction,
+      status: tx.status,
+      category: tx.category || 'אחר',
+      purpose: tx.scopeName || tx.category || 'פעילות כללית',
+      method: tx.method || '',
+      scopeName: tx.scopeName || '',
+      notes: tx.notes || '',
+      currentBalanceEffect: currentEffects.cash,
+      personalBalanceEffect: currentEffects.personal,
+      projectedBalanceEffect: projected.cash,
+      includedAfterOpening: tx.status === 'actual' && transactionAfterOpening(tx, data),
+    };
+  });
+
+  return [...donationRows, ...transactionRows].sort((a, b) =>
+    b.date.localeCompare(a.date) || a.title.localeCompare(b.title, 'he')
+  );
+}
+
+/** סיכום חודשי של הרשימה שכבר סוננה במסך. רשומות מבוטלות נשארות מוצגות אך אינן נספרות. */
+export function summarizeFinanceFlowMonths(rows: FinanceFlowRow[]): MonthlyFinanceFlow[] {
+  const byMonth = new Map<string, MonthlyFinanceFlow>();
+  rows.forEach(row => {
+    if (!/^\d{4}-\d{2}/.test(row.date) || row.status === 'cancelled') return;
+    const month = row.date.slice(0, 7);
+    const current = byMonth.get(month) || { month, income: 0, expense: 0, net: 0, count: 0 };
+    if (row.direction === 'income') current.income += row.amount;
+    else current.expense += row.amount;
+    current.net = current.income - current.expense;
+    current.count++;
+    byMonth.set(month, current);
+  });
+  return [...byMonth.values()].sort((a, b) => b.month.localeCompare(a.month));
 }
 
 export function summarizeFinance(dataInput: unknown, donations: Donation[] = []): FinanceSummary {
@@ -318,13 +439,7 @@ export function summarizeFinance(dataInput: unknown, donations: Donation[] = [])
   data.transactions.forEach(tx => {
     // יתרת הפתיחה וההתחשבנות הפותחת הן תמונת מצב ליום ההתחלה. תנועות
     // היסטוריות מוקדמות יותר נשמרות לדוחות, אך אינן משנות את היתרה כיום.
-    if (data.openingDate && tx.date < data.openingDate) return;
-    if (data.openingDate && tx.date === data.openingDate) {
-      // רשומה שיובאה מתארת את העבר ולכן כבר כלולה ביתרת "עכשיו". רשומה
-      // ידנית חדשה מאותו יום כן נספרת, אך רק אם נוצרה אחרי חותמת הפתיחה.
-      if (tx.source === 'import') return;
-      if (data.openingRecordedAt && tx.createdAt <= data.openingRecordedAt) return;
-    }
+    if (!transactionAfterOpening(tx, data)) return;
     const e = transactionEffects(tx);
     currentBalance += e.cash;
     personalBalance += e.personal;
