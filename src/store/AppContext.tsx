@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import {
   apiGet, apiPost, getCRMData,
   getCRMDataCloud, saveCRMDataCloud, saveCRMDataCloudSync,
+  saveContactMergeCloud, deleteContactMergeCloud,
   getEventsDataCloud, saveEventsDataCloud,
   getHolidayExtrasCloud, saveHolidayExtrasCloud,
   getManualDonations, saveManualDonations,
@@ -477,13 +478,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
     // setCrm הסינכרוני כבר מילא את snapshot, ולכן אפשר לשמור אותו כאן
     await new Promise(r => setTimeout(r, 0));
-    return saveCRMDataCloudSync(snapshot);
+    return saveCRMDataCloudSync({ ...snapshot, [MERGES_KEY]: nameMerges });
   };
 
   const updateCrm = (name: string, data: any) => {
     setCrm(prev => {
       const next = { ...prev, [name]: { ...(prev[name] || {}), ...data } };
-      saveCRMDataCloud(next);
+      saveCRMDataCloud({ ...next, [MERGES_KEY]: nameMerges });
       return next;
     });
     logAction('contact_update');
@@ -491,7 +492,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   // ממזג שני שמות (למשל "אברהם אריאל" ו"אברהם אריאל ציגנוב") לאיש קשר אחד.
   // aliasName נעלם מהרשימות; כל התרומות/המפגשים/פרטי ה-CRM שלו עוברים ל-canonicalName.
-  // מתעדכן מיידית בצד הלקוח (בלי סיבוב רשת), ונשמר ברקע לענן.
+  // החיבור נשמר כשורה עצמאית ב"מיפוי שמות", ולכן עריכת כרטיס אחר אינה
+  // יכולה עוד לדרוס את כל מפת החיבורים.
   /**
    * ── מיזוג שני אנשי קשר ────────────────────────────────────────────────
    *
@@ -505,8 +507,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
    * 2. **שמירה שלא ממתינים לה.** הרענון שבא אחרי המיזוג הספיק לפעמים
    *    להקדים את הכתיבה, למשוך את המצב הקודם, ולמחוק גם את מפת המיזוגים.
    *
-   * לכן: בונים כאן את המצב המלא — גם ה-crm הממוזג וגם המפה — שומרים אותו
-   * בשמירה אחת שממתינים לה, ומחזירים אם הצליחה.
+   * לכן: בונים כאן את המצב המלא, שומרים את בסיס ה-CRM ואת החיבור היחיד
+   * בפעולה מאושרת אחת, ומחזירים רק לאחר שהשרת אישר אותה.
    */
   const mergeContacts = async (aliasName: string, canonicalName: string): Promise<boolean> => {
     if (!aliasName || !canonicalName || aliasName === canonicalName) return false;
@@ -528,7 +530,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setDonors(prev => coalesceDonorsByMerges(prev, { [aliasName]: canonicalName }));
 
     await new Promise(r => setTimeout(r, 0));
-    return saveCRMDataCloudSync({ ...snapshot, [MERGES_KEY]: nextMerges });
+    return saveContactMergeCloud(
+      { ...snapshot, [MERGES_KEY]: nextMerges }, aliasName, canonicalName
+    );
   };
 
   // מבטל מיזוג — טוען מחדש מהשרת כדי לפצל בחזרה לשתי רשומות נפרדות עם הנתונים המקוריים
@@ -538,7 +542,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     delete nextMerges[aliasName];
     setNameMerges(nextMerges);
 
-    const ok = await saveCRMDataCloudSync({ ...crm, [MERGES_KEY]: nextMerges });
+    const ok = await deleteContactMergeCloud(
+      { ...crm, [MERGES_KEY]: nextMerges }, aliasName
+    );
     // הטעינה מחדש רק אחרי שהשמירה אושרה — "setTimeout(400)" היה הימור, ואם
     // הוא הפסיד, הקריאה החזירה את המיזוג בדיוק אחרי שביטלת אותו.
     if (ok) loadAll({ silent: true });

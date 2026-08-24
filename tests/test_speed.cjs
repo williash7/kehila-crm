@@ -42,7 +42,7 @@ ok(JSON.stringify(all.donors) === JSON.stringify(getDonors_()), 'תורמים');
 ok(JSON.stringify(all.hk) === JSON.stringify(getHK_()), 'הוראות קבע');
 ok(JSON.stringify(all.failures) === JSON.stringify(getFailures_()), 'שגיאות');
 ok(JSON.stringify(all.summary) === JSON.stringify(getSummary_()), 'סיכום');
-ok(JSON.stringify(all.crm) === JSON.stringify(readSync_('crm')), 'כרטיסים');
+ok(JSON.stringify(all.crm) === JSON.stringify(readCRM_()), 'כרטיסים וחיבורי שמות');
 ok(JSON.stringify(all.projects) === JSON.stringify(readSync_('projects')), 'פרויקטים');
 ok(all.rebbeDate === readSync_('rebbeDate'), 'תאריך כתיבה לרבי');
 ok(JSON.stringify(all.finance) === JSON.stringify(readSync_('finance')), 'נתוני המרכז הכספי');

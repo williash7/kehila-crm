@@ -385,6 +385,31 @@ export async function saveCRMDataCloudSync(data: Record<string, any>): Promise<b
   return !(res?.error || res?.success === false);
 }
 
+/**
+ * שומר חיבור יחיד בצד השרת. אם הסקריפט בגיליון עדיין ישן, נופלים זמנית
+ * לשמירת ה-CRM הישנה כדי שהחיבור לא יאבד עד לפריסת Code.gs החדש.
+ */
+export async function saveContactMergeCloud(
+  data: Record<string, any>, aliasName: string, canonicalName: string
+): Promise<boolean> {
+  saveCRMData(data);
+  const res = await apiPost('saveContactMerge', { data, aliasName, canonicalName });
+  if (res?.success) return true;
+  const fallback = await apiPost('saveCRM', { data });
+  return !(fallback?.error || fallback?.success === false);
+}
+
+/** מבטל חיבור יחיד; בסקריפט ישן נשמרת המפה המלאה כתאימות זמנית. */
+export async function deleteContactMergeCloud(
+  data: Record<string, any>, aliasName: string
+): Promise<boolean> {
+  saveCRMData(data);
+  const res = await apiPost('deleteContactMerge', { data, aliasName });
+  if (res?.success) return true;
+  const fallback = await apiPost('saveCRM', { data });
+  return !(fallback?.error || fallback?.success === false);
+}
+
 export async function getEventsDataCloud(): Promise<any[]> {
   try {
     const res = await apiGet('getEvents');
