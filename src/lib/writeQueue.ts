@@ -42,7 +42,12 @@
 
 const QUEUE_KEY = 'write_queue_v1';
 
-/** תקרה קשיחה. מעבר לה — הישן ביותר נופל, כדי שלא נאבד את החדש. */
+/**
+ * תקרה קשיחה. מעבר לה **חדשות נדחות בגלוי** — ישנות לעולם אינן נמחקות.
+ *
+ * הכיוון ההפוך היה נראה נדיב יותר, והוא היה מוחק פעולות שהמשתמש כבר
+ * ראה מסומנות כשמורות.
+ */
 const MAX_ENTRIES = 50;
 
 /**
@@ -80,6 +85,13 @@ export interface QueuedWrite {
 export interface QueueState {
   items: QueuedWrite[];
   /**
+   * `true` כשהתור מלא ופעולה חדשה נדחתה.
+   *
+   * דחייה גלויה עדיפה על מחיקה שקטה של פעולה ישנה שכבר הובטח עליה
+   * שהיא שמורה.
+   */
+  queueFull: boolean;
+  /**
    * `true` אם לא הצלחנו לכתוב את התור עצמו ל-localStorage.
    *
    * זה המצב הגרוע ביותר — הכתיבה נכשלה **וגם** לא הצלחנו לזכור אותה — ולכן
@@ -91,6 +103,8 @@ export interface QueueState {
 type PostFn = (action: string, data: any, reqId?: string) => Promise<any>;
 
 let persistFailed = false;
+/** התור הגיע לתקרה ופעולה חדשה **לא** נקלטה. דביק עד שמתפנה מקום. */
+let queueFull = false;
 const listeners = new Set<() => void>();
 
 function notify() { listeners.forEach(f => { try { f(); } catch { /* מאזין שנפל לא יפיל את השאר */ } }); }
@@ -112,26 +126,41 @@ export function loadQueue(): QueuedWrite[] {
   }
 }
 
-function writeQueue(items: QueuedWrite[]): void {
+/**
+ * כתיבת התור — **הכול או כלום**.
+ *
+ * הגרסה הראשונה שכתבתי ניסתה „להציל מה שאפשר”: כשהמכסה התמלאה היא שמרה
+ * את חמשת הפריטים האחרונים, מחקה את השאר, **וקבעה `persistFailed = false`**.
+ * כלומר היא מחקה פעולות שהמשתמש ביצע, והודיעה שהכול תקין.
+ *
+ * זה בדיוק אותו שקר שקט שהתור כולו בא לתקן, רק במקום אחר. יוסי איתר את
+ * זה בסקירה.
+ *
+ * מעכשיו: אם הכתיבה נכשלה, **הרשימה הקודמת נשארת בשלמותה** (localStorage
+ * אינו משתנה כשה-setItem זורק), ו-`persistFailed` נדלק ונשאר דלוק עד
+ * לכתיבה מלאה מוצלחת. עדיף להיכשל בקול מאשר למחוק בשקט.
+ *
+ * מחזיר האם ההצלחה הייתה מלאה.
+ */
+function writeQueue(items: QueuedWrite[]): boolean {
   try {
     localStorage.setItem(QUEUE_KEY, JSON.stringify(items));
     persistFailed = false;
+    notify();
+    return true;
   } catch {
-    // המכסה מלאה. מוותרים על הישנים ומנסים שוב — עדיף לשמור את החדש
-    // מאשר לאבד הכול.
-    try {
-      localStorage.setItem(QUEUE_KEY, JSON.stringify(items.slice(-5)));
-      persistFailed = false;
-    } catch {
-      persistFailed = true;
-    }
+    persistFailed = true;   // דגל דביק
+    notify();
+    return false;
   }
-  notify();
 }
 
 export function queueState(): QueueState {
-  return { items: loadQueue(), persistFailed };
+  return { items: loadQueue(), persistFailed, queueFull };
 }
+
+/** התקרה, לתצוגה ולבדיקות. */
+export const QUEUE_LIMIT = MAX_ENTRIES;
 
 export function queueSize(): number {
   return loadQueue().length;
@@ -140,6 +169,7 @@ export function queueSize(): number {
 export function clearQueue(): void {
   try { localStorage.removeItem(QUEUE_KEY); } catch { /* אין מה לעשות */ }
   persistFailed = false;
+  queueFull = false;
   notify();
 }
 
@@ -173,12 +203,34 @@ function makeId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-/** מוסיף לתור, תוך איחוד פעולות מחליפות. */
-export function enqueue(action: string, data: any, error: string, reqId: string): void {
+/**
+ * מוסיף לתור.
+ *
+ * **פריט שאינו ב-REPLACING לעולם אינו נמחק כדי לפנות מקום.** הגרסה הראשונה
+ * חתכה ב-`slice(-MAX_ENTRIES)`, כלומר הפעולה החמישים־ואחת מחקה את הראשונה
+ * בשקט. לשמירות בלוק מאוחדות זה לא היה מורגש; ל-51 תרומות שנרשמו בלי
+ * קליטה זה אובדן נתונים גמור — וללא כל סימן.
+ *
+ * כשמגיעים לתקרה **עוצרים לקבל חדשות ומתריעים**, במקום למחוק ישנות. פעולה
+ * שלא נכנסה היא הפסד; פעולה שנמחקה אחרי שהובטח למשתמש שהיא שמורה היא
+ * הפסד **ושקר**.
+ */
+export function enqueue(action: string, data: any, error: string, reqId: string): boolean {
   const items = loadQueue();
-  const kept = REPLACING.has(action) ? items.filter(i => i.action !== action) : items;
+  const replacing = REPLACING.has(action);
+  const kept = replacing ? items.filter(i => i.action !== action) : items;
+
+  // איחוד אינו מגדיל, ולכן פעולה מחליפה תמיד רשאית להיכנס.
+  if (!replacing && kept.length >= MAX_ENTRIES) {
+    queueFull = true;
+    notify();
+    return false;
+  }
+
   kept.push({ id: makeId(), action, data, reqId, queuedAt: Date.now(), attempts: 1, lastError: error });
-  writeQueue(kept.slice(-MAX_ENTRIES));
+  const okSaved = writeQueue(kept);
+  if (okSaved) queueFull = false;
+  return okSaved;
 }
 
 /**
@@ -246,6 +298,7 @@ export async function flushQueue(post: PostFn): Promise<{ sent: number; failed: 
       sent++;
       now.splice(at, 1);
       writeQueue(now);
+      if (now.length < MAX_ENTRIES) queueFull = false;
     }
   }
 

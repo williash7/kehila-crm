@@ -136,6 +136,8 @@ const throwFail = async () => { throw new Error('נפילה'); };
     await Q.trackedPost('saveCRM', { data: { a: 1 } }, valueFail);
     ok(Q.queueState().persistFailed === true,
        'המצב הגרוע ביותר — לא נשמר וגם לא נזכר — מדווח במפורש');
+    quotaFull = false;
+    ok(Q.queueSize() === 0, 'ולא נשמרה גרסה חלקית שמתחזה לשלמה');
   }
 
   console.log('\nיב. הניסוח למשתמש:');
@@ -181,6 +183,67 @@ const throwFail = async () => { throw new Error('נפילה'); };
        'ומונה הניסיונות **לא** עלה — אחרת המחוון היה מתריע על תקלה שאין');
     ok(Q.isRetryable({ retryable: true }) === true, 'הדגל מזוהה');
     ok(Q.isRetryable({ success: false, error: 'x' }) === false, 'כישלון רגיל אינו „בטיפול”');
+  }
+
+
+  console.log('\nיז. 51 פעולות — הראשונה אינה נמחקת בשקט:');
+  {
+    // הגרסה הראשונה חתכה ב-slice(-50), כלומר הפעולה ה-51 מחקה את הראשונה.
+    // לשמירות בלוק מאוחדות זה לא היה מורגש; ל-51 תרומות שנרשמו בערב אחד
+    // בלי קליטה זה **אובדן כסף**, בלי שום סימן.
+    reset();
+    for (let i = 0; i < Q.QUEUE_LIMIT; i++) {
+      await Q.trackedPost('addDonation', { amount: i }, valueFail);
+    }
+    ok(Q.queueSize() === Q.QUEUE_LIMIT, `${Q.QUEUE_LIMIT} פעולות בתור`);
+    const firstBefore = Q.loadQueue()[0].data.amount;
+
+    const accepted = await Q.trackedPost('addDonation', { amount: 999 }, valueFail);
+    const after = Q.loadQueue();
+    ok(after.length === Q.QUEUE_LIMIT, 'התור לא גדל');
+    ok(after[0].data.amount === firstBefore,
+       'והפעולה הראשונה **עדיין שם** — לא נמחקה כדי לפנות מקום');
+    ok(!after.some(i => i.data.amount === 999), 'החדשה לא נכנסה');
+    ok(Q.queueState().queueFull === true,
+       'והמצב מדווח — דחייה גלויה במקום מחיקה שקטה');
+    ok(accepted !== undefined, 'הקורא מקבל תשובה ולא נתקע');
+  }
+
+  console.log('\nיח. פעולה מחליפה נכנסת גם כשהתור מלא:');
+  {
+    // איחוד אינו מגדיל את התור, ולכן אין סיבה לחסום — ולהפך, חסימה כאן
+    // הייתה מאבדת את עריכת הכרטיס האחרונה בלי צורך.
+    reset();
+    for (let i = 0; i < Q.QUEUE_LIMIT; i++) await Q.trackedPost('addDonation', { amount: i }, valueFail);
+    await Q.trackedPost('saveCRM', { data: { x: 1 } }, valueFail);
+    ok(Q.loadQueue().some(i => i.action === 'saveCRM'), 'saveCRM נכנס');
+  }
+
+  console.log('\nיט. מכסה מלאה — הרשימה הקודמת נשארת בשלמותה:');
+  {
+    // הבאג השני שיוסי מצא: הגרסה הראשונה שמרה במקרה כזה את חמשת האחרונים,
+    // מחקה את כל השאר, **וקבעה persistFailed = false.** כלומר מחקה נתונים
+    // והודיעה שהכול תקין.
+    reset();
+    for (let i = 0; i < 8; i++) await Q.trackedPost('addDonation', { amount: i }, valueFail);
+    const before = JSON.stringify(Q.loadQueue());
+    ok(Q.loadQueue().length === 8, 'שמונה בתור');
+
+    quotaFull = true;
+    await Q.trackedPost('addDonation', { amount: 99 }, valueFail);
+
+    quotaFull = false;   // רק כדי שנוכל לקרוא
+    ok(JSON.stringify(Q.loadQueue()) === before,
+       'שמונה הפעולות הקודמות נשארו **בדיוק** כפי שהיו — אף אחת לא נמחקה');
+    ok(Q.queueState().persistFailed === true,
+       'והדגל דלוק — נכשל בקול, לא מוחק בשקט');
+  }
+
+  console.log('\nכ. הדגל דביק עד לכתיבה מלאה מוצלחת:');
+  {
+    ok(Q.queueState().persistFailed === true, 'עדיין דלוק אחרי הכישלון');
+    await Q.flushQueue(okPost);
+    ok(Q.queueState().persistFailed === false, 'וכבה רק אחרי שכתיבה מלאה הצליחה');
   }
 
   console.log('\nיג. החיבור בפועל:');

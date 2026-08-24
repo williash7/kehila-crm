@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { CloudOff, RefreshCw, Loader2, AlertTriangle } from 'lucide-react';
 import {
-  QueuedWrite, subscribe, queueState, flushQueue, pendingLabel,
+  QueuedWrite, subscribe, queueState, flushQueue, pendingLabel, QUEUE_LIMIT,
 } from '../lib/writeQueue';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -25,12 +25,16 @@ const STUCK_ATTEMPTS = 3;
 export function PendingWritesBanner() {
   const [items, setItems] = useState<QueuedWrite[]>([]);
   const [persistFailed, setPersistFailed] = useState(false);
+  const [queueFull, setQueueFull] = useState(false);
   const [busy, setBusy] = useState(false);
   const [online, setOnline] = useState(() => (typeof navigator === 'undefined' ? true : navigator.onLine !== false));
   const [justSent, setJustSent] = useState(0);
 
   useEffect(() => {
-    const read = () => { const s = queueState(); setItems(s.items); setPersistFailed(s.persistFailed); };
+    const read = () => {
+      const s = queueState();
+      setItems(s.items); setPersistFailed(s.persistFailed); setQueueFull(s.queueFull);
+    };
     read();
     const un = subscribe(read);
     const on = () => setOnline(true);
@@ -66,7 +70,7 @@ export function PendingWritesBanner() {
     );
   }
 
-  if (items.length === 0 && !persistFailed) return null;
+  if (items.length === 0 && !persistFailed && !queueFull) return null;
 
   // המצב החמור: הכתיבה נכשלה **וגם** לא הצלחנו לזכור אותה לניסיון חוזר.
   if (persistFailed) {
@@ -83,7 +87,7 @@ export function PendingWritesBanner() {
   }
 
   const stuck = items.some(i => i.attempts >= STUCK_ATTEMPTS);
-  const tone = stuck ? 'bg-red-600' : online ? 'bg-amber-500' : 'bg-slate-600';
+  const tone = (stuck || queueFull) ? 'bg-red-600' : online ? 'bg-amber-500' : 'bg-slate-600';
 
   return (
     <div className={`${tone} text-white px-3 py-2 text-[12px] w-full`} dir="rtl">
@@ -108,6 +112,13 @@ export function PendingWritesBanner() {
           נסה עכשיו
         </button>
       </div>
+
+      {queueFull && (
+        <div className="max-w-[1100px] mx-auto mt-1 text-[11px] font-bold text-center">
+          התור מלא ({QUEUE_LIMIT} פעולות). <b>פעולות חדשות אינן נשמרות לניסיון חוזר</b> עד
+          שהממתינות יישלחו. חשוב להתחבר לרשת.
+        </div>
+      )}
 
       {stuck && (
         <div className="max-w-[1100px] mx-auto mt-1 text-[11px] opacity-90 text-center">
