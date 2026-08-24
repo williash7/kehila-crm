@@ -1877,14 +1877,28 @@ function getSummary_() {
 //  כתיבה מהאפליקציה
 // ═══════════════════════════════════════════════════════════════════════════
 
+/**
+ * מזהה קבוע לרשומה ידנית.
+ *
+ * זיכרון התשובות ב־Script Properties מוגבל בכוונה. גם זמן רב אחרי שהוא
+ * נוקה, ניסיון חוזר עם אותו reqId צריך לפגוש את אותה שורה ולא ליצור
+ * תרומה או מפגש נוספים. בקשות ישנות בלי reqId נשארות תואמות להתנהגות
+ * הקודמת ומקבלות חותמת זמן.
+ */
+function manualRequestRecordId_(prefix, body) {
+  var requestId = auditText_(body && body.reqId, 100);
+  return prefix + ':' + (requestId || new Date().getTime());
+}
+
 function addDonation_(body) {
   var name = standardName(body.name);
   var amount = asNumber_(body.amount);
   if (!name || !amount) return { success: false, error: 'חסרים שם או סכום' };
 
   if (body.cashDestination !== undefined) ensureSheet_(SpreadsheetApp.getActiveSpreadsheet(), SH.LOG, COLS.LOG);
-  addLogRow_({
-    'מזהה':        'man:' + new Date().getTime(),
+  var id = manualRequestRecordId_('man', body);
+  var added = addLogRow_({
+    'מזהה':        id,
     'שם':          name,
     'תאריך תרומה': body.date || todayStr_(),
     'סכום':        amount,
@@ -1894,16 +1908,18 @@ function addDonation_(body) {
     'סיכום ותובנות': body.notes || '',
     'מקור':        'ידני',
   });
+  if (!added) return { success: true, id: id, duplicate: true };
   ensureContact_(name, body.phone, body.address);
-  return { success: true };
+  return { success: true, id: id };
 }
 
 function addMeeting_(body) {
   var name = standardName(body.name);
   if (!name) return { success: false, error: 'חסר שם' };
 
-  addLogRow_({
-    'מזהה':         'meet:' + new Date().getTime(),
+  var id = manualRequestRecordId_('meet', body);
+  var added = addLogRow_({
+    'מזהה':         id,
     'שם':           name,
     'תאריך מפגש':   body.meetDate || body.date || todayStr_(),
     'מיקום מפגש':   body.location || body.meetType || '',
@@ -1911,8 +1927,9 @@ function addMeeting_(body) {
     'סיכום ותובנות': body.notes || '',
     'מקור':         'ידני',
   });
+  if (!added) return { success: true, id: id, duplicate: true };
   ensureContact_(name, '', '');
-  return { success: true };
+  return { success: true, id: id };
 }
 
 /**

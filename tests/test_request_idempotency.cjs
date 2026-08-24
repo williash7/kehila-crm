@@ -77,6 +77,31 @@ appendAudit_('saveFinance', { reqId: 'private', audit: false });
 audit = readSync_(AUDIT_SYNC_KEY);
 assert.strictEqual(audit.length, 1, 'תצוגה מקדימה ופעולה שהוחרגה אינן נרשמות');
 
+// גם אחרי שזיכרון התשובות הזמני נוקה, מזהה הרשומה עצמה מונע שורה שנייה.
+resetSheet(SH.LOG);
+resetSheet(SH.CONTACTS);
+resetSheet(SH.ALIASES);
+_logIds = null;
+_contactIndex = null;
+_aliases = null;
+const donationBody = { reqId: 'durable-donation', name: 'ישראל ישראלי', amount: 180, date: '25/08/2026' };
+const donationFirst = addDonation_(donationBody);
+flushWrites_();
+const donationRetry = addDonation_(donationBody);
+flushWrites_();
+assert.strictEqual(donationFirst.id, 'man:durable-donation');
+assert.strictEqual(donationRetry.duplicate, true, 'ניסיון חוזר של תרומה מזוהה גם בלי מטמון תשובה');
+assert.strictEqual(table_(SH.LOG).rows.length, 1, 'נשארת תרומה אחת בלבד');
+
+const meetingBody = { reqId: 'durable-meeting', name: 'ישראל ישראלי', date: '25/08/2026', notes: 'ביקור' };
+const meetingFirst = addMeeting_(meetingBody);
+flushWrites_();
+const meetingRetry = addMeeting_(meetingBody);
+flushWrites_();
+assert.strictEqual(meetingFirst.id, 'meet:durable-meeting');
+assert.strictEqual(meetingRetry.duplicate, true, 'ניסיון חוזר של מפגש מזוהה גם בלי מטמון תשובה');
+assert.strictEqual(table_(SH.LOG).rows.length, 2, 'תרומה אחת ומפגש אחד בלבד');
+
 assert.strictEqual(held, false, 'כל הנעילות שוחררו');
 assert.ok(acquisitions >= 6, 'כל מעבר מצב עבר תחת נעילה');
 
