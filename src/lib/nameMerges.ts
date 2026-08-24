@@ -5,6 +5,133 @@
 
 export const MERGES_KEY = '__nameMerges__';
 
+export type NameMergeSuggestionReason = 'wordOrder' | 'oneLetter' | 'extendedName';
+
+export interface NameMergeSuggestion {
+  nameA: string;
+  nameB: string;
+  reason: NameMergeSuggestionReason;
+  /** המלצה מבנית בלבד; הממשק יכול להעדיף שם שיש לו כרטיס עשיר יותר. */
+  recommendedCanonical: string;
+}
+
+function nameTokens(value: string): string[] {
+  return String(value || '')
+    .normalize('NFKD')
+    .replace(/[\u0591-\u05C7\u0300-\u036f]/g, '')
+    .replace(/[^א-תA-Za-z0-9]+/g, ' ')
+    .trim()
+    .toLocaleLowerCase('he')
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+function sameTokenBag(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.slice().sort().join('\u0000') === b.slice().sort().join('\u0000');
+}
+
+function tokenSubset(shorter: string[], longer: string[]): boolean {
+  const counts = new Map<string, number>();
+  longer.forEach(token => counts.set(token, (counts.get(token) || 0) + 1));
+  return shorter.every(token => {
+    const left = counts.get(token) || 0;
+    if (!left) return false;
+    counts.set(token, left - 1);
+    return true;
+  });
+}
+
+/** בדיקת מרחק עריכה 1 בלי לחשב מטריצה מלאה. */
+function oneEditApart(a: string, b: string): boolean {
+  if (a === b || Math.abs(a.length - b.length) > 1) return false;
+  if (a.length === b.length) {
+    let differences = 0;
+    for (let i = 0; i < a.length; i++) {
+      if (a[i] !== b[i] && ++differences > 1) return false;
+    }
+    return differences === 1;
+  }
+  const short = a.length < b.length ? a : b;
+  const long = a.length < b.length ? b : a;
+  let i = 0, j = 0, skipped = false;
+  while (i < short.length && j < long.length) {
+    if (short[i] === long[j]) { i++; j++; continue; }
+    if (skipped) return false;
+    skipped = true;
+    j++;
+  }
+  return true;
+}
+
+function oneTokenHasOneLetterDifference(a: string[], b: string[]): boolean {
+  if (a.length < 2 || a.length !== b.length) return false;
+  let changed = 0;
+  let exact = 0;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] === b[i]) { exact++; continue; }
+    if (!oneEditApart(a[i], b[i]) || ++changed > 1) return false;
+  }
+  return changed === 1 && exact >= 1;
+}
+
+function structuralRecommendation(
+  nameA: string, tokensA: string[], nameB: string, tokensB: string[], reason: NameMergeSuggestionReason
+): string {
+  if (reason === 'extendedName' && tokensA.length !== tokensB.length) {
+    return tokensA.length > tokensB.length ? nameA : nameB;
+  }
+  if (nameA.length !== nameB.length) return nameA.length > nameB.length ? nameA : nameB;
+  return nameA.localeCompare(nameB, 'he') <= 0 ? nameA : nameB;
+}
+
+/**
+ * מציע כפילויות אפשריות בלבד. ההחלטה והמיזוג נשארים תמיד בידי המשתמש.
+ * הכללים בכוונה שמרניים כדי ששמות פרטיים דומים לא יהפכו להצעות שווא.
+ */
+export function suggestNameMerges(
+  values: string[], existingMerges: Record<string, string> = {}, limit = 100
+): NameMergeSuggestion[] {
+  const names = Array.from(new Set((values || []).map(v => String(v || '').trim()).filter(Boolean)))
+    .sort((a, b) => a.localeCompare(b, 'he'));
+  const prepared = names.map(name => ({ name, tokens: nameTokens(name) }))
+    .filter(item => item.tokens.length >= 2);
+  const suggestions: NameMergeSuggestion[] = [];
+
+  for (let i = 0; i < prepared.length; i++) {
+    for (let j = i + 1; j < prepared.length; j++) {
+      const a = prepared[i], b = prepared[j];
+      if (resolveCanonicalName(a.name, existingMerges) === resolveCanonicalName(b.name, existingMerges)) continue;
+
+      let reason: NameMergeSuggestionReason | null = null;
+      if (sameTokenBag(a.tokens, b.tokens) && a.tokens.join(' ') !== b.tokens.join(' ')) {
+        reason = 'wordOrder';
+      } else if (oneTokenHasOneLetterDifference(a.tokens, b.tokens)) {
+        reason = 'oneLetter';
+      } else if (a.tokens.length !== b.tokens.length) {
+        const shorter = a.tokens.length < b.tokens.length ? a.tokens : b.tokens;
+        const longer = a.tokens.length < b.tokens.length ? b.tokens : a.tokens;
+        if (shorter.length >= 2 && tokenSubset(shorter, longer)) reason = 'extendedName';
+      }
+      if (!reason) continue;
+
+      suggestions.push({
+        nameA: a.name,
+        nameB: b.name,
+        reason,
+        recommendedCanonical: structuralRecommendation(a.name, a.tokens, b.name, b.tokens, reason),
+      });
+    }
+  }
+
+  const weight: Record<NameMergeSuggestionReason, number> = { wordOrder: 0, oneLetter: 1, extendedName: 2 };
+  return suggestions
+    .sort((a, b) => weight[a.reason] - weight[b.reason]
+      || a.nameA.localeCompare(b.nameA, 'he')
+      || a.nameB.localeCompare(b.nameB, 'he'))
+    .slice(0, Math.max(0, limit));
+}
+
 export function extractMerges(rawCrm: Record<string, any>): { merges: Record<string, string>; crmRest: Record<string, any> } {
   const { [MERGES_KEY]: merges, ...crmRest } = rawCrm || {};
   return { merges: (merges && typeof merges === 'object') ? merges : {}, crmRest };

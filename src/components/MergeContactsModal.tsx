@@ -1,18 +1,42 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useAppStore } from '../store/AppContext';
-import { X, Link2, Trash2 } from 'lucide-react';
+import { X, Link2, Trash2, Sparkles, ArrowLeftRight } from 'lucide-react';
+import { NameMergeSuggestion, suggestNameMerges } from '../lib/nameMerges';
 
 export function MergeContactsModal({ onClose, presetName, onMerged }: { onClose: () => void; presetName?: string; onMerged?: () => void }) {
-  const { donors, nameMerges, mergeContacts, unmergeContact } = useAppStore();
-  const [tab, setTab] = useState<'new' | 'existing'>('new');
+  const { donors, crm, nameMerges, mergeContacts, unmergeContact } = useAppStore();
+  const [tab, setTab] = useState<'suggestions' | 'new' | 'existing'>(presetName ? 'new' : 'suggestions');
   const [nameA, setNameA] = useState(presetName || '');
   const [nameB, setNameB] = useState('');
   const [keep, setKeep] = useState<'a' | 'b'>('a');
   const [busy, setBusy] = useState(false);
+  const [busySuggestion, setBusySuggestion] = useState('');
   const [error, setError] = useState('');
 
   const donorNames = Object.keys(donors).sort((x, y) => x.localeCompare(y, 'he'));
   const mergeEntries = Object.entries(nameMerges);
+  const suggestions = useMemo(
+    () => suggestNameMerges(Object.keys(donors), nameMerges),
+    [donors, nameMerges]
+  );
+
+  const detailScore = (name: string) => {
+    const donor: any = donors[name] || {};
+    const crmData: any = crm[name] || {};
+    const donorFields = Object.entries(donor)
+      .filter(([key, value]) => !['name', 'donations', 'total'].includes(key) && value !== '' && value != null).length;
+    const crmFields = Object.values(crmData)
+      .filter(value => value !== '' && value != null && value !== false).length;
+    return (donor.donations?.length || 0) * 4 + donorFields + crmFields * 2;
+  };
+
+  const recommendedName = (suggestion: NameMergeSuggestion) => {
+    if (suggestion.reason === 'extendedName') return suggestion.recommendedCanonical;
+    const scoreA = detailScore(suggestion.nameA);
+    const scoreB = detailScore(suggestion.nameB);
+    if (scoreA !== scoreB) return scoreA > scoreB ? suggestion.nameA : suggestion.nameB;
+    return suggestion.recommendedCanonical;
+  };
 
   const canMerge = nameA.trim() && nameB.trim() && nameA.trim() !== nameB.trim()
     && donors[nameA.trim()] && donors[nameB.trim()];
@@ -43,6 +67,25 @@ export function MergeContactsModal({ onClose, presetName, onMerged }: { onClose:
     else onClose();
   };
 
+  const doSuggestedMerge = async (suggestion: NameMergeSuggestion, canonicalName: string) => {
+    if (busy) return;
+    const aliasName = canonicalName === suggestion.nameA ? suggestion.nameB : suggestion.nameA;
+    const key = `${aliasName}\u0000${canonicalName}`;
+    setBusy(true);
+    setBusySuggestion(key);
+    setError('');
+    const ok = await mergeContacts(aliasName, canonicalName);
+    setBusy(false);
+    setBusySuggestion('');
+    if (!ok) setError('המיזוג לא נשמר בגיליון. בדוק את החיבור ונסה שוב.');
+  };
+
+  const reasonLabel: Record<NameMergeSuggestion['reason'], string> = {
+    wordOrder: 'אותן מילים בסדר שונה',
+    oneLetter: 'הבדל של אות אחת',
+    extendedName: 'שם קצר מול שם מורחב',
+  };
+
   return (
     <div className="fixed inset-0 bg-black/60 z-[300] flex items-end md:items-center justify-center p-0 md:p-4 backdrop-blur-sm" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="bg-[#FAF6EE] rounded-t-3xl md:rounded-3xl p-5 pb-8 md:pb-5 w-full max-w-[430px] md:max-w-lg max-h-[85vh] overflow-y-auto animate-in slide-in-from-bottom duration-300">
@@ -53,22 +96,78 @@ export function MergeContactsModal({ onClose, presetName, onMerged }: { onClose:
           <button onClick={onClose} className="p-2 bg-white rounded-full shadow-sm"><X size={16} /></button>
         </div>
 
-        <div className="flex bg-gray-100 p-1 rounded-xl mb-5">
+        <div className="grid grid-cols-3 bg-gray-100 p-1 rounded-xl mb-5">
           <button
-            className={`flex-1 py-2 text-sm font-bold rounded-lg transition-colors ${tab === 'new' ? 'bg-white shadow text-[#0D1B2A]' : 'text-gray-500'}`}
-            onClick={() => setTab('new')}
+            className={`py-2 text-xs sm:text-sm font-bold rounded-lg transition-colors ${tab === 'suggestions' ? 'bg-white shadow text-[#0D1B2A]' : 'text-gray-500'}`}
+            onClick={() => setTab('suggestions')}
           >
-            מיזוג חדש
+            הצעות ({suggestions.length})
           </button>
           <button
-            className={`flex-1 py-2 text-sm font-bold rounded-lg transition-colors ${tab === 'existing' ? 'bg-white shadow text-[#0D1B2A]' : 'text-gray-500'}`}
+            className={`py-2 text-xs sm:text-sm font-bold rounded-lg transition-colors ${tab === 'new' ? 'bg-white shadow text-[#0D1B2A]' : 'text-gray-500'}`}
+            onClick={() => setTab('new')}
+          >
+            מיזוג ידני
+          </button>
+          <button
+            className={`py-2 text-xs sm:text-sm font-bold rounded-lg transition-colors ${tab === 'existing' ? 'bg-white shadow text-[#0D1B2A]' : 'text-gray-500'}`}
             onClick={() => setTab('existing')}
           >
-            מיזוגים קיימים ({mergeEntries.length})
+            קיימים ({mergeEntries.length})
           </button>
         </div>
 
-        {tab === 'new' ? (
+        {error && (
+          <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-xl p-3 mb-3 leading-relaxed">{error}</div>
+        )}
+
+        {tab === 'suggestions' ? (
+          <div className="space-y-3">
+            <p className="text-xs text-gray-500 leading-relaxed bg-white rounded-xl p-3 border border-[#EDE6D6]">
+              אלו הצעות בלבד. דבר אינו מתחבר מעצמו. בכל כרטיס אפשר לבחור בלחיצה אחת איזה שם יישאר.
+            </p>
+            {suggestions.length === 0 ? (
+              <div className="text-center py-8 text-gray-400 text-sm">
+                <Sparkles className="mx-auto mb-2 text-[#C9A84C]" size={24} />
+                לא נמצאו כרגע שמות דומים שלא מוזגו.
+              </div>
+            ) : suggestions.map(suggestion => {
+              const recommended = recommendedName(suggestion);
+              const alternative = recommended === suggestion.nameA ? suggestion.nameB : suggestion.nameA;
+              const primaryKey = `${alternative}\u0000${recommended}`;
+              const alternativeKey = `${recommended}\u0000${alternative}`;
+              return (
+                <div key={`${suggestion.nameA}\u0000${suggestion.nameB}`} className="bg-white rounded-2xl p-3.5 border border-[#EDE6D6] shadow-sm">
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <span className="text-[10px] font-bold text-[#8A6F26] bg-[#FBF3D5] px-2 py-1 rounded-full">
+                      {reasonLabel[suggestion.reason]}
+                    </span>
+                    <Sparkles size={14} className="text-[#C9A84C] shrink-0" />
+                  </div>
+                  <div className="flex items-center justify-center gap-2 text-sm text-[#0D1B2A] mb-3">
+                    <span className="font-semibold text-center">{suggestion.nameA}</span>
+                    <ArrowLeftRight size={14} className="text-gray-300 shrink-0" />
+                    <span className="font-semibold text-center">{suggestion.nameB}</span>
+                  </div>
+                  <button
+                    onClick={() => doSuggestedMerge(suggestion, recommended)}
+                    disabled={busy}
+                    className="w-full bg-[#0D1B2A] text-[#E8C97A] py-2.5 px-3 rounded-xl font-bold text-xs disabled:opacity-50"
+                  >
+                    {busySuggestion === primaryKey ? 'שומר בגיליון...' : `מזג והשאר „${recommended}”`}
+                  </button>
+                  <button
+                    onClick={() => doSuggestedMerge(suggestion, alternative)}
+                    disabled={busy}
+                    className="w-full mt-1.5 py-1.5 text-[11px] font-semibold text-gray-500 hover:text-[#0D1B2A] disabled:opacity-40"
+                  >
+                    {busySuggestion === alternativeKey ? 'שומר בגיליון...' : `או השאר דווקא „${alternative}”`}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        ) : tab === 'new' ? (
           <div className="space-y-4">
             <p className="text-xs text-gray-500 leading-relaxed bg-white rounded-xl p-3 border border-[#EDE6D6]">
               בוחרים שני שמות שהם בעצם אותו אדם (למשל "אברהם אריאל" ו"אברהם אריאל ציגנוב"). כל התרומות, המפגשים והפרטים יתאחדו תחת השם שתבחרו לשמור. אפשר לבטל בכל עת בלשונית "מיזוגים קיימים".
@@ -122,10 +221,6 @@ export function MergeContactsModal({ onClose, presetName, onMerged }: { onClose:
                   </button>
                 </div>
               </div>
-            )}
-
-            {error && (
-              <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-xl p-3 mb-2 leading-relaxed">{error}</div>
             )}
 
             <button

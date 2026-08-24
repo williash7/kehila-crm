@@ -58,3 +58,27 @@ const oldWay = {
 console.log('   מפתחות שנשארו:', JSON.stringify(Object.keys(oldWay)));
 ok(!('family' in oldWay), 'היארצייטים נמחקו — בדיוק מה שקרה בפועל');
 ok(!('notes' in oldWay), 'וגם כל שדה אחר');
+
+console.log('\nז. הצעות למיזוג שמות:');
+const suggested = N.suggestNameMerges([
+  'מאור כהן', 'כהן מאור',
+  'אסתר לאר', 'אסתר לאה',
+  'ליאון אבנר', 'ליאון ויקטוריה חנה אבנר',
+  'משה כהן', 'משה לוי',
+  'דן', 'רן',
+]);
+const findSuggestion = (a, b) => suggested.find(s =>
+  (s.nameA === a && s.nameB === b) || (s.nameA === b && s.nameB === a));
+ok(findSuggestion('מאור כהן', 'כהן מאור')?.reason === 'wordOrder', 'אותן מילים בסדר שונה');
+ok(findSuggestion('אסתר לאר', 'אסתר לאה')?.reason === 'oneLetter', 'הבדל של אות אחת בחלק אחד של השם');
+const extended = findSuggestion('ליאון אבנר', 'ליאון ויקטוריה חנה אבנר');
+ok(extended?.reason === 'extendedName', 'שם קצר שכל חלקיו נמצאים בשם מורחב');
+ok(extended?.recommendedCanonical === 'ליאון ויקטוריה חנה אבנר', 'בשם מורחב מומלץ לשמור את השם המפורט');
+ok(!findSuggestion('משה כהן', 'משה לוי'), 'שם פרטי משותף לבדו אינו מספיק להצעה');
+ok(!findSuggestion('דן', 'רן'), 'שמות בני מילה אחת אינם מוצעים בגלל אות דומה');
+
+const alreadyMerged = N.suggestNameMerges(
+  ['מאור כהן', 'כהן מאור'],
+  { 'כהן מאור': 'מאור כהן' },
+);
+ok(alreadyMerged.length === 0, 'זוג שכבר מחובר אינו מוצע שוב');
