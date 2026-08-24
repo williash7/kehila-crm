@@ -62,6 +62,10 @@ const MAX_ENTRIES = 50;
 export const REPLACING = new Set([
   'saveCRM', 'saveEvents', 'saveHolidayExtras',
   'saveHistory', 'saveHomeVisits', 'saveProjects', 'updateRebbe',
+  // `saveFinance` שולח בלוק כספי מלא, בדיוק כמו השאר. בלי זה שתי שמירות
+  // ללא רשת היו נשמרות כשני פריטים, והישנה הייתה נשלחת אחרי החדשה
+  // ודורסת אותה — נסיגה שקטה של הנתונים.
+  'saveFinance',
 ]);
 
 export interface QueuedWrite {
@@ -159,7 +163,13 @@ function writeQueue(items: QueuedWrite[]): boolean {
 }
 
 export function queueState(): QueueState {
-  return { items: loadQueue(), persistFailed, queueFull };
+  const items = loadQueue();
+  // המצב **נגזר** ולא רק נזכר.
+  //
+  // `queueFull` חי בזיכרון המודול בלבד, ולכן רענון של הדף היה מאפס אותו —
+  // והאזהרה על הפעולה שנדחתה הייתה נעלמת, בזמן שהתור עצמו נשאר מלא
+  // ב-localStorage. גזירה מהתור עצמה עמידה לרענון.
+  return { items, persistFailed, queueFull: queueFull || countPending(items) >= MAX_ENTRIES };
 }
 
 /** התקרה, לתצוגה ולבדיקות. */
@@ -225,6 +235,47 @@ function refreshFull(items: QueuedWrite[]): void {
 }
 
 /**
+ * מסיר מהתור גרסאות ישנות של אותו בלוק, אחרי ששליחה חדשה יותר הצליחה.
+ *
+ * התרחיש שיוסי תיאור, והוא מסוג הבאגים ש**נראים למשתמש כמו „הנתונים חזרו
+ * אחורה לבד”**:
+ *
+ *   1. מצב A נכשל ונשאר בתור.
+ *   2. מצב B, חדש יותר, מצליח מיד בשרת.
+ *   3. בסבב הבא התור שולח את A — ודורס את B.
+ *
+ * שמירת בלוק היא החלפה מלאה, ולכן ברגע שגרסה חדשה יותר אושרה, כל גרסה
+ * ישנה שממתינה הופכת לא רק למיותרת אלא **למזיקה**.
+ */
+function dropSuperseded(action: string, notNewerThan: number): void {
+  if (!REPLACING.has(action)) return;
+  const items = loadQueue();
+  const kept = items.filter(i => !(i.action === action && i.queuedAt <= notNewerThan));
+  if (kept.length !== items.length) {
+    writeQueue(kept);
+    refreshFull(kept);
+  }
+}
+
+// ── סדרוּת לכל בלוק ─────────────────────────────────────────────────────────
+//
+// שתי שמירות של אותו בלוק לא יוצאות במקביל. בלי זה יש מרוץ אמיתי: A יוצא,
+// B יוצא, B מגיע ראשון, A מגיע אחריו ודורס אותו — והמשתמש רואה את העריכה
+// שלו נעלמת בלי שום שגיאה.
+//
+// שרשרת לכל `action` ולא נעילה גלובלית: אין שום סיבה ששמירת פרויקטים
+// תמתין לשמירת אנשי קשר.
+const chains = new Map<string, Promise<unknown>>();
+
+function serialize<T>(action: string, fn: () => Promise<T>): Promise<T> {
+  if (!REPLACING.has(action)) return fn();
+  const prev = chains.get(action) || Promise.resolve();
+  const next = prev.then(fn, fn);   // גם כישלון קודם אינו עוצר את הבא
+  chains.set(action, next.catch(() => undefined));
+  return next;
+}
+
+/**
  * מוסיף לתור.
  *
  * **פריט שאינו ב-REPLACING לעולם אינו נמחק כדי לפנות מקום.** הגרסה הראשונה
@@ -271,17 +322,23 @@ export function enqueue(action: string, data: any, error: string, reqId: string)
  * מחזיר את תשובת השרת כפי שהיא, כדי שקוראים שכן בודקים ימשיכו לעבוד.
  */
 export async function trackedPost(action: string, data: any, post: PostFn): Promise<any> {
-  const reqId = makeId();
-  let res: any;
-  try {
-    res = await post(action, data, reqId);
-  } catch (e: any) {
-    res = { success: false, error: String(e?.message || e) };
-  }
-  if (isFailure(res)) {
-    enqueue(action, data, String(res?.error || 'שגיאה לא ידועה'), reqId);
-  }
-  return res;
+  return serialize(action, async () => {
+    const startedAt = Date.now();
+    const reqId = makeId();
+    let res: any;
+    try {
+      res = await post(action, data, reqId);
+    } catch (e: any) {
+      res = { success: false, error: String(e?.message || e) };
+    }
+    if (isFailure(res)) {
+      enqueue(action, data, String(res?.error || 'שגיאה לא ידועה'), reqId);
+    } else {
+      // גרסה חדשה יותר אושרה — כל גרסה ישנה שממתינה בתור תדרוס אותה.
+      dropSuperseded(action, startedAt);
+    }
+    return res;
+  });
 }
 
 /**
@@ -399,20 +456,26 @@ export type WriteOutcome =
  * לא נשמרה בשום מקום, ובמצב כזה המשתמש חייב לדעת.
  */
 export async function submitWrite(action: string, data: any, post: PostFn): Promise<WriteOutcome> {
-  const reqId = makeId();
-  let res: any;
-  try {
-    res = await post(action, data, reqId);
-  } catch (e: any) {
-    res = { success: false, error: String(e?.message || e) };
-  }
+  return serialize(action, async (): Promise<WriteOutcome> => {
+    const startedAt = Date.now();
+    const reqId = makeId();
+    let res: any;
+    try {
+      res = await post(action, data, reqId);
+    } catch (e: any) {
+      res = { success: false, error: String(e?.message || e) };
+    }
 
-  if (!isFailure(res)) return { status: 'saved', res };
+    if (!isFailure(res)) {
+      dropSuperseded(action, startedAt);
+      return { status: 'saved', res };
+    }
 
-  const error = String(res?.error || 'שגיאה לא ידועה');
-  return enqueue(action, data, error, reqId)
-    ? { status: 'queued' }
-    : { status: 'failed', error };
+    const error = String(res?.error || 'שגיאה לא ידועה');
+    return enqueue(action, data, error, reqId)
+      ? { status: 'queued' }
+      : { status: 'failed', error };
+  });
 }
 
 /** מה להציג למשתמש עבור כל מצב. */

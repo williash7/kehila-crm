@@ -318,6 +318,93 @@ const throwFail = async () => { throw new Error('נפילה'); };
        'והניסוח הישן „הסנכרון נכשל” הוסר — הוא הזמין לחיצה כפולה');
   }
 
+
+  console.log('\nכה. ישן בתור, חדש הצליח — הישן אינו דורס:');
+  {
+    // הבאג שיוסי תיאר, והוא נראה למשתמש כמו „הנתונים חזרו אחורה לבד”:
+    // מצב A נכשל ונשאר בתור, מצב B חדש יותר הצליח, ובסבב הבא A נשלח
+    // ומחזיר את הכול אחורה.
+    reset();
+    await Q.trackedPost('saveFinance', { data: { v: 'A' } }, valueFail);
+    ok(Q.queueSize() === 1, 'A ממתין בתור');
+
+    await Q.trackedPost('saveFinance', { data: { v: 'B' } }, okPost);
+    ok(Q.queueSize() === 0, 'אחרי ש-B אושר בשרת, A **הוסר** ולא יישלח וידרוס אותו');
+  }
+
+  console.log('\nכו. saveFinance הוא בלוק מלא — ולכן מאוחד:');
+  {
+    reset();
+    ok(Q.REPLACING.has('saveFinance'), 'saveFinance ברשימת המחליפים');
+    await Q.trackedPost('saveFinance', { data: { v: 1 } }, valueFail);
+    await Q.trackedPost('saveFinance', { data: { v: 2 } }, valueFail);
+    ok(Q.queueSize() === 1, 'פריט אחד');
+    ok(Q.loadQueue()[0].data.data.v === 2, 'והוא החדש — הישן לא יישלח אחריו');
+  }
+
+  console.log('\nכז. שתי שמירות של אותו בלוק אינן יוצאות במקביל:');
+  {
+    // בלי סדרוּת יש מרוץ אמיתי: A יוצא, B יוצא, B מגיע ראשון, A מגיע
+    // אחריו ודורס אותו — והמשתמש רואה את העריכה שלו נעלמת בלי שגיאה.
+    reset();
+    const order = [];
+    let releaseA;
+    const gateA = new Promise(r => { releaseA = r; });
+
+    const post = async (a, d) => {
+      order.push('התחיל ' + d.data.v);
+      if (d.data.v === 'A') await gateA;
+      order.push('הסתיים ' + d.data.v);
+      return { success: true };
+    };
+
+    const pA = Q.trackedPost('saveCRM', { data: { v: 'A' } }, post);
+    const pB = Q.trackedPost('saveCRM', { data: { v: 'B' } }, post);
+
+    await new Promise(r => setTimeout(r, 10));
+    ok(!order.includes('התחיל B'),
+       'B **לא** יצא כל עוד A באוויר — אין מרוץ בין שתי שמירות של אותו בלוק');
+
+    releaseA();
+    await Promise.all([pA, pB]);
+    ok(order.join('|') === 'התחיל A|הסתיים A|התחיל B|הסתיים B',
+       'והסדר נשמר לפי סדר היצירה: ' + order.join(' → '));
+  }
+
+  console.log('\nכח. פעולות שונות אינן ממתינות זו לזו:');
+  {
+    // שרשרת לכל action, לא נעילה גלובלית. אין סיבה ששמירת פרויקטים
+    // תמתין לשמירת אנשי קשר.
+    reset();
+    let releaseCrm;
+    const gate = new Promise(r => { releaseCrm = r; });
+    let projectsDone = false;
+
+    const pCrm = Q.trackedPost('saveCRM', { data: {} }, async () => { await gate; return { success: true }; });
+    const pProj = Q.trackedPost('saveProjects', { data: [] }, async () => { projectsDone = true; return { success: true }; });
+
+    await new Promise(r => setTimeout(r, 10));
+    ok(projectsDone === true, 'שמירת הפרויקטים רצה בלי להמתין לאנשי הקשר');
+    releaseCrm();
+    await Promise.all([pCrm, pProj]);
+  }
+
+  console.log('\nכט. האזהרה שורדת רענון:');
+  {
+    // queueFull חי בזיכרון המודול בלבד. בלי גזירה מהתור, רענון היה מכבה
+    // את האזהרה בזמן שהתור עצמו נשאר מלא ב-localStorage.
+    reset();
+    for (let i = 0; i < Q.QUEUE_LIMIT; i++) await Q.trackedPost('addDonation', { amount: i }, valueFail);
+    await Q.trackedPost('addDonation', { amount: 999 }, valueFail);
+    ok(Q.queueState().queueFull === true, 'דלוק לפני הרענון');
+
+    delete require.cache[require.resolve('/tmp/stub/writeQueue.js')];
+    const Q3 = require('/tmp/stub/writeQueue.js');   // כמו פתיחה מחדש
+    ok(Q3.queueState().queueFull === true,
+       '**ועדיין דלוק אחרי** — המצב נגזר מהתור ולא רק נזכר');
+    ok(Q3.queueState().items.length === Q.QUEUE_LIMIT, 'והתור עצמו שלם');
+  }
+
   console.log('\nיג. החיבור בפועל:');
   {
     const root = path.join(__dirname, '..');
