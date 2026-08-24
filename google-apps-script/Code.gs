@@ -586,7 +586,9 @@ function doPost(e) {
 var REQ_LIST_KEY = 'recentRequests';
 var REQ_PENDING_PREFIX = 'req-pending:';
 var REQ_PENDING_MAX_AGE_MS = 2 * 60 * 1000;
-var REQ_KEEP = 40;   // מספיק לכיסוי ניסיונות חוזרים, בלי לנפח את האחסון
+// תור הלקוח מוגבל ל-50 פעולות. שומרים יותר מזה כדי שפריט ראשון שתשובתו
+// אבדה לא יימחק מהזיכרון בזמן שיתר התור מצליח ונשלח לפני הניסיון הבא שלו.
+var REQ_KEEP = 100;
 
 /**
  * תופס בקשה לפני ביצועה.
@@ -636,7 +638,8 @@ function recallRequest_(id) {
  */
 function requestResponseJson_(res) {
   var raw = JSON.stringify(res);
-  if (raw.length <= 7500) return raw;
+  // 100 תשובות × 3.5KB משאירות מרווח מתחת למכסת Script Properties הכוללת.
+  if (raw.length <= 3500) return raw;
 
   var compact = {
     success: !(res && (res.success === false || res.error)),

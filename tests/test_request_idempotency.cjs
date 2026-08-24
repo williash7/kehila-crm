@@ -50,10 +50,11 @@ assert.deepStrictEqual(retry.response, response, 'התשובה הקודמת נש
 const huge = { success: true, tag: 'import-1', added: { donations: 500 }, rejected: [] };
 for (let i = 0; i < 400; i++) huge.rejected.push({ name: `שם ${i}`, reason: 'x'.repeat(40) });
 const compact = JSON.parse(requestResponseJson_(huge));
-assert.ok(JSON.stringify(compact).length < 7500, 'תשובה גדולה מתקצרת מתחת למכסת הערך');
+assert.ok(JSON.stringify(compact).length < 3500, 'תשובה גדולה מתקצרת מתחת למכסת הערך');
 assert.strictEqual(compact.success, true);
 assert.strictEqual(compact.tag, 'import-1', 'שדות המשך חשובים נשמרים גם בתשובה מקוצרת');
 assert.deepStrictEqual(compact.added, { donations: 500 });
+assert.ok(REQ_KEEP > 50, 'זיכרון השרת גדול מתקרת תור הלקוח ואינו שוכח את הפריט הראשון באמצע ריקון');
 
 // סימון שנשאר אחרי הפסקה כפויה אינו חוסם את המערכת לנצח.
 props[REQ_PENDING_PREFIX + 'stale-request'] = String(Date.now() - REQ_PENDING_MAX_AGE_MS - 1);
