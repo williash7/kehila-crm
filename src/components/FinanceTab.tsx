@@ -19,8 +19,9 @@ import { cashDestinationLabel } from '../lib/cashDonations';
 import { parseDdMmYyyy } from '../lib/dateUtils';
 import { GlobalAIImportModal } from './GlobalAIImportModal';
 import { compareListValues, ListSortControl, usePersistentListSort } from './ListSortControl';
+import { FinancePlanningTools } from './FinancePlanningTools';
 
-type Pane = 'overview' | 'transactions' | 'cashflow' | 'scopes' | 'import' | 'settings';
+type Pane = 'overview' | 'transactions' | 'cashflow' | 'scopes' | 'planning' | 'import' | 'settings';
 type BudgetSource = { id?: string; title?: string; name?: string; budget?: { expenses?: unknown[]; income?: unknown[] } };
 type BudgetReference = { key: string; type: string; name: string; planned: number; actual: number; income: number };
 
@@ -107,6 +108,7 @@ export function FinanceTab() {
     { id: 'transactions', label: 'תנועות' },
     { id: 'cashflow', label: 'תזרים' },
     { id: 'scopes', label: 'מעקב פעילות' },
+    { id: 'planning', label: 'בדיקה ותכנון' },
     { id: 'import', label: 'ייבוא ודוחות' },
     { id: 'settings', label: 'הגדרות' },
   ];
@@ -148,6 +150,7 @@ export function FinanceTab() {
       {pane === 'transactions' && <Transactions data={data} donations={donations} onAdd={begin} onEdit={setEditing} onCancel={async id => persist(cancelTransaction(data, id))} />}
       {pane === 'cashflow' && <Cashflow data={data} donations={donations} />}
       {pane === 'scopes' && <Scopes scopes={scopes} budgets={existingBudgets} donations={donations} events={eventsData as Activity[]} projects={projects as Project[]} onAdd={() => begin('expense', 'committed')} />}
+      {pane === 'planning' && <FinancePlanningTools data={data} summary={summary} donations={donations} persist={persist} />}
       {pane === 'import' && <ImportAndReports data={data} donations={donations} persist={persist} onAI={() => setAiImportOpen(true)} />}
       {pane === 'settings' && <FinanceSettings data={data} persist={persist} />}
 

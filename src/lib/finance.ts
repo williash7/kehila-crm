@@ -1,5 +1,7 @@
 import { Donation } from '../types';
 import { normalizeCashDestination } from './cashDonations';
+import { MonthClosureSnapshot } from './monthClose';
+import { ActivityScenarioInput, ActivityScenarioResult } from './activityScenario';
 
 export type FinanceStatus = 'actual' | 'committed' | 'expected' | 'cancelled';
 export type FinanceKind =
@@ -61,6 +63,15 @@ export interface FinanceData {
   categories: string[];
   transactions: FinanceTransaction[];
   lastClosedMonth?: string;
+  monthClosures: MonthClosureSnapshot[];
+  activityScenarios: ActivityScenarioSnapshot[];
+}
+
+export interface ActivityScenarioSnapshot {
+  id: string;
+  savedAt: string;
+  input: ActivityScenarioInput;
+  result: ActivityScenarioResult;
 }
 
 export interface FinanceSummary {
@@ -174,6 +185,8 @@ export function emptyFinanceData(): FinanceData {
     cashDonations: 'personal',
     categories: [...DEFAULT_FINANCE_CATEGORIES],
     transactions: [],
+    monthClosures: [],
+    activityScenarios: [],
   };
 }
 
@@ -219,6 +232,8 @@ export function normalizeFinanceData(value: unknown): FinanceData {
       : 'personal',
     categories: Array.from(new Set([...categories, ...DEFAULT_FINANCE_CATEGORIES])),
     transactions,
+    monthClosures: Array.isArray(raw.monthClosures) ? raw.monthClosures.filter(Boolean) : [],
+    activityScenarios: Array.isArray(raw.activityScenarios) ? raw.activityScenarios.filter(Boolean) : [],
   };
 }
 

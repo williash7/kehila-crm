@@ -1,6 +1,9 @@
 const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
 const M = require('/tmp/stub/monthClose.js');
 const A = require('/tmp/stub/activityScenario.js');
+const F = require('/tmp/stub/finance.js');
 
 console.log('א. סגירת חודש אינה מאזנת פערים לבד:');
 const open = M.calculateMonthClose({
@@ -86,5 +89,26 @@ const timed = A.calculateActivityScenario({
 });
 assert.strictEqual(timed.firstRiskDate, '2026-09-10', 'בלי הצפי הסיכון נחשף ביום הפעילות');
 assert.strictEqual(timed.firstOptimisticRiskDate, '', 'בתרחיש האופטימי הצפי מונע את המחסור');
+
+console.log('ה. הכלים מחוברים למרכז הכספי ונשמרים בתאימות לאחור:');
+const legacy = F.normalizeFinanceData({ version: 1, transactions: [] });
+assert.deepStrictEqual(legacy.monthClosures, [], 'נתונים ישנים מקבלים רשימת סגירות ריקה');
+assert.deepStrictEqual(legacy.activityScenarios, [], 'ונתוני תרחישים ריקים');
+const root = path.join(__dirname, '..');
+const tab = fs.readFileSync(path.join(root, 'src/components/FinanceTab.tsx'), 'utf8');
+const tools = fs.readFileSync(path.join(root, 'src/components/FinancePlanningTools.tsx'), 'utf8');
+assert.match(tab, /\{ id: 'planning', label: 'בדיקה ותכנון' \}/,
+  'הכלים מרוכזים בלשונית אחת כדי לא להעמיס');
+assert.match(tab, /<FinancePlanningTools[^>]*persist=\{persist\}/);
+assert.match(tools, /createMonthClosureSnapshot\(draft, data\.monthClosures\)/);
+assert.match(tools, /snapshot\.status === 'review' \? data\.lastClosedMonth : month/,
+  'טיוטה עם פער פתוח נשמרת אך אינה מסומנת כחודש שנסגר');
+assert.match(tools, /row\.includedAfterOpening && row\.cashDestination === 'activity_cashbox'/,
+  'ספירת הקופה אינה כוללת שוב תרומות שכבר נבלעו ביתרת הפתיחה');
+assert.match(tools, /activityScenarios: \[\.\.\.data\.activityScenarios, snapshot\]/);
+assert.match(tools, /אינה יוצרת תנועת איזון/,
+  'המסך אומר במפורש שסגירה אינה משנה את החשבון');
+assert.match(tools, /תרחיש בלבד.*אינו יוצר פעילות, קמפיין או התחייבות/s,
+  'תרחיש אינו מתחזה להחלטה או משנה נתונים אחרים');
 
 console.log('✓ סגירת חודש ותרחיש פעילות');
