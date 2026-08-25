@@ -22,7 +22,8 @@ import { extractMerges, applyMergesToCrm, mergeCrmPair, coalesceDonorsByMerges, 
 import { AppSettings, loadSettings, saveSettings, filterDonorsBySettings } from '../lib/settings';
 import { logAction } from '../lib/score';
 import { computeSummarySince, computeDonorTotalSince } from '../lib/donationFilter';
-import { HistoryEntry, buildHistoryEntry, countAttendance, sumBudget, findLatestHistoryFor, tasksFromHistory, historyEntryFingerprint } from '../lib/history';
+import { HistoryEntry, buildHistoryEntry, countAttendance, sumBudget, findLatestHistoryFor, historyEntryFingerprint } from '../lib/history';
+import { createCycleTemplate } from '../lib/cycleTemplate';
 import { STANDALONE_TASKS_ID, createHomeVisitTask, createHolidayReminderTask, createEventReminderTask, createThankYouTask, computeMissingThankYouTasks, backfillEventTaskDates } from '../lib/tasks';
 import { HomeVisitEntry, HomeVisitRound, HomeVisitsData, moveEntry } from '../lib/homeVisits';
 import { buildHolidayList } from '../lib/holidayList';
@@ -72,7 +73,7 @@ interface AppState {
   mergeContacts: (aliasName: string, canonicalName: string) => Promise<boolean>;
   unmergeContact: (aliasName: string) => Promise<boolean>;
   archiveOccurrence: (params: { type: 'holiday' | 'event'; id: string; name: string; occurrenceDate?: string }) => void;
-  importTasksFromHistory: (params: { type: 'holiday' | 'event'; id: string; name: string }) => boolean;
+  importTasksFromHistory: (params: { type: 'holiday' | 'event'; id: string; name: string; occurrenceDate?: string }) => boolean;
   updateHistoryEntry: (id: string, data: Partial<HistoryEntry>) => void;
   addHistoryEntries: (entries: HistoryEntry[]) => number;
   deleteHistoryEntry: (id: string) => void;
@@ -657,20 +658,40 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     logAction('history_archive');
   };
 
-  // מייבא משימות מהמופע הקודם (מההיסטוריה) כמשימות חדשות (done:false)
-  const importTasksFromHistory = ({ type, id, name }: { type: 'holiday' | 'event'; id: string; name: string }): boolean => {
+  // יוצר מחזור חדש מתבנית המופע הקודם: משימות ותקציב מתוכנן, בלי תוצאות.
+  // מה שכבר הוזן במחזור הנוכחי קודם תמיד ואינו נדרס.
+  const importTasksFromHistory = ({ type, id, name, occurrenceDate }: { type: 'holiday' | 'event'; id: string; name: string; occurrenceDate?: string }): boolean => {
     const latest = findLatestHistoryFor(history, type, name);
-    if (!latest || (latest.tasks || []).length === 0) return false;
-    const importedTasks = tasksFromHistory(latest);
+    if (!latest) return false;
+    const template = createCycleTemplate(latest, occurrenceDate);
+    const hasTemplate = template.tasks.length > 0
+      || template.budget.expenses.length > 0
+      || template.budget.income.length > 0;
+    if (!hasTemplate) return false;
     if (type === 'holiday') {
       const extra = holidayExtras[id] || {};
-      updateHolidayExtras(id, { tasks: [...(extra.tasks || []), ...importedTasks] });
+      const currentBudget = extra.budget || { expenses: [], income: [] };
+      updateHolidayExtras(id, {
+        tasks: (extra.tasks || []).length ? extra.tasks : template.tasks,
+        budget: {
+          expenses: (currentBudget.expenses || []).length ? currentBudget.expenses : template.budget.expenses,
+          income: (currentBudget.income || []).length ? currentBudget.income : template.budget.income,
+        },
+      });
     } else {
       const ev = eventsData.find((e: any) => e.id === id);
       if (!ev) return false;
-      updateEventsData(eventsData.map((e: any) => (e.id === id ? { ...e, tasks: [...(e.tasks || []), ...importedTasks] } : e)));
+      const currentBudget = ev.budget || { expenses: [], income: [] };
+      updateEventsData(eventsData.map((e: any) => (e.id === id ? {
+        ...e,
+        tasks: (e.tasks || []).length ? e.tasks : template.tasks,
+        budget: {
+          expenses: (currentBudget.expenses || []).length ? currentBudget.expenses : template.budget.expenses,
+          income: (currentBudget.income || []).length ? currentBudget.income : template.budget.income,
+        },
+      } : e)));
     }
-    logAction('task_create', importedTasks.length);
+    if (template.tasks.length) logAction('task_create', template.tasks.length);
     return true;
   };
 

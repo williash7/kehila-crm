@@ -1,4 +1,6 @@
 const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
 const C = require('/tmp/stub/cycleTemplate.js');
 
 const source = {
@@ -49,5 +51,21 @@ console.log('ד. תאריך לא בטוח אינו משאיר בטעות דדל�
 const unknownDate = C.createCycleTemplate({ ...source, occurrenceDate: undefined }, '2026-04-02');
 assert.strictEqual(unknownDate.tasks[0].dueDate, undefined);
 assert.strictEqual(C.shiftRelativeDate('31/02/2025', '2025-04-12', '2026-04-02'), undefined);
+
+console.log('ה. החיבור באפליקציה משתמש בתבנית המלאה ואינו דורס נתונים חדשים:');
+const root = path.join(__dirname, '..');
+const context = fs.readFileSync(path.join(root, 'src/store/AppContext.tsx'), 'utf8');
+const events = fs.readFileSync(path.join(root, 'src/components/EventsTab.tsx'), 'utf8');
+const holidays = fs.readFileSync(path.join(root, 'src/components/HolidayModal.tsx'), 'utf8');
+assert.match(context, /createCycleTemplate\(latest, occurrenceDate\)/);
+assert.match(context, /\(currentBudget\.expenses \|\| \[\]\)\.length \? currentBudget\.expenses : template\.budget\.expenses/,
+  'תקציב שכבר הוזן במחזור החדש קודם לתבנית הישנה');
+assert.match(events, /כמו בפעם הקודמת — משימות ותקציב/);
+assert.match(events, /occurrenceDate: next\?\.toISOString\(\)\.slice\(0, 10\)/,
+  'אירוע מעביר למנוע את מועד המופע החדש');
+assert.match(holidays, /occurrenceDate: isNaN\(hDate\.getTime\(\)\)/,
+  'גם חג מעביר את מועדו החדש');
+assert.match(holidays, /setBudgetForm\(extra\.budget \|\| \{ expenses: \[\], income: \[\] \}\)/,
+  'פתיחת עריכת התקציב טוענת את התבנית שזה עתה הוחלה');
 
 console.log('✓ שכפול מחזור מעתיק תבנית עבודה בלבד');

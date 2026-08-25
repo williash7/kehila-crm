@@ -758,10 +758,16 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
              <div className="space-y-3">
              {(!currentTasksEvent.tasks || currentTasksEvent.tasks.length === 0) && findLatestHistoryFor(history, 'event', currentTasksEvent.name) && (
                <button
-                 onClick={() => importTasksFromHistory({ type: 'event', id: currentTasksEvent.id, name: currentTasksEvent.name })}
+                 onClick={() => {
+                   const next = nextEventOccurrence(currentTasksEvent, new Date());
+                   importTasksFromHistory({
+                     type: 'event', id: currentTasksEvent.id, name: currentTasksEvent.name,
+                     occurrenceDate: next?.toISOString().slice(0, 10),
+                   });
+                 }}
                  className="w-full flex items-center justify-center gap-1.5 bg-blue-50 text-blue-700 text-sm font-bold py-2.5 rounded-xl"
                >
-                 <ClipboardList size={14} /> ייבא משימות מהפעם הקודמת
+                 <ClipboardList size={14} /> כמו בפעם הקודמת — משימות ותקציב
                </button>
              )}
              <div className="space-y-2">

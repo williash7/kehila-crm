@@ -540,10 +540,13 @@ ${docs.length > 0 ? section('📄 מסמכים מקושרים',
           </div>
           {(!extra.tasks || extra.tasks.length === 0) && findLatestHistoryFor(history, 'holiday', holiday.name) && (
             <button
-              onClick={() => importTasksFromHistory({ type: 'holiday', id, name: holiday.name })}
+              onClick={() => importTasksFromHistory({
+                type: 'holiday', id, name: holiday.name,
+                occurrenceDate: isNaN(hDate.getTime()) ? undefined : hDate.toISOString().slice(0, 10),
+              })}
               className="w-full flex items-center justify-center gap-1.5 bg-blue-50 text-blue-700 text-sm font-bold py-2.5 rounded-xl mb-3"
             >
-              <ClipboardList size={14} /> ייבא משימות מהפעם הקודמת
+              <ClipboardList size={14} /> כמו בפעם הקודמת — משימות ותקציב
             </button>
           )}
           <div className="space-y-2 mb-3">
@@ -882,7 +885,10 @@ ${docs.length > 0 ? section('📄 מסמכים מקושרים',
         <div className="mb-6">
           <div className="flex justify-between items-center mb-3">
             <h3 className="font-['Frank_Ruhl_Libre'] text-lg font-bold text-[#0D1B2A]">💰 תכנון תקציב</h3>
-            <button onClick={() => setIsEditingBudget(!isEditingBudget)} className="text-xs font-bold text-[#9B7A2F] bg-[#C9A84C]/10 px-3 py-1.5 rounded-lg active:scale-95 transition-transform">{isEditingBudget ? 'בטל' : 'עריכה ✏️'}</button>
+            <button onClick={() => {
+              if (!isEditingBudget) setBudgetForm(extra.budget || { expenses: [], income: [] });
+              setIsEditingBudget(!isEditingBudget);
+            }} className="text-xs font-bold text-[#9B7A2F] bg-[#C9A84C]/10 px-3 py-1.5 rounded-lg active:scale-95 transition-transform">{isEditingBudget ? 'בטל' : 'עריכה ✏️'}</button>
           </div>
 
           {isEditingBudget ? (
