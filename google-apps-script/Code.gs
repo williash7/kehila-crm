@@ -67,7 +67,7 @@
  *
  * **מעדכנים אותה בכל שינוי מהותי בקובץ.**
  */
-var CODE_VERSION = '2026-08-24c';
+var CODE_VERSION = '2026-08-24d';
 var EXPORT_SCHEMA_VERSION = 1;
 var EXPORT_MAX_LIMIT = 500;
 var CRM_MERGES_KEY = '__nameMerges__';
