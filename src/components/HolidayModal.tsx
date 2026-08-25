@@ -252,21 +252,22 @@ export function HolidayModal({ holiday, onClose, backLabel }: { holiday: any, on
 
     if (newlyPresent.length > 0) {
       try {
-        const { apiPost } = await import('../lib/api');
+        const { addMeetingQueued } = await import('../lib/api');
         const results = await Promise.all(newlyPresent.map(name =>
-          apiPost('addMeeting', {
+          addMeetingQueued({
             name,
             date: dateKey,
             meetType: 'נוכחות בחג',
             purpose: holiday.name || '',
             notes: `נוכחות בחג: ${holiday.name || ''}`,
             nextMeet: ''
-          }).then(res => ({ name, res }))
+          }).then(outcome => ({ name, outcome }))
         ));
-        const failed = results.filter(r => r.res?.error);
+        // מי שנכנס לתור אינו „נכשל” — הוא יישלח לבד. מתריעים רק על מי
+        // שלא נשמר בשום מקום.
+        const failed = results.filter(r => r.outcome.status === 'failed');
         if (failed.length > 0) {
-          console.error('addMeeting failed for:', failed);
-          alert(`הנוכחות נשמרה, אך רישום יצירת קשר נכשל עבור: ${failed.map(f => f.name).join(', ')}`);
+          alert(`הנוכחות נשמרה, אך רישום יצירת קשר לא נשמר עבור: ${failed.map(f => f.name).join(', ')}`);
         }
         refresh();
       } catch (err) {
@@ -570,9 +571,9 @@ ${docs.length > 0 ? section('📄 מסמכים מקושרים',
                             if (!wasDone) {
                               logAction('invite_done');
                               try {
-                                const { apiPost } = await import('../lib/api');
+                                const { addMeetingQueued } = await import('../lib/api');
                                 const dateKey = new Date().toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' });
-                                const res = await apiPost('addMeeting', {
+                                const outcome = await addMeetingQueued({
                                   name: p,
                                   date: dateKey,
                                   meetType: 'טלפון',
@@ -580,9 +581,8 @@ ${docs.length > 0 ? section('📄 מסמכים מקושרים',
                                   notes: `הוזמן/ה לחג: ${holiday.name}`,
                                   nextMeet: ''
                                 });
-                                if (res?.error) {
-                                  console.error('addMeeting failed for', p, res);
-                                  alert(`רישום יצירת הקשר עבור ${p} נכשל: ${res.error}`);
+                                if (outcome.status === 'failed') {
+                                  alert(`רישום יצירת הקשר עבור ${p} לא נשמר: ${outcome.error}`);
                                 } else {
                                   refresh();
                                 }

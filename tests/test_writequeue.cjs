@@ -319,6 +319,47 @@ const throwFail = async () => { throw new Error('נפילה'); };
   }
 
 
+  console.log('\nכד2. תרומה ומפגש — כל שש נקודות הכתיבה:');
+  {
+    // הקבוצה הראשונה של שלב ב׳. יוסי בחר דווקא את שתי אלה כי **השרת כבר
+    // גוזר להן מזהה רשומה יציב מתוך `reqId`** — ובלי התנאי הזה, תור על
+    // פעולה שמוסיפה שורה פשוט מכפיל כסף.
+    const root = path.join(__dirname, '..');
+    const api = fs.readFileSync(root + '/src/lib/api.ts', 'utf8');
+    ok(/addDonationQueued/.test(api) && /submitWrite\('addDonation'/.test(api),
+       'קיים עוטף לתרומה');
+    ok(/addMeetingQueued/.test(api) && /submitWrite\('addMeeting'/.test(api),
+       'וקיים עוטף למפגש');
+
+    // כל מופעי addMeeting הומרו, לא רק MeetingModal. נקודה שנשארה מאחור
+    // היא בדיוק המקום שבו אשר יראה „נכשל” וילחץ שוב.
+    const files = ['DonationModal', 'MeetingModal', 'QuickLogButtons',
+                   'HolidayModal', 'EventsTab', 'SettingsTab'];
+    files.forEach(f => {
+      const src = fs.readFileSync(`${root}/src/components/${f}.tsx`, 'utf8');
+      ok(!/apiPost\(\s*'add(Donation|Meeting)'/.test(src),
+         `${f}: אין קריאה ישירה שעוקפת את התור`);
+    });
+
+    const dm = fs.readFileSync(root + '/src/components/DonationModal.tsx', 'utf8');
+    ok(/outcome\.status !== 'failed'/.test(dm),
+       'תרומה: „ממתין” נחשב הצלחה ולא שולח את המשתמש ללחוץ שוב');
+
+    const quick = fs.readFileSync(root + '/src/components/QuickLogButtons.tsx', 'utf8');
+    ok(/outcome\.status === 'failed'/.test(quick)
+       && quick.indexOf("setLogged(prev => ({ ...prev, [meetType]: Date.now() }))")
+          > quick.indexOf("if (outcome.status === 'failed')"),
+       'תיעוד מהיר: „נרשם” מוצג רק אחרי שהמפגש אושר או נשמר בתור');
+    ok(/disabled=\{isRecent\('טלפון'\) \|\| saving\['טלפון'\]\}/.test(quick),
+       'תיעוד מהיר: לחיצה כפולה חסומה בזמן השמירה');
+
+    // דיווח מרוכז חייב להפריד „אושרו” מ„ממתינות”, אחרת המספר שמוצג
+    // למשתמש הוא מספר שאי אפשר לסמוך עליו.
+    const st = fs.readFileSync(root + '/src/components/SettingsTab.tsx', 'utf8');
+    ok(/queuedCount/.test(st) && /ממתינות לשליחה/.test(st),
+       'סנכרון מרוכז: הממתינות נספרות בנפרד מהמאושרות');
+  }
+
   console.log('\nכה. ישן בתור, חדש הצליח — הישן אינו דורס:');
   {
     // הבאג שיוסי תיאר, והוא נראה למשתמש כמו „הנתונים חזרו אחורה לבד”:
@@ -387,6 +428,42 @@ const throwFail = async () => { throw new Error('נפילה'); };
     ok(projectsDone === true, 'שמירת הפרויקטים רצה בלי להמתין לאנשי הקשר');
     releaseCrm();
     await Promise.all([pCrm, pProj]);
+  }
+
+  console.log('\nכח2. ניסיון חוזר ישן ושמירה חדשה עוברים באותה שרשרת:');
+  {
+    // A נשמרה בתור. כשהחיבור חוזר מתחילה שליחתה, ובאותו רגע המשתמש
+    // שומר B. בלי אותה שרשרת בדיוק, B יכולה להגיע ראשונה ואז A הישנה
+    // מגיעה אחריה ומחזירה את כל המסך לאחור.
+    reset();
+    await Q.trackedPost('saveFinance', { data: { v: 'A' } }, valueFail);
+
+    const order = [];
+    let releaseA, announceA;
+    const gateA = new Promise(r => { releaseA = r; });
+    const startedA = new Promise(r => { announceA = r; });
+    const flush = Q.flushQueue(async (_a, d) => {
+      order.push('התחיל ' + d.data.v);
+      announceA();
+      await gateA;
+      order.push('הסתיים ' + d.data.v);
+      return { success: true };
+    });
+
+    await startedA;
+    const fresh = Q.submitWrite('saveFinance', { data: { v: 'B' } }, async (_a, d) => {
+      order.push('התחיל ' + d.data.v);
+      order.push('הסתיים ' + d.data.v);
+      return { success: true };
+    });
+    await new Promise(r => setTimeout(r, 10));
+    ok(!order.includes('התחיל B'),
+       'B ממתינה עד ש-A הישנה מסיימת — A לא תוכל להגיע אחריה ולדרוס');
+
+    releaseA();
+    await Promise.all([flush, fresh]);
+    ok(order.join('|') === 'התחיל A|הסתיים A|התחיל B|הסתיים B',
+       'השרת רואה קודם את הישן ואז את החדש: ' + order.join(' → '));
   }
 
   console.log('\nכט. האזהרה שורדת רענון:');

@@ -11,7 +11,7 @@ import { computeMissingAttendanceContacts } from '../lib/backfillContacts';
 import { collectLegacyYahrzeits } from '../lib/family';
 import { AppearanceCard } from './AppearanceCard';
 import { CardTitle, Explain } from './Explain';
-import { apiPost } from '../lib/api';
+import { addMeetingQueued } from '../lib/api';
 import { getOrg, resetOrg } from '../lib/orgConfig';
 import { SetupWizard } from './SetupWizard';
 import { HolidayCategory, CATEGORY_LABEL, CATEGORY_HINT, groupHolidayNames } from '../lib/holidayFilter';
@@ -92,13 +92,17 @@ export function SettingsTab() {
     setSyncResult(null);
     setSyncProgress({ done: 0, total: missing.length });
     let successCount = 0;
+    // מי שנכנס לתור נספר בנפרד. מסך שמדווח „נוצרו 40 רשומות” חייב לומר
+    // את האמת: 40 **אושרו**, ועוד כמה ממתינות לשליחה. ערבוב השניים היה
+    // הופך את המספר המדווח למספר שאי אפשר לסמוך עליו.
+    let queuedCount = 0;
     const failedNames: string[] = [];
 
     // רץ ברצף (לא במקביל) כדי לא להעמיס על ה-Apps Script שמריץ בקשה אחת בכל פעם.
     for (let i = 0; i < missing.length; i++) {
       const m = missing[i];
       try {
-        const res = await apiPost('addMeeting', {
+        const outcome = await addMeetingQueued({
           name: m.name,
           date: m.date,
           meetType: m.meetType,
@@ -106,11 +110,9 @@ export function SettingsTab() {
           notes: m.notes,
           nextMeet: ''
         });
-        if (res?.error) {
-          failedNames.push(`${m.name} (${m.date})`);
-        } else {
-          successCount++;
-        }
+        if (outcome.status === 'failed') failedNames.push(`${m.name} (${m.date})`);
+        else if (outcome.status === 'queued') queuedCount++;
+        else successCount++;
       } catch {
         failedNames.push(`${m.name} (${m.date})`);
       }
@@ -119,10 +121,11 @@ export function SettingsTab() {
 
     refresh();
     setIsSyncing(false);
+    const waiting = queuedCount > 0 ? ` ${queuedCount} ממתינות לשליחה ויישלחו לבד.` : '';
     setSyncResult(
       failedNames.length === 0
-        ? `✓ הושלם: נוצרו ${successCount} רשומות יצירת קשר חדשות.`
-        : `נוצרו ${successCount} רשומות. נכשלו ${failedNames.length}: ${failedNames.slice(0, 10).join(', ')}${failedNames.length > 10 ? '...' : ''}`
+        ? `✓ הושלם: נוצרו ${successCount} רשומות יצירת קשר חדשות.${waiting}`
+        : `נוצרו ${successCount} רשומות.${waiting} לא נשמרו ${failedNames.length}: ${failedNames.slice(0, 10).join(', ')}${failedNames.length > 10 ? '...' : ''}`
     );
   };
 

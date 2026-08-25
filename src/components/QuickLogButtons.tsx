@@ -20,17 +20,30 @@ function resolvePhone(donorName: string, donors: Record<string, any>, crm: Recor
 export function QuickLogButtons({ donorName, compact = false, personalDateContext }: { donorName: string; compact?: boolean; personalDateContext?: { onComplete: () => void } }) {
   const { refresh, donors, crm } = useAppStore();
   const [logged, setLogged] = useState<Record<string, number>>({});
+  const [saving, setSaving] = useState<Record<string, boolean>>({});
 
   const phone = resolvePhone(donorName, donors, crm);
 
   const handleQuickLog = async (meetType: 'טלפון' | 'אישית') => {
-    setLogged(prev => ({ ...prev, [meetType]: Date.now() }));
-    const { apiPost } = await import('../lib/api');
-    const dateStr = new Date().toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' });
-    await apiPost('addMeeting', { name: donorName, date: dateStr, meetType, purpose: '', notes: '' });
-    logAction('meeting');
-    refresh();
-    personalDateContext?.onComplete();
+    if (saving[meetType]) return;
+    setSaving(prev => ({ ...prev, [meetType]: true }));
+    try {
+      const { addMeetingQueued } = await import('../lib/api');
+      const dateStr = new Date().toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' });
+      const outcome = await addMeetingQueued({ name: donorName, date: dateStr, meetType, purpose: '', notes: '' });
+      if (outcome.status === 'failed') {
+        alert('המפגש לא נשמר: ' + outcome.error);
+        return;
+      }
+      setLogged(prev => ({ ...prev, [meetType]: Date.now() }));
+      logAction('meeting');
+      refresh();
+      personalDateContext?.onComplete();
+    } catch (error: any) {
+      alert('המפגש לא נשמר: ' + String(error?.message || error));
+    } finally {
+      setSaving(prev => ({ ...prev, [meetType]: false }));
+    }
   };
 
   const isRecent = (meetType: string) => !!logged[meetType] && Date.now() - logged[meetType] < 60000;
@@ -62,17 +75,17 @@ export function QuickLogButtons({ donorName, compact = false, personalDateContex
       )}
       <button
         onClick={(e) => { e.stopPropagation(); handleQuickLog('טלפון'); }}
-        disabled={isRecent('טלפון')}
+        disabled={isRecent('טלפון') || saving['טלפון']}
         className={`flex-1 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg font-bold flex items-center justify-center gap-1 active:scale-95 transition-transform disabled:opacity-60 ${size}`}
       >
-        {isRecent('טלפון') ? '✓ נרשם' : '📞 שוחחתי'}
+        {saving['טלפון'] ? 'שומר…' : isRecent('טלפון') ? '✓ נרשם' : '📞 שוחחתי'}
       </button>
       <button
         onClick={(e) => { e.stopPropagation(); handleQuickLog('אישית'); }}
-        disabled={isRecent('אישית')}
+        disabled={isRecent('אישית') || saving['אישית']}
         className={`flex-1 bg-green-50 text-green-700 border border-green-200 rounded-lg font-bold flex items-center justify-center gap-1 active:scale-95 transition-transform disabled:opacity-60 ${size}`}
       >
-        {isRecent('אישית') ? '✓ נרשם' : '🤝 נפגשנו'}
+        {saving['אישית'] ? 'שומר…' : isRecent('אישית') ? '✓ נרשם' : '🤝 נפגשנו'}
       </button>
     </div>
   );

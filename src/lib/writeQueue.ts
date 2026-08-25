@@ -352,39 +352,45 @@ export async function flushQueue(post: PostFn): Promise<{ sent: number; failed: 
 
   // עותק של הרשימה בתחילת הריצה. פריטים שנוספים תוך כדי יטופלו בסבב הבא.
   for (const item of loadQueue()) {
-    let res: any;
-    try {
-      // אותו `reqId` מהניסיון הראשון — כך השרת מזהה שזו אותה פעולה
-      // ואינו מבצע אותה פעמיים.
-      res = await post(item.action, item.data, item.reqId);
-    } catch (e: any) {
-      res = { success: false, error: String(e?.message || e) };
-    }
+    await serialize(item.action, async () => {
+      // כתיבה חדשה יותר שהצליחה בזמן שהמתנו בשרשרת כבר הסירה את הפריט.
+      // במקרה כזה אסור לשלוח כעת את הגרסה הישנה ולדרוס אותה.
+      const before = loadQueue();
+      if (!before.some(i => i.id === item.id)) return;
 
-    // נטען מחדש בכל סיבוב: ייתכן שנוספה כתיבה חדשה תוך כדי, ואיחוד
-    // הפעולות עשוי היה להסיר את הפריט הזה בעודנו שולחים אותו.
-    const now = loadQueue();
-    const at = now.findIndex(i => i.id === item.id);
-    if (at === -1) { if (!isFailure(res)) sent++; continue; }
+      let res: any;
+      try {
+        // אותו `reqId` מהניסיון הראשון — כך השרת מזהה שזו אותה פעולה
+        // ואינו מבצע אותה פעמיים.
+        res = await post(item.action, item.data, item.reqId);
+      } catch (e: any) {
+        res = { success: false, error: String(e?.message || e) };
+      }
 
-    if (isFailure(res)) {
-      failed++;
-      // בקשה שכבר בטיפול בשרת אינה תקלה. משאירים אותה בתור לסבב הבא, אבל
-      // בלי להעלות את מונה הניסיונות — אחרת המחוון היה צובע אדום ומודיע
-      // על „ניסיונות שנכשלים” בזמן שהכול בסדר.
-      const inFlight = isRetryable(res);
-      now[at] = {
-        ...now[at],
-        attempts: inFlight ? now[at].attempts : now[at].attempts + 1,
-        lastError: inFlight ? 'הבקשה כבר בטיפול בשרת' : String(res?.error || 'שגיאה לא ידועה'),
-      };
-      writeQueue(now);
-    } else {
-      sent++;
-      now.splice(at, 1);
-      writeQueue(now);
-      refreshFull(now);   // כאן, ורק כאן, באמת התפנה מקום
-    }
+      // נטען מחדש: ייתכן שפעולה שאינה מחליפה נוספה תוך כדי השליחה.
+      const now = loadQueue();
+      const at = now.findIndex(i => i.id === item.id);
+      if (at === -1) { if (!isFailure(res)) sent++; return; }
+
+      if (isFailure(res)) {
+        failed++;
+        // בקשה שכבר בטיפול בשרת אינה תקלה. משאירים אותה בתור לסבב הבא, אבל
+        // בלי להעלות את מונה הניסיונות — אחרת המחוון היה צובע אדום ומודיע
+        // על „ניסיונות שנכשלים” בזמן שהכול בסדר.
+        const inFlight = isRetryable(res);
+        now[at] = {
+          ...now[at],
+          attempts: inFlight ? now[at].attempts : now[at].attempts + 1,
+          lastError: inFlight ? 'הבקשה כבר בטיפול בשרת' : String(res?.error || 'שגיאה לא ידועה'),
+        };
+        writeQueue(now);
+      } else {
+        sent++;
+        now.splice(at, 1);
+        writeQueue(now);
+        refreshFull(now);   // כאן, ורק כאן, באמת התפנה מקום
+      }
+    });
   }
 
   return { sent, failed };

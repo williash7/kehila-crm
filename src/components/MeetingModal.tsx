@@ -21,12 +21,12 @@ export function MeetingModal({ donorName, onClose }: { donorName?: string; onClo
     
     setIsSubmitting(true);
     try {
-      const { apiPost } = await import('../lib/api');
-      
+      const { addMeetingQueued } = await import('../lib/api');
+
       const dateStr = new Date(date).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' });
       const nextStr = nextMeet ? new Date(nextMeet).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '';
 
-      const res = await apiPost('addMeeting', {
+      const outcome = await addMeetingQueued({
         name: name.trim(),
         date: dateStr,
         meetType: meetType,
@@ -34,10 +34,12 @@ export function MeetingModal({ donorName, onClose }: { donorName?: string; onClo
         notes: notes.trim(),
         nextMeet: nextStr
       });
-      
-      if (res.error) {
-        alert('שגיאה בשמירה: ' + res.error);
+
+      if (outcome.status === 'failed') {
+        alert('המפגש לא נשמר: ' + outcome.error);
       } else {
+        // גם `queued` סוגר את החלון. המפגש התקבל, והפס העליון כבר מדווח
+        // שהוא ממתין לשליחה — אין סיבה להשאיר את אשר מול טופס פתוח.
         logAction('meeting');
         refresh();
         onClose();

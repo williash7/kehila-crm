@@ -189,6 +189,26 @@ async function restorePost(action: string, data: any) {
   return res;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// שלב ב׳, קבוצה ראשונה: תרומה ומפגש.
+//
+// שתי אלה נבחרו ראשונות מסיבה מדויקת שיוסי הגדיר: **השרת כבר גוזר להן מזהה
+// רשומה יציב מתוך `reqId`.** כלומר ניסיון חוזר אינו יכול ליצור שורה שנייה
+// גם אם הראשונה כבר נכתבה — וזה התנאי שבלעדיו תור פשוט מכפיל כסף.
+//
+// שאר הפעולות הישירות ממתינות בכוונה. פעולה שמחזירה `id` שהמסך מקשר אליו,
+// או שמסתמכת על מספרי תוצאה מהשרת, אינה יכולה לומר „ממתין” בלי לשקר —
+// היא עדיין לא יודעת מה התוצאה.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** הוספת תרומה, עם תור. `queued` = התקבלה, לא נכשלה. */
+export const addDonationQueued = (data: any): Promise<WriteOutcome> =>
+  submitWrite('addDonation', data, apiPost);
+
+/** רישום מפגש, עם תור. משמש בכל מופעי „נפגשתי” באפליקציה. */
+export const addMeetingQueued = (data: any): Promise<WriteOutcome> =>
+  submitWrite('addMeeting', data, apiPost);
+
 export const restoreBegin = (manifest: any) => restorePost('restoreBegin', { manifest });
 export const restoreSheet = (data: any) => restorePost('restoreSheet', data);
 export const restoreSync = (data: any) => restorePost('restoreSync', data);

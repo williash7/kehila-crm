@@ -225,24 +225,23 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
 
     if (newlyPresent.length > 0 && ev) {
       try {
-        const { apiPost } = await import('../lib/api');
+        const { addMeetingQueued } = await import('../lib/api');
         const results = await Promise.all(newlyPresent.map(name =>
-          apiPost('addMeeting', {
+          addMeetingQueued({
             name,
             date: slashDateToDotDate(dateKey),
             meetType: 'נוכחות בפעילות',
             purpose: ev.name || '',
             notes: `נוכחות בפעילות: ${ev.name || ''}`,
             nextMeet: ''
-          }).then(res => ({ name, res }))
+          }).then(outcome => ({ name, outcome }))
         ));
-        // apiPost תמיד "מצליח" מבחינת ה-Promise (הוא בולע שגיאות רשת
-        // בעצמו) — לכן חובה לבדוק את res.error בפועל, אחרת כשל בשמירה
-        // בשרת פשוט לא נראה בכלל.
-        const failed = results.filter(r => r.res?.error);
+        // ההערה שהייתה כאן צדקה: `apiPost` בולעת שגיאות ומחזירה אותן
+        // כערך, ולכן חובה לבדוק את התוצאה ולא רק את ה-Promise. עכשיו
+        // המצב מפורש — ומי שנכנס לתור אינו „נכשל”, הוא יישלח לבד.
+        const failed = results.filter(r => r.outcome.status === 'failed');
         if (failed.length > 0) {
-          console.error('addMeeting failed for:', failed);
-          alert(`הנוכחות נשמרה, אך רישום יצירת קשר נכשל עבור: ${failed.map(f => f.name).join(', ')}`);
+          alert(`הנוכחות נשמרה, אך רישום יצירת קשר לא נשמר עבור: ${failed.map(f => f.name).join(', ')}`);
         }
         refresh();
       } catch (err) {

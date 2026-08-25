@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { FullScreenView } from './FullScreenView';
 import { useAppStore } from '../store/AppContext';
-import { apiPost } from '../lib/api';
+import { addDonationQueued } from '../lib/api';
 import { ThankYouModal } from './ThankYouModal';
 import { activeProjects } from '../lib/projects';
 import { CashDestination } from '../types';
@@ -44,7 +44,7 @@ export function DonationModal({ onClose, defaultName = '' }: DonationModalProps)
       return;
     }
     
-    const res = await apiPost('addDonation', {
+    const outcome = await addDonationQueued({
       name: name.trim(),
       date: dateStr,
       amount: parseFloat(amount),
@@ -55,7 +55,13 @@ export function DonationModal({ onClose, defaultName = '' }: DonationModalProps)
     });
 
     setLoading(false);
-    if (!res.error) {
+
+    // `queued` נחשב הצלחה, וזה העיקר כאן.
+    //
+    // התרומה נשמרת מקומית ומוצגת מיד, והשרת גוזר לה מזהה יציב מ-`reqId` —
+    // ולכן הניסיון החוזר לא ייצור שורה שנייה. אילו הצגנו „נכשל”, אשר היה
+    // לוחץ שוב, **וזו הלחיצה שיוצרת תרומה כפולה.**
+    if (outcome.status !== 'failed') {
       addManualDonation({
         name: name.trim(),
         date: dateStr,
@@ -73,7 +79,8 @@ export function DonationModal({ onClose, defaultName = '' }: DonationModalProps)
          onClose();
       }
     } else {
-      alert('שגיאה בהוספת תרומה: ' + res.error);
+      // רק כאן זו באמת שגיאה: לא הגיעה לשרת **וגם** לא נשמרה בתור.
+      alert('התרומה לא נשמרה: ' + outcome.error);
     }
   };
 
