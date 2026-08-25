@@ -19,6 +19,7 @@ import { isSignedIn, signOut, currentAccount, isGoogleLoginAvailable } from '../
 import { deleteConfigFromDrive } from '../lib/driveConfig';
 import { DataOnboardingWizard } from './DataOnboardingWizard';
 import { NavigationSettingsCard } from './NavigationSettingsCard';
+import { AuditLogCard } from './AuditLogCard';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // בפתיחה מוצגות קטגוריות בלבד. לחיצה נכנסת לעמוד ההגדרות הרלוונטי,
@@ -497,6 +498,8 @@ export function SettingsTab() {
 
         {group === 'data' && (<>
         <BackupCard />
+
+        <AuditLogCard />
 
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6] space-y-3">
           <CardTitle title="ייבוא מידע קיים">

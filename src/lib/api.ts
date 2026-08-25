@@ -133,6 +133,26 @@ export async function apiGetAll(): Promise<any | null> {
   return res;
 }
 
+export interface AuditEntry {
+  id: string;
+  at: string;
+  action: string;
+  label: string;
+  subject?: string;
+  details?: string;
+  source?: string;
+}
+
+/**
+ * יומן השינויים נטען רק לפי דרישה ממסך ההגדרות. הוא אינו חלק מחבילת
+ * הפתיחה, כדי שמנגנון בקרה שאמור לעזור בעת תקלה לא יאט כל פתיחה רגילה.
+ */
+export async function getAuditCloud(): Promise<{ entries: AuditEntry[]; error?: string }> {
+  const res = await apiGet('getAudit');
+  if (res?._error) return { entries: [], error: String(res._error) };
+  return { entries: Array.isArray(res?.data) ? res.data : [] };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // גיבוי ותקינות — קריאות שאסור להן ליפול על נתוני דמה.
 //
