@@ -55,10 +55,13 @@ function taskTitle(task: any): string {
 
 function taskDocuments(tasks: any[], parent: { id: string; name: string; kind: string }): GlobalSearchDocument[] {
   const docs: GlobalSearchDocument[] = [];
-  (tasks || []).forEach((task, index) => {
+  (tasks || []).forEach((task) => {
     const title = taskTitle(task);
     if (!title) return;
-    const taskId = String(task?.id || `${parent.id}:${index}`);
+    // משימה בלי מזהה אינה נכנסת לחיפוש. מסלול הטעינה משלים מזהים לנתונים
+    // ישנים; נפילה למיקום ברשימה עלולה לפתוח משימה אחרת אחרי מיון או מחיקה.
+    const taskId = String(task?.id || '').trim();
+    if (!taskId) return;
     const due = String(task?.dueDate || task?.date || '').trim();
     docs.push({
       id: `task:${parent.kind}:${parent.id}:${taskId}`,

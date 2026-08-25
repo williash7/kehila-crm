@@ -1,4 +1,5 @@
 import { HistoryEntry } from './history';
+import { createTaskId } from './taskIdentity';
 
 export interface CycleTemplate {
   sourceHistoryId: string;
@@ -50,6 +51,7 @@ function resetTask(task: any, sourceDate: unknown, targetDate: unknown, createdA
     doneAt: _doneAt,
     completedAt: _completedAt,
     createdAt: _createdAt,
+    id: _id,
     dueDate: oldDueDate,
     ...rest
   } = task || {};
@@ -63,6 +65,7 @@ function resetTask(task: any, sourceDate: unknown, targetDate: unknown, createdA
       ? { subtasks: rest.subtasks.map((subtask: any) => ({ ...subtask, done: false })) }
       : {}),
     ...(shiftedDueDate ? { dueDate: shiftedDueDate } : {}),
+    id: createTaskId(),
     createdAt,
   };
 }

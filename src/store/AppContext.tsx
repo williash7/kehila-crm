@@ -35,6 +35,7 @@ import { hebcalUrl } from '../lib/orgConfig';
 import { chabadHolidayItems } from '../lib/chabadDates';
 import { FinanceData, emptyFinanceData, normalizeFinanceData } from '../lib/finance';
 import { trackedPost, startAutoFlush, WriteOutcome } from '../lib/writeQueue';
+import { ensureTaskIdsInCollections } from '../lib/taskIdentity';
 
 interface AppState {
   summary: ReportSummary | null;
@@ -208,11 +209,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setDonations(d.donations || []);
       setHk(annotateRenewals(d.hk || []));
       setFailures(d.failures || []);
-      setEventsData(normalizeActivities(d.events));
-      setHolidayExtras(d.holidayExtras || {});
+      const identified = ensureTaskIdsInCollections({
+        // משלימים מזהים לפני הנרמול: כך גם הורה ישן שחסר לו מזהה
+        // נותן למשימותיו תוצאה זהה בכל מכשיר.
+        events: d.events || [],
+        holidayExtras: d.holidayExtras || {},
+        projects: d.projects || [],
+      });
+      setEventsData(normalizeActivities(identified.events));
+      setHolidayExtras(identified.holidayExtras);
       setHistory(d.history || []);
       setHomeVisits(d.homeVisits?.rounds ? d.homeVisits : { rounds: [] });
-      setProjects(normalizeProjects(d.projects));
+      setProjects(normalizeProjects(identified.projects));
       setFinanceData(normalizeFinanceData(d.finance || getFinanceData() || emptyFinanceData()));
       if (d.rebbeDate) setRebbeDate(new Date(d.rebbeDate));
 
@@ -269,12 +277,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       resolvedMerges = merges;
       setCrm(cleanedCrm);
       setNameMerges(merges);
-      setEventsData(normalizeActivities(cloudEvents));
-      setHolidayExtras(cloudExtras);
+      const identified = ensureTaskIdsInCollections({
+        events: cloudEvents || [],
+        holidayExtras: cloudExtras || {},
+        projects: cloudProjects || [],
+      });
+      const normalizedEvents = normalizeActivities(identified.events);
+      const normalizedProjects = normalizeProjects(identified.projects);
+      setEventsData(normalizedEvents);
+      setHolidayExtras(identified.holidayExtras);
       setHistory(cloudHistory || []);
       setHomeVisits(cloudHomeVisits?.rounds ? cloudHomeVisits : { rounds: [] });
-      setProjects(normalizeProjects(cloudProjects));
+      setProjects(normalizedProjects);
       setFinanceData(normalizeFinanceData(cloudFinance || emptyFinanceData()));
+
+      // השלמת המזהים היא מעבר חד-פעמי ושקוף. כל מערך נשמר רק אם באמת
+      // נוספו בו מזהים; בטעינות הבאות אין כתיבה נוספת.
+      if (identified.changedEvents) saveEventsDataCloud(normalizedEvents);
+      if (identified.changedHolidayExtras) saveHolidayExtrasCloud(identified.holidayExtras);
+      if (identified.changedProjects) saveProjectsCloud(normalizedProjects);
+      return { ...identified, events: normalizedEvents, projects: normalizedProjects };
     };
 
     // ── בקשה אחת, ואם אי אפשר — שתים־עשרה ─────────────────────────────────
@@ -292,16 +314,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       // שרת מגרסה קודמת מחזיר getAll תקין בלי השדה החדש. במקרה כזה שומרים
       // על העותק המקומי ולא דורסים אותו בריק עד שאשר יפרוס את Code.gs החדש.
       const bundleFinance = bundle.finance === undefined ? getFinanceData() : bundle.finance;
-      applyCloud(bundle.crm, bundle.events, bundle.holidayExtras,
-                 bundle.history, bundle.homeVisits, bundle.projects, bundleFinance);
+      const identified = applyCloud(bundle.crm, bundle.events, bundle.holidayExtras,
+                                    bundle.history, bundle.homeVisits, bundle.projects, bundleFinance);
       // שומרים גם בעותקים המקומיים, כדי שמסכים שקוראים אותם ישירות
       // לא יראו נתונים ישנים.
       saveCRMData(bundle.crm || {});
-      saveEventsData(bundle.events || []);
-      saveHolidayExtras(bundle.holidayExtras || {});
+      saveEventsData(identified.events);
+      saveHolidayExtras(identified.holidayExtras);
       saveHistoryData(bundle.history || []);
       saveHomeVisitsData(bundle.homeVisits || { rounds: [] });
-      saveProjectsLocal(bundle.projects || []);
+      saveProjectsLocal(identified.projects);
       saveFinanceData(bundleFinance || emptyFinanceData());
     } else {
       cloudLoads = Promise.all([

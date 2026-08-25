@@ -1,12 +1,16 @@
 // משימות חג/אירוע — כולל "משימת הזמנה" מיוחדת: רשימת אנשים להתקשר אליהם,
 // עם צ'קליסט לפי איש והערכת זמן כוללת (3 דקות שיחה לכל אדם).
 
+import { createTaskId } from './taskIdentity';
+
 export interface SubTask {
   text: string;
   done: boolean;
 }
 
 export interface TaskItem {
+  /** מזהה קבוע. אופציונלי בטיפוס רק כדי לקרוא נתונים ישנים לפני ההשלמה. */
+  id?: string;
   text: string;
   done: boolean;
   kind?: 'invite' | 'holidayReminder' | 'homeVisit' | 'eventReminder' | 'meeting' | 'thankYou';
@@ -53,8 +57,8 @@ export function eisenhowerQuadrant(task: { urgent?: boolean; important?: boolean
 
 // מוסיף createdAt="עכשיו" לכל אובייקט משימה חדש — כדי שלכל משימה יהיה תאריך
 // למיון גם אם לא הוגדר לה dueDate מפורש ואין לה הקשר חג/אירוע (ראה taskSort.ts).
-export function stampCreated<T extends object>(task: T): T & { createdAt: string } {
-  return { ...task, createdAt: new Date().toISOString() };
+export function stampCreated<T extends object>(task: T): T & { id: string; createdAt: string } {
+  return { ...task, id: createTaskId(), createdAt: new Date().toISOString() };
 }
 
 export const MINUTES_PER_CALL = 3;
