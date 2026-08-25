@@ -22,6 +22,8 @@ export interface AppSettings {
   donationsSinceDate: string; // ISO "yyyy-MM-dd" — מציגים סכומי תרומות רק מתאריך זה ואילך. '' = כל הזמנים.
   showPaymentStatuses: boolean; // מציג טאב בקרה נפרד; אינו משנה סכומים או נתונים
   showFinanceCenter: boolean; // מרכז כספי נפרד; כבוי כברירת מחדל כדי לשמור על ממשק נקי
+  dailyReminderEnabled: boolean; // תזכורת מקומית למכשיר; הרשאה והזמן הם בחירה מפורשת
+  dailyReminderTime: string; // HH:mm, נבדק כשהאפליקציה פעילה/מתעוררת
   defaultTaskView: 'grouped' | 'flat' | 'calendar'; // תצוגת ברירת המחדל שנפתחת בטאב משימות
   holidayVisibility: HolidayVisibility; // אילו חגים ותאריכים מוצגים בלוח
 
@@ -144,6 +146,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   donationsSinceDate: '',
   showPaymentStatuses: false,
   showFinanceCenter: false,
+  dailyReminderEnabled: false,
+  dailyReminderTime: '08:00',
   defaultTaskView: 'grouped',
   holidayVisibility: DEFAULT_VISIBILITY,
   theme: 'classic',

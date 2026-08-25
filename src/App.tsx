@@ -31,6 +31,7 @@ import { shouldShowDataOnboarding } from './lib/dataOnboarding';
 import { GlobalSearchTab } from './components/GlobalSearchTab';
 import { GlobalSearchResult } from './lib/globalSearch';
 import { QuickInboxTab } from './components/QuickInboxTab';
+import { DailyReminderAgent } from './components/DailyReminderAgent';
 
 // תווית לכפתור "+" הגלובלי (FAB במובייל, "הוסף X" בסיידבר) לפי המסך הפעיל.
 // מסכים שלא ברשימה (דוחות, פוסטר, הגדרות) — אין פעולת "הוספה" משמעותית, הכפתור מוסתר בהם.
@@ -96,6 +97,8 @@ function AppContent() {
       )}
 
       <PendingWritesBanner />
+
+      <DailyReminderAgent />
 
       <ScriptVersionBanner />
 

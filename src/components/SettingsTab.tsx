@@ -20,6 +20,7 @@ import { deleteConfigFromDrive } from '../lib/driveConfig';
 import { DataOnboardingWizard } from './DataOnboardingWizard';
 import { NavigationSettingsCard } from './NavigationSettingsCard';
 import { AuditLogCard } from './AuditLogCard';
+import { DailyReminderCard } from './DailyReminderCard';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // בפתיחה מוצגות קטגוריות בלבד. לחיצה נכנסת לעמוד ההגדרות הרלוונטי,
@@ -200,6 +201,7 @@ export function SettingsTab() {
         {/* התשובה ל"האם הכול מעודכן?" — ראשונה, כי זו השאלה הראשונה
             שנשאלת כשמשהו לא מתנהג כמצופה */}
         <SystemStatusCard />
+        <DailyReminderCard />
         {/* פרטי הארגון — נקבעים באשף ההגדרה, וניתנים לעריכה כאן בכל עת */}
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6]">
           <h3 className="font-['Frank_Ruhl_Libre'] text-lg font-bold text-[#0D1B2A] mb-1">הארגון שלי</h3>

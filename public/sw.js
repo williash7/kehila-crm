@@ -126,3 +126,14 @@ self.addEventListener('fetch', event => {
     }
   })());
 });
+
+// לחיצה על התזכורת היומית מחזירה למסך האפליקציה הקיים, ואם אין כזה פותחת
+// אותו. אין כאן קריאת נתונים או כתיבה ברקע.
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  event.waitUntil((async () => {
+    const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    if (windows.length) return windows[0].focus();
+    return self.clients.openWindow(event.notification.data?.url || './');
+  })());
+});
