@@ -102,6 +102,32 @@ assert.strictEqual(meetingFirst.id, 'meet:durable-meeting');
 assert.strictEqual(meetingRetry.duplicate, true, 'ניסיון חוזר של מפגש מזוהה גם בלי מטמון תשובה');
 assert.strictEqual(table_(SH.LOG).rows.length, 2, 'תרומה אחת ומפגש אחד בלבד');
 
+resetSheet(SH.HK);
+_hkIndex = null;
+const standingBody = {
+  reqId: 'durable-standing-order', name: 'ישראל ישראלי', amount: 100,
+  startDate: '25/08/2026', payments: 12,
+};
+const standingFirst = addStandingOrder_(standingBody, { skipGenerate: true });
+flushWrites_();
+const standingRetry = addStandingOrder_(standingBody, { skipGenerate: true });
+flushWrites_();
+assert.strictEqual(standingFirst.id, 'hkman:durable-standing-order');
+assert.strictEqual(standingRetry.duplicate, true,
+  'ניסיון חוזר של הוראת קבע בלי מספר ספק מזוהה גם בלי מטמון תשובה');
+assert.strictEqual(table_(SH.HK).rows.length, 1, 'נשארת הוראת קבע אחת בלבד');
+
+const explicitStanding = {
+  reqId: 'explicit-standing-order', id: '998877', name: 'ישראל ישראלי',
+  amount: 120, startDate: '25/08/2026', payments: 6,
+};
+assert.strictEqual(addStandingOrder_(explicitStanding, { skipGenerate: true }).success, true,
+  'מספר ספק מפורש נוסף כרגיל');
+flushWrites_();
+const explicitRetry = addStandingOrder_(explicitStanding, { skipGenerate: true });
+assert.strictEqual(explicitRetry.success, false,
+  'התנגשות במספר ספק מפורש נשארת שגיאה גלויה ולא מוסתרת ככפילות');
+
 assert.strictEqual(held, false, 'כל הנעילות שוחררו');
 assert.ok(acquisitions >= 6, 'כל מעבר מצב עבר תחת נעילה');
 

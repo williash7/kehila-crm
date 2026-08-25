@@ -1953,8 +1953,16 @@ function addStandingOrder_(body, options) {
   if (!amount) return { success: false, error: 'חסר סכום החיוב' };
   if (!unlimited && !payments) return { success: false, error: 'חסר מספר תשלומים' };
 
-  var id = String(body.id || '').trim() || 'man' + new Date().getTime();
+  var suppliedId = String(body.id || '').trim();
+  var id = suppliedId || manualRequestRecordId_('hkman', body);
   if (hkIndex_()[id]) {
+    // הוראה בלי מספר ספק מקבלת מזהה קבוע מהבקשה. אם התשובה אבדה וזיכרון
+    // התשובות כבר נוקה, אותו ניסיון חוזר פוגש את אותה הוראה במקום ליצור
+    // אחת נוספת. מספר ספק מפורש נשאר התנגשות גלויה — ייתכן שאלה נתונים
+    // שונים, ואסור להסתיר אותה ככפילות בטוחה.
+    if (!suppliedId && body.reqId) {
+      return { success: true, id: id, created: 0, duplicate: true };
+    }
     return { success: false, error: 'הוראת קבע במספר ' + id + ' כבר קיימת בגיליון' };
   }
 
