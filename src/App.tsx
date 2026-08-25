@@ -28,6 +28,8 @@ import { SignInScreen } from './components/SignInScreen';
 import { isConfigured } from './lib/orgConfig';
 import { DataOnboardingWizard } from './components/DataOnboardingWizard';
 import { shouldShowDataOnboarding } from './lib/dataOnboarding';
+import { GlobalSearchTab } from './components/GlobalSearchTab';
+import { GlobalSearchResult } from './lib/globalSearch';
 
 // תווית לכפתור "+" הגלובלי (FAB במובייל, "הוסף X" בסיידבר) לפי המסך הפעיל.
 // מסכים שלא ברשימה (דוחות, פוסטר, הגדרות) — אין פעולת "הוספה" משמעותית, הכפתור מוסתר בהם.
@@ -67,6 +69,17 @@ function AppContent() {
     setAddTrigger({ tab, count: Date.now() });
   };
 
+  const openSearchResult = (result: GlobalSearchResult) => {
+    if (result.kind === 'contact') {
+      setScoreOpenContact(result.target.entityId);
+      return;
+    }
+    const targetTabs: Record<string, string> = {
+      donations: 'donations', activities: 'events', campaigns: 'projects', tasks: 'tasks', contacts: 'donors',
+    };
+    setActiveTab(targetTabs[result.target.tab] || 'home');
+  };
+
   if (loading) {
     return <LoadingScreen text={loadingText} />;
   }
@@ -91,6 +104,7 @@ function AppContent() {
 
         <main className="flex-1 min-w-0 pb-20 md:pb-6">
           {activeTab === 'home' && <HomeTab setTab={setActiveTab} onDonationClick={() => setIsDonationOpen(true)} onQuickAdd={requestAddFor} />}
+          {activeTab === 'search' && <GlobalSearchTab onNavigate={openSearchResult} />}
           {activeTab === 'donors' && <DonorsTab addTrigger={addTrigger} />}
           {activeTab === 'homevisits' && <HomeVisitsTab addTrigger={addTrigger} />}
           {activeTab === 'donations' && <DonationsTab onAddDonation={() => setIsDonationOpen(true)} />}

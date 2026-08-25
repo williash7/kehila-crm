@@ -1,5 +1,6 @@
 export const NAV_ITEMS = [
   { id: 'home', label: 'דשבורד' },
+  { id: 'search', label: 'חיפוש' },
   { id: 'tasks', label: 'משימות' },
   { id: 'score', label: 'מעקב קשר' },
   { id: 'donors', label: 'אנשי קשר' },
