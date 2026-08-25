@@ -67,8 +67,8 @@
  *
  * **מעדכנים אותה בכל שינוי מהותי בקובץ.**
  */
-var CODE_VERSION = '2026-08-24d';
-var EXPORT_SCHEMA_VERSION = 1;
+var CODE_VERSION = '2026-08-26a';
+var EXPORT_SCHEMA_VERSION = 2;
 var EXPORT_MAX_LIMIT = 500;
 var CRM_MERGES_KEY = '__nameMerges__';
 var AUDIT_SYNC_KEY = 'auditLog';
@@ -1452,7 +1452,8 @@ function withRestoreLock_(fn) {
 
 function validateRestoreManifest_(manifest) {
   manifest = manifest || {};
-  if (Number(manifest.schemaVersion) !== EXPORT_SCHEMA_VERSION) {
+  var schemaVersion = Number(manifest.schemaVersion);
+  if (schemaVersion !== 1 && schemaVersion !== EXPORT_SCHEMA_VERSION) {
     throw new Error('גרסת הגיבוי אינה נתמכת');
   }
   if (!Array.isArray(manifest.sheets) || !Array.isArray(manifest.syncKeys)) {
