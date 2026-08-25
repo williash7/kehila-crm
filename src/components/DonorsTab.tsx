@@ -76,12 +76,16 @@ export function DonorsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
       alert('איש קשר בשם זה כבר קיים');
       return;
     }
+    const { updateDonorFieldQueued } = await import('../lib/api');
+    // קודם נוצר עותק מקומי; כך גם במצב ללא רשת הכרטיס קיים מיד.
+    updateCrm(name, { circle: 'far' });
+    const outcome = await updateDonorFieldQueued({ name, field: 'מקור', value: 'אפליקציה' });
+    if (outcome.status === 'failed') {
+      alert('איש הקשר נשמר בכרטיס המקומי, אך לא נשמר בגיליון: ' + outcome.error);
+      return;
+    }
     setIsAddContactOpen(false);
     setNewContactName('');
-    const { apiPost } = await import('../lib/api');
-    await apiPost('updateDonorField', { name, field: 'מקור', value: 'אפליקציה' });
-    updateCrm(name, { circle: 'far' });
-    refresh();
     setSelectedDonor(name);
   };
 

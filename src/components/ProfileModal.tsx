@@ -25,6 +25,7 @@ import { logAction } from '../lib/score';
 import { CalendarPlus } from 'lucide-react';
 import { withCity } from '../lib/orgConfig';
 import { avatarGradient } from '../lib/donorDisplay';
+import { updateDonorFieldQueued, updatePersonalDateQueued } from '../lib/api';
 
 export function ProfileModal({ name, onClose, backLabel, siblings, onSelectSibling }: {
   name: string;
@@ -35,11 +36,12 @@ export function ProfileModal({ name, onClose, backLabel, siblings, onSelectSibli
   siblings?: SiblingItem[];
   onSelectSibling?: (name: string) => void;
 }) {
-  const { donors, crm, donations, updateCrm, refresh, settings, holidayExtras, updateHolidayExtras } = useAppStore();
+  const { donors, crm, donations, updateCrm, settings, holidayExtras, updateHolidayExtras } = useAppStore();
   const [editingPhone, setEditingPhone] = useState(false);
   const [phoneInput, setPhoneInput] = useState('');
   const [isEditingFields, setIsEditingFields] = useState(false);
   const [editedFields, setEditedFields] = useState<Record<string, string>>({});
+  const [pendingFieldWrites, setPendingFieldWrites] = useState<Array<{ action: 'updateDonorField' | 'updatePersonalDate'; data: any }>>([]);
   const [hebrewPickerValues, setHebrewPickerValues] = useState<Record<string, HebrewDateValue>>({});
   const [isSaving, setIsSaving] = useState(false);
   const [isDonationOpen, setIsDonationOpen] = useState(false);
@@ -188,39 +190,59 @@ export function ProfileModal({ name, onClose, backLabel, siblings, onSelectSibli
 
   const handleFieldSave = async () => {
     setIsSaving(true);
-    import('../lib/api').then(async ({ apiPost }) => {
+    try {
       let changed = false;
       const reverseMapRaw = localStorage.getItem('reverseHeaderMap');
       const reverseHeaderMap = reverseMapRaw ? JSON.parse(reverseMapRaw) : {};
-      
       const newCustomFields = { ...(crmData.customFields || {}) };
+      let specs = [...pendingFieldWrites];
+      const addSpec = (spec: { action: 'updateDonorField' | 'updatePersonalDate'; data: any }) => {
+        // אם המשתמש שינה שוב שדה שניסיון קודם שלו נכשל, הערך החדש מחליף
+        // את הישן. אסור לשלוח את שניהם במקביל ולתת לישן להגיע אחרון.
+        specs = specs.filter(existing => !(existing.action === spec.action
+          && existing.data.name === spec.data.name && existing.data.field === spec.data.field));
+        specs.push(spec);
+      };
 
       for (const [field, value] of Object.entries(editedFields)) {
-         const originalValue = (donor as any)[field] || newCustomFields[field] || '';
+         const originalValue = newCustomFields[field] ?? (donor as any)[field] ?? '';
          if (originalValue !== value) {
             newCustomFields[field] = value;
             changed = true;
-            
+
             // Still attempt to save to google sheets if it has a mapping
             if (reverseHeaderMap[field]) {
                 const backendFieldKey = reverseHeaderMap[field];
-                await apiPost('updateDonorField', { name, field: backendFieldKey, value });
+                addSpec({ action: 'updateDonorField', data: { name, field: backendFieldKey, value } });
             }
 
             // Update personal details sheet for dates
             if (isImportantDateKey(field)) {
-                await apiPost('updatePersonalDate', { name, field, value });
+                addSpec({ action: 'updatePersonalDate', data: { name, field, value } });
             }
          }
       }
-      
+
       if (changed) {
+         // העותק המקומי מתעדכן לפני הרשת. אין refresh מיידי שעלול להחזיר
+         // מהשרת את הערך הישן בזמן שהשמירה עדיין ממתינה בתור.
          updateCrm(name, { customFields: newCustomFields });
-         refresh();
+      }
+      const outcomes = await Promise.all(specs.map(spec => spec.action === 'updateDonorField'
+        ? updateDonorFieldQueued(spec.data)
+        : updatePersonalDateQueued(spec.data)));
+      const failedSpecs = specs.filter((_, index) => outcomes[index].status === 'failed');
+      setPendingFieldWrites(failedSpecs);
+      if (failedSpecs.length) {
+        alert(`הפרטים נשמרו בכרטיס המקומי, אך ${failedSpecs.length} עדכונים לא נשמרו בגיליון. אפשר ללחוץ שוב על שמירה כדי לנסות מחדש.`);
+        return;
       }
       setIsEditingFields(false);
+    } catch (error: any) {
+      alert('לא ניתן לשמור את הפרטים: ' + String(error?.message || error));
+    } finally {
       setIsSaving(false);
-    });
+    }
   };
 
   const setCircle = (circle: string) => {
@@ -231,21 +253,21 @@ export function ProfileModal({ name, onClose, backLabel, siblings, onSelectSibli
     updateCrm(name, { target: !crmData.target });
   };
 
-  const savePhone = () => {
+  const savePhone = async () => {
     // Strip non-digits
     let cleanPhone = phoneInput.replace(/\D/g, '');
     if (cleanPhone.startsWith('0')) {
       cleanPhone = '972' + cleanPhone.substring(1);
     }
     updateCrm(name, { phone: cleanPhone });
-    
-    import('../lib/api').then(({ apiPost }) => {
-      const reverseMapRaw = localStorage.getItem('reverseHeaderMap');
-      const reverseHeaderMap = reverseMapRaw ? JSON.parse(reverseMapRaw) : {};
-      const backendFieldKey = reverseHeaderMap['טלפון'] || 'טלפון';
-      apiPost('updateDonorField', { name, field: backendFieldKey, value: cleanPhone }).then(() => refresh());
-    });
-    
+    const reverseMapRaw = localStorage.getItem('reverseHeaderMap');
+    const reverseHeaderMap = reverseMapRaw ? JSON.parse(reverseMapRaw) : {};
+    const backendFieldKey = reverseHeaderMap['טלפון'] || 'טלפון';
+    const outcome = await updateDonorFieldQueued({ name, field: backendFieldKey, value: cleanPhone });
+    if (outcome.status === 'failed') {
+      alert('הטלפון נשמר בכרטיס המקומי, אך לא נשמר בגיליון: ' + outcome.error);
+      return;
+    }
     setEditingPhone(false);
   };
 

@@ -209,6 +209,14 @@ export const addDonationQueued = (data: any): Promise<WriteOutcome> =>
 export const addMeetingQueued = (data: any): Promise<WriteOutcome> =>
   submitWrite('addMeeting', data, apiPost);
 
+/** עדכון שדה איש קשר. המסך מעדכן במקביל את עותק ה־CRM המקומי. */
+export const updateDonorFieldQueued = (data: any): Promise<WriteOutcome> =>
+  submitWrite('updateDonorField', data, apiPost);
+
+/** עדכון תאריך אישי. הפעולה קובעת ערך ולכן ניסיון חוזר הוא בטוח. */
+export const updatePersonalDateQueued = (data: any): Promise<WriteOutcome> =>
+  submitWrite('updatePersonalDate', data, apiPost);
+
 export const restoreBegin = (manifest: any) => restorePost('restoreBegin', { manifest });
 export const restoreSheet = (data: any) => restorePost('restoreSheet', data);
 export const restoreSync = (data: any) => restorePost('restoreSync', data);

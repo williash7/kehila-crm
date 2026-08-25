@@ -360,6 +360,30 @@ const throwFail = async () => { throw new Error('נפילה'); };
        'סנכרון מרוכז: הממתינות נספרות בנפרד מהמאושרות');
   }
 
+  console.log('\nכד3. שדות איש קשר ותאריכים — מקומי קודם, תור אחר כך:');
+  {
+    const root = path.join(__dirname, '..');
+    const api = fs.readFileSync(root + '/src/lib/api.ts', 'utf8');
+    const profile = fs.readFileSync(root + '/src/components/ProfileModal.tsx', 'utf8');
+    const donors = fs.readFileSync(root + '/src/components/DonorsTab.tsx', 'utf8');
+    ok(/updateDonorFieldQueued/.test(api) && /submitWrite\('updateDonorField'/.test(api),
+       'עדכון שדה עובר דרך התור');
+    ok(/updatePersonalDateQueued/.test(api) && /submitWrite\('updatePersonalDate'/.test(api),
+       'וגם תאריך אישי');
+    ok(!/apiPost\(\s*'update(DonorField|PersonalDate)'/.test(profile),
+       'כרטיס איש קשר אינו עוקף עוד את התור');
+    ok(!/apiPost\(\s*'updateDonorField'/.test(donors),
+       'גם יצירת איש קשר אינה עוקפת אותו');
+    ok(profile.indexOf('updateCrm(name, { customFields: newCustomFields })')
+       < profile.indexOf('const outcomes = await Promise.all'),
+       'הכרטיס המקומי מתעדכן לפני ההמתנה לרשת');
+    ok(/setPendingFieldWrites\(failedSpecs\)/.test(profile)
+       && /ללחוץ שוב על שמירה כדי לנסות מחדש/.test(profile),
+       'פעולה שלא נכנסה גם לתור נשארת לניסיון חוזר גלוי');
+    ok(!/updateDonorField[^\n]*then\(\(\) => refresh\(\)\)/.test(profile),
+       'אין רענון מיידי שעלול להחזיר ערך ישן מהשרת');
+  }
+
   console.log('\nכה. ישן בתור, חדש הצליח — הישן אינו דורס:');
   {
     // הבאג שיוסי תיאר, והוא נראה למשתמש כמו „הנתונים חזרו אחורה לבד”:
