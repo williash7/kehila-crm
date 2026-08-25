@@ -16,17 +16,16 @@ import { PaymentLedgerView } from './PaymentLedgerView';
 import { Donation } from '../types';
 import { CASH_DESTINATION_OPTIONS, cashDestinationLabel, cleanPaymentMethod, isCashPaymentMethod } from '../lib/cashDonations';
 import { compareListValues, ListSortControl, usePersistentListSort } from './ListSortControl';
-import { OpenTarget } from '../lib/openTarget';
+import { OpenTargetProps } from '../lib/openTarget';
 
 type MainTab = 'donations' | 'hk' | 'errors' | 'payments';
 
 const EDIT_METHODS = ['🔗 קישור ישיר', '💵 מזומן', '🏦 העברה בנקאית', '📱 ביט/פייבוקס', '🔄 הוראת קבע', '🌐 אתר תרומות'];
 type DonationEditFields = Omit<Partial<Donation>, 'amount'> & { amount?: number | string };
 
-export function DonationsTab({ onAddDonation, openTarget }: {
+export function DonationsTab({ onAddDonation, openTarget, onOpenTargetConsumed }: {
   onAddDonation: () => void;
-  openTarget?: OpenTarget | null;
-}) {
+} & OpenTargetProps) {
   const { donations, hk, failures, settings, refresh, crm, projects } = useAppStore();
   const openProjects = activeProjects(projects);
   const [mainTab, setMainTab] = useState<MainTab>('donations');
@@ -43,6 +42,7 @@ export function DonationsTab({ onAddDonation, openTarget }: {
     setMainTab('donations');
     setIsEditing(false);
     setSelectedDonation(match);
+    onOpenTargetConsumed?.();   // פעם אחת בלבד — אחרת ייפתח שוב בכניסה הבאה
   }, [openTarget?.id, openTarget?.count, donations]);
   const [selectedDonor, setSelectedDonor] = useState<string | null>(null);
   const [selectedDonation, setSelectedDonation] = useState<Donation | null>(null);

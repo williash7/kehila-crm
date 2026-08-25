@@ -47,7 +47,7 @@ assert.match(app, /if \(!tab\) return;/,
 
 // ── שלושת המסכים שמקבלים את היעד ──
 [['DonationsTab', donations], ['EventsTab', events], ['ProjectsTab', projects]].forEach(([name, src]) => {
-  assert.match(src, /openTarget\?: OpenTarget \| null/, `${name} מקבל את היעד`);
+  assert.match(src, /OpenTargetProps/, `${name} מקבל את חוזה היעד`);
 });
 
 // תרומה וקמפיין נפתחים **ממש**, כי יש להם חוזה פתיחה קיים.
@@ -95,4 +95,48 @@ assert.doesNotMatch(app, /backLabel="ניקוד"/, 'התווית המקובעת 
 assert.match(app, /onContactClick=\{name => setOpenContact\(\{ name, from: 'score' \}\)\}/,
   'מסך הניקוד ממשיך לסמן את עצמו כמקור');
 
-console.log('✓ החיפוש מוביל לפריט עצמו, ותווית החזרה נגזרת מהמקור');
+
+// ═══════════════════════════════════════════════════════════════════════════
+// היעד נצרך פעם אחת.
+//
+// בלי צריכה, היעד נשאר תלוי ב-App. מעבר למסך אחר וחזרה מרכיב מחדש את רכיב
+// היעד, ה-effect רץ שוב — **ותרומה שנפתחה לפני שעה נפתחת שוב מעצמה.**
+// המשתמש נכנס לרשימת התרומות ומקבל חלון שלא ביקש.
+// ═══════════════════════════════════════════════════════════════════════════
+
+assert.match(app, /const consumeOpenTarget = \(\) => setOpenTarget\(null\)/,
+  'קיימת צריכה מפורשת');
+[['DonationsTab', donations], ['EventsTab', events], ['ProjectsTab', projects]].forEach(([name, src]) => {
+  assert.match(app, new RegExp(`<${name}[\\s\\S]*?onOpenTargetConsumed=\\{consumeOpenTarget\\}`),
+    `${name} מקבל את הצריכה`);
+  assert.match(src, /onOpenTargetConsumed/, `${name} משתמש בה`);
+});
+assert.match(donations, /onOpenTargetConsumed\?\.\(\)/, 'תרומה נצרכת אחרי פתיחה');
+assert.match(projects, /onOpenTargetConsumed\?\.\(\)/, 'קמפיין נצרך אחרי פתיחה');
+assert.match(events, /useRevealEntity\(openTarget, !!openTarget\?\.id, onOpenTargetConsumed\)/,
+  'פעילות נצרכת דרך ההדגשה');
+
+// גם ויתור צורך. יעד שלא נמצא — נמחק או סונן — אסור שיישאר תלוי לנצח
+// וינסה שוב בכל כניסה עתידית למסך.
+assert.match(openTarget, /const finish = \(\) =>/, 'קיימת צריכה משותפת');
+assert.match(openTarget, /if \(\+\+tries > 12\) \{ finish\(\); return; \}/,
+  'גם ויתור צורך את היעד, לא רק הצלחה');
+assert.match(openTarget, /if \(revealEntity\(target\.id\)\) \{ finish\(\); return; \}/,
+  'והצלחה צורכת אותו');
+assert.match(openTarget, /if \(!done\)/, 'ולא צורכים פעמיים');
+
+// ═══════════════════════════════════════════════════════════════════════════
+// פעילות שהמסנן מסתיר.
+//
+// אם המשתמש נמצא בתצוגת „חגים” ומחפש פעילות שבועית, היא כלל אינה ברשימה.
+// הגלילה הייתה מוותרת בשקט, ומבחינתו: „לחצתי על התוצאה והמסך רק התחלף.”
+// ═══════════════════════════════════════════════════════════════════════════
+
+assert.match(events, /if \(openTarget\?\.id\) setFilter\('all'\)/,
+  'המסנן נפתח ל„הכל” לפני הניסיון להגיע לפעילות');
+const filterIdx = events.indexOf("setFilter('all')");
+const revealIdx = events.indexOf('useRevealEntity(openTarget');
+assert.ok(filterIdx > 0 && revealIdx > filterIdx,
+  'ופתיחת המסנן קורית לפני ההדגשה, לא אחריה');
+
+console.log('✓ החיפוש מוביל לפריט עצמו, היעד נצרך פעם אחת, והמסנן אינו מסתיר אותו');

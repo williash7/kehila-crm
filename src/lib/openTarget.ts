@@ -31,6 +31,19 @@ import { useEffect } from 'react';
 // ולחפש מחדש.
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * מה שרכיב היעד מקבל.
+ *
+ * `onConsumed` הוא החלק שנשכח בגרסה הראשונה, והוא נחוץ: בלעדיו היעד נשאר
+ * תלוי ב-App, וכל הרכבה מחדש של הרכיב — מעבר למסך אחר וחזרה — הייתה
+ * **פותחת שוב את הפריט הישן**. המשתמש היה חוזר לרשימת התרומות שעה אחר כך
+ * ומקבל חלון שנפתח לבד.
+ */
+export interface OpenTargetProps {
+  openTarget?: OpenTarget | null;
+  onOpenTargetConsumed?: () => void;
+}
+
 export interface OpenTarget {
   /** מזהה הפריט המבוקש. */
   id: string;
@@ -74,17 +87,28 @@ export function revealEntity(id: string): boolean {
  * ברשימה (נמחק, סונן), עדיף שהמשתמש יראה את המסך מאשר הודעת שגיאה על משהו
  * שהוא לא ביקש.
  */
-export function useRevealEntity(target: OpenTarget | null | undefined, enabled = true): void {
+export function useRevealEntity(
+  target: OpenTarget | null | undefined,
+  enabled = true,
+  onConsumed?: () => void
+): void {
   useEffect(() => {
     if (!enabled || !target?.id) return;
 
     let tries = 0;
     let frame = 0;
     let timer = 0;
+    let done = false;
+
+    // נצרך גם בהצלחה **וגם בוויתור**.
+    //
+    // אילו היינו צורכים רק בהצלחה, יעד שלא נמצא היה נשאר תלוי לנצח — וכל
+    // כניסה עתידית למסך הייתה מנסה שוב לגלול לפריט שכבר לא קיים.
+    const finish = () => { if (!done) { done = true; onConsumed?.(); } };
 
     const attempt = () => {
-      if (revealEntity(target.id)) return;
-      if (++tries > 12) return;   // ~1.2 שניות, ואז מוותרים
+      if (revealEntity(target.id)) { finish(); return; }
+      if (++tries > 12) { finish(); return; }   // ~1.2 שניות, ואז מוותרים
       timer = window.setTimeout(() => { frame = requestAnimationFrame(attempt); }, 100);
     };
 

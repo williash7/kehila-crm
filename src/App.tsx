@@ -88,6 +88,12 @@ function AppContent() {
     donations: 'donations', activities: 'events', campaigns: 'projects', tasks: 'tasks',
   };
 
+  // היעד נצרך פעם אחת בלבד.
+  //
+  // בלי זה הוא היה נשאר ב-App לנצח: מעבר למסך אחר וחזרה מרכיב מחדש את
+  // רכיב היעד, ה-effect רץ שוב — ופריט מלפני שעה נפתח לבד.
+  const consumeOpenTarget = () => setOpenTarget(null);
+
   const openSearchResult = (result: GlobalSearchResult) => {
     if (result.kind === 'contact') {
       setOpenContact({ name: result.target.entityId, from: 'search' });
@@ -129,9 +135,9 @@ function AppContent() {
           {activeTab === 'inbox' && <QuickInboxTab />}
           {activeTab === 'donors' && <DonorsTab addTrigger={addTrigger} />}
           {activeTab === 'homevisits' && <HomeVisitsTab addTrigger={addTrigger} />}
-          {activeTab === 'donations' && <DonationsTab onAddDonation={() => setIsDonationOpen(true)} openTarget={openTarget} />}
+          {activeTab === 'donations' && <DonationsTab onAddDonation={() => setIsDonationOpen(true)} openTarget={openTarget} onOpenTargetConsumed={consumeOpenTarget} />}
           {activeTab === 'finance' && <FinanceTab />}
-          {activeTab === 'events' && <EventsTab addTrigger={addTrigger} openTarget={openTarget} />}
+          {activeTab === 'events' && <EventsTab addTrigger={addTrigger} openTarget={openTarget} onOpenTargetConsumed={consumeOpenTarget} />}
           {activeTab === 'calendar' && <CalendarTab addTrigger={addTrigger} />}
           {/* "תאריכים" הוא מסך מלא בפני עצמו — נפתח כטאב, ונסגר חזרה לדשבורד */}
           {activeTab === 'dates' && <AllDatesModal onClose={() => setActiveTab('home')} />}
@@ -149,7 +155,7 @@ function AppContent() {
           */}
           {activeTab === 'tasks' && <TasksTab setTab={setActiveTab} addTrigger={addTrigger} />}
           {activeTab === 'score' && <ScoreTab onContactClick={name => setOpenContact({ name, from: 'score' })} />}
-          {activeTab === 'projects' && <ProjectsTab addTrigger={addTrigger} openTarget={openTarget} />}
+          {activeTab === 'projects' && <ProjectsTab addTrigger={addTrigger} openTarget={openTarget} onOpenTargetConsumed={consumeOpenTarget} />}
           {activeTab === 'guide' && <GuideTab />}
           {activeTab === 'settings' && <SettingsTab />}
         </main>

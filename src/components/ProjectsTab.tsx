@@ -18,7 +18,7 @@ import { stampCreated } from '../lib/tasks';
 import { TaskDetailsPanel } from './TaskDetailsPanel';
 import { AIPlanningAssistant } from './AIPlanningAssistant';
 import { PurposeTagsEditor } from './PurposeTagsEditor';
-import { OpenTarget } from '../lib/openTarget';
+import { OpenTargetProps } from '../lib/openTarget';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // פרויקטי גיוס.
@@ -30,10 +30,9 @@ import { OpenTarget } from '../lib/openTarget';
 // נספרת פעם אחת בדיוק, גם בדוח הכללי וגם בפרויקט.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function ProjectsTab({ addTrigger, openTarget }: {
+export function ProjectsTab({ addTrigger, openTarget, onOpenTargetConsumed }: {
   addTrigger?: { tab: string; count: number };
-  openTarget?: OpenTarget | null;
-} = {}) {
+} & OpenTargetProps = {}) {
   const { projects, updateProjects, donations, hk, visibleDonors, crm, eventsData } = useAppStore();
 
   const [openId, setOpenId] = useState<string | null>(null);
@@ -55,6 +54,7 @@ export function ProjectsTab({ addTrigger, openTarget }: {
     if (!projects.some(p => p.id === openTarget.id)) return;
     setShowClosed(true);
     setOpenId(openTarget.id);
+    onOpenTargetConsumed?.();
   }, [openTarget?.id, openTarget?.count, projects]);
 
   const visible = projects.filter(p => showClosed || p.status !== 'closed');

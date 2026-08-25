@@ -17,12 +17,11 @@ import { BudgetEditor, emptyBudget } from './BudgetEditor';
 import { ACTIVITY_KIND_LABEL, ActivityKind, ActivityParticipant, activityDonations, activityPurposeTags, activityReadiness, normalizeActivity, normalizePurposeTags } from '../lib/activities';
 import { projectPurposeTags } from '../lib/projects';
 import { PurposeTagsEditor } from './PurposeTagsEditor';
-import { OpenTarget, useRevealEntity } from '../lib/openTarget';
+import { OpenTargetProps, useRevealEntity } from '../lib/openTarget';
 
-export function EventsTab({ addTrigger, openTarget }: {
+export function EventsTab({ addTrigger, openTarget, onOpenTargetConsumed }: {
   addTrigger?: { tab: string; count: number };
-  openTarget?: OpenTarget | null;
-} = {}) {
+} & OpenTargetProps = {}) {
   const { eventsData, updateEventsData, visibleDonors, crm, hk, failures, settings, refresh, history, archiveOccurrence, importTasksFromHistory, donations, projects } = useAppStore();
   const [filter, setFilter] = useState('all');
   const [isAddingMode, setIsAddingMode] = useState(false);
@@ -59,10 +58,19 @@ export function EventsTab({ addTrigger, openTarget }: {
     }
   }, [addTrigger]);
 
+  // ── הגעה מהחיפוש ──
+  //
   // לפעילות אין „חוזה פתיחה” — היא נפרשת ברשימה ואין מושג של „פתח פריט”.
-  // לכן מגוללים אליה ומדגישים אותה. פחות טוב מפתיחה ישירה, והרבה יותר
-  // טוב מלנחות על רשימה ולחפש מחדש.
-  useRevealEntity(openTarget, !!openTarget?.id);
+  // לכן מגוללים אליה ומדגישים אותה.
+  //
+  // **המסנן חייב להיפתח קודם.** אם אשר נמצא ב„חגים” ומחפש פעילות שבועית,
+  // היא כלל אינה ברשימה — והגלילה הייתה מוותרת בשקט. מבחינתו: „לחצתי על
+  // התוצאה והמסך פשוט התחלף.” לכן מחזירים ל„הכל” לפני הניסיון.
+  React.useEffect(() => {
+    if (openTarget?.id) setFilter('all');
+  }, [openTarget?.id, openTarget?.count]);
+
+  useRevealEntity(openTarget, !!openTarget?.id, onOpenTargetConsumed);
 
   const [attSearch, setAttSearch] = useState('');
   const [attCategory, setAttCategory] = useState('all');
