@@ -18,6 +18,7 @@ import { stampCreated } from '../lib/tasks';
 import { TaskDetailsPanel } from './TaskDetailsPanel';
 import { AIPlanningAssistant } from './AIPlanningAssistant';
 import { PurposeTagsEditor } from './PurposeTagsEditor';
+import { OpenTarget } from '../lib/openTarget';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // פרויקטי גיוס.
@@ -29,7 +30,10 @@ import { PurposeTagsEditor } from './PurposeTagsEditor';
 // נספרת פעם אחת בדיוק, גם בדוח הכללי וגם בפרויקט.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function ProjectsTab({ addTrigger }: { addTrigger?: { tab: string; count: number } } = {}) {
+export function ProjectsTab({ addTrigger, openTarget }: {
+  addTrigger?: { tab: string; count: number };
+  openTarget?: OpenTarget | null;
+} = {}) {
   const { projects, updateProjects, donations, hk, visibleDonors, crm, eventsData } = useAppStore();
 
   const [openId, setOpenId] = useState<string | null>(null);
@@ -42,6 +46,16 @@ export function ProjectsTab({ addTrigger }: { addTrigger?: { tab: string; count:
   React.useEffect(() => {
     if (addTrigger?.tab === 'projects' && addTrigger.count) setIsAdding(true);
   }, [addTrigger]);
+
+  // הגעה מהחיפוש: לקמפיין יש כבר חוזה פתיחה (`openId`), ולכן פותחים אותו
+  // ממש — לא רק מגוללים אליו. `showClosed` נדלק כי קמפיין סגור לא היה
+  // מופיע ברשימה, והתוצאה הייתה „לחצתי ולא קרה כלום”.
+  React.useEffect(() => {
+    if (!openTarget?.id) return;
+    if (!projects.some(p => p.id === openTarget.id)) return;
+    setShowClosed(true);
+    setOpenId(openTarget.id);
+  }, [openTarget?.id, openTarget?.count, projects]);
 
   const visible = projects.filter(p => showClosed || p.status !== 'closed');
   const current = projects.find(p => p.id === openId) || null;

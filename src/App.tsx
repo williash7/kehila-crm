@@ -30,6 +30,7 @@ import { DataOnboardingWizard } from './components/DataOnboardingWizard';
 import { shouldShowDataOnboarding } from './lib/dataOnboarding';
 import { GlobalSearchTab } from './components/GlobalSearchTab';
 import { GlobalSearchResult } from './lib/globalSearch';
+import { OpenTarget } from './lib/openTarget';
 import { QuickInboxTab } from './components/QuickInboxTab';
 import { DailyReminderAgent } from './components/DailyReminderAgent';
 
@@ -50,7 +51,13 @@ function AppContent() {
   const { loading, loadingText, apiError } = useAppStore();
   const [activeTab, setActiveTab] = useState('home');
   const [isDonationOpen, setIsDonationOpen] = useState(false);
-  const [scoreOpenContact, setScoreOpenContact] = useState<string | null>(null);
+  // מי פתח את כרטיס איש הקשר — כדי שכפתור החזרה יאמר את האמת.
+  //
+  // המצב הזה נוצר במקור עבור מסך הניקוד, והתווית הייתה מקובעת ל„ניקוד”.
+  // כשהחיפוש התחיל להשתמש בו מחדש, מי שהגיע לכרטיס מהחיפוש קיבל הצעה
+  // לחזור למסך שלא היה בו מעולם.
+  const [openContact, setOpenContact] = useState<{ name: string; from: 'score' | 'search' } | null>(null);
+  const [openTarget, setOpenTarget] = useState<OpenTarget | null>(null);
   const [dataOnboardingOpen, setDataOnboardingOpen] = useState(() => shouldShowDataOnboarding());
   // { tab, count } — לחיצה על "+" הגלובלי מעדכנת את זה, וכל מסך שמאזין (donors/tasks/events/calendar)
   // פותח את מודל ההוספה שלו כשה-tab תואם לו. count משתנה בכל לחיצה כדי שאפשר יהיה לפתוח שוב אחרי סגירה.
@@ -71,15 +78,25 @@ function AppContent() {
     setAddTrigger({ tab, count: Date.now() });
   };
 
+  // ── מתוצאת חיפוש אל הפריט עצמו ──
+  //
+  // הגרסה הראשונה החליפה לשונית וזרקה את `entityId`, כך שלחיצה על תרומה
+  // הביאה את המשתמש לרשימת התרומות **בלי סינון ובלי סימון** — והוא היה
+  // צריך לחפש אותה שוב. כאן המזהה עובר הלאה, ועם המשימה גם ה-`parentId`
+  // כדי שההקשר (חג או פעילות) יישמר.
+  const TARGET_TABS: Record<string, string> = {
+    donations: 'donations', activities: 'events', campaigns: 'projects', tasks: 'tasks',
+  };
+
   const openSearchResult = (result: GlobalSearchResult) => {
     if (result.kind === 'contact') {
-      setScoreOpenContact(result.target.entityId);
+      setOpenContact({ name: result.target.entityId, from: 'search' });
       return;
     }
-    const targetTabs: Record<string, string> = {
-      donations: 'donations', activities: 'events', campaigns: 'projects', tasks: 'tasks', contacts: 'donors',
-    };
-    setActiveTab(targetTabs[result.target.tab] || 'home');
+    const tab = TARGET_TABS[result.target.tab];
+    if (!tab) return;   // סוג לא מוכר — עדיף לא לזוז מאשר לזרוק את המשתמש לדשבורד
+    setActiveTab(tab);
+    setOpenTarget({ id: result.target.entityId, parentId: result.target.parentId, count: Date.now() });
   };
 
   if (loading) {
@@ -112,18 +129,27 @@ function AppContent() {
           {activeTab === 'inbox' && <QuickInboxTab />}
           {activeTab === 'donors' && <DonorsTab addTrigger={addTrigger} />}
           {activeTab === 'homevisits' && <HomeVisitsTab addTrigger={addTrigger} />}
-          {activeTab === 'donations' && <DonationsTab onAddDonation={() => setIsDonationOpen(true)} />}
+          {activeTab === 'donations' && <DonationsTab onAddDonation={() => setIsDonationOpen(true)} openTarget={openTarget} />}
           {activeTab === 'finance' && <FinanceTab />}
-          {activeTab === 'events' && <EventsTab addTrigger={addTrigger} />}
+          {activeTab === 'events' && <EventsTab addTrigger={addTrigger} openTarget={openTarget} />}
           {activeTab === 'calendar' && <CalendarTab addTrigger={addTrigger} />}
           {/* "תאריכים" הוא מסך מלא בפני עצמו — נפתח כטאב, ונסגר חזרה לדשבורד */}
           {activeTab === 'dates' && <AllDatesModal onClose={() => setActiveTab('home')} />}
           {activeTab === 'history' && <HistoryTab />}
           {activeTab === 'reports' && <ReportsTab />}
           {activeTab === 'poster' && <PosterTab onClose={() => setActiveTab('home')} />}
+          {/*
+            משימות מקבלות ניווט ללשונית בלבד, בכוונה.
+            ─────────────────────────────────────────────────────────────────
+            למשימה אין מזהה יציב: `globalSearch` נופל ל-`${parent.id}:${index}`
+            כשאין `id`, ומיקום ברשימה משתנה בכל סינון או מיון. סימון לפי מזהה
+            כזה היה מדגיש **את המשימה הלא נכונה** — וזה גרוע יותר מלא להדגיש
+            כלום.
+            דיווחתי ליוסי; מזהה יציב למשימה הוא תנאי מקדים.
+          */}
           {activeTab === 'tasks' && <TasksTab setTab={setActiveTab} addTrigger={addTrigger} />}
-          {activeTab === 'score' && <ScoreTab onContactClick={setScoreOpenContact} />}
-          {activeTab === 'projects' && <ProjectsTab addTrigger={addTrigger} />}
+          {activeTab === 'score' && <ScoreTab onContactClick={name => setOpenContact({ name, from: 'score' })} />}
+          {activeTab === 'projects' && <ProjectsTab addTrigger={addTrigger} openTarget={openTarget} />}
           {activeTab === 'guide' && <GuideTab />}
           {activeTab === 'settings' && <SettingsTab />}
         </main>
@@ -133,7 +159,13 @@ function AppContent() {
       <BottomNav currentTab={activeTab} setTab={setActiveTab} />
 
       {isDonationOpen && <DonationModal onClose={() => setIsDonationOpen(false)} />}
-      {scoreOpenContact && <ProfileModal name={scoreOpenContact} onClose={() => setScoreOpenContact(null)} backLabel="ניקוד" />}
+      {openContact && (
+        <ProfileModal
+          name={openContact.name}
+          onClose={() => setOpenContact(null)}
+          backLabel={openContact.from === 'search' ? 'חיפוש' : 'ניקוד'}
+        />
+      )}
       {dataOnboardingOpen && <DataOnboardingWizard onDone={() => setDataOnboardingOpen(false)} />}
     </div>
   );

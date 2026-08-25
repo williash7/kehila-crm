@@ -45,3 +45,27 @@ body {
 ::-webkit-scrollbar {
   width: 0;
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   הדגשת הפריט שהגיעו אליו מהחיפוש.
+
+   טבעת זהב שדועכת. הצבע נלקח מטוקן הערכה ולא מקובע, כדי שההדגשה תתאים
+   לכל ערכת נושא — כולל הכהות והניגודיות.
+
+   `prefers-reduced-motion` מכובד: מי שביקש פחות תנועה מקבל הדגשה סטטית
+   קצרה במקום פעימה.
+   ───────────────────────────────────────────────────────────────────────── */
+.entity-highlight {
+  animation: entity-pulse 2.6s ease-out;
+  border-radius: 0.75rem;
+}
+
+@keyframes entity-pulse {
+  0%   { box-shadow: 0 0 0 3px var(--c-gold, #C9A84C); }
+  60%  { box-shadow: 0 0 0 3px var(--c-gold, #C9A84C); }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .entity-highlight { animation: none; box-shadow: 0 0 0 3px var(--c-gold, #C9A84C); }
+}

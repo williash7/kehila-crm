@@ -16,16 +16,34 @@ import { PaymentLedgerView } from './PaymentLedgerView';
 import { Donation } from '../types';
 import { CASH_DESTINATION_OPTIONS, cashDestinationLabel, cleanPaymentMethod, isCashPaymentMethod } from '../lib/cashDonations';
 import { compareListValues, ListSortControl, usePersistentListSort } from './ListSortControl';
+import { OpenTarget } from '../lib/openTarget';
 
 type MainTab = 'donations' | 'hk' | 'errors' | 'payments';
 
 const EDIT_METHODS = ['🔗 קישור ישיר', '💵 מזומן', '🏦 העברה בנקאית', '📱 ביט/פייבוקס', '🔄 הוראת קבע', '🌐 אתר תרומות'];
 type DonationEditFields = Omit<Partial<Donation>, 'amount'> & { amount?: number | string };
 
-export function DonationsTab({ onAddDonation }: { onAddDonation: () => void }) {
+export function DonationsTab({ onAddDonation, openTarget }: {
+  onAddDonation: () => void;
+  openTarget?: OpenTarget | null;
+}) {
   const { donations, hk, failures, settings, refresh, crm, projects } = useAppStore();
   const openProjects = activeProjects(projects);
   const [mainTab, setMainTab] = useState<MainTab>('donations');
+
+  // הגעה מהחיפוש: לתרומה יש חוזה פתיחה קיים — חלון הפרטים — ולכן פותחים
+  // אותו ישירות במקום להנחית את המשתמש על רשימה ולתת לו לחפש שוב.
+  //
+  // מחליפים גם ללשונית התרומות: מי שהיה קודם ב„בקרת תשלומים” היה מגיע
+  // ללשונית הלא נכונה והחלון היה נפתח מאחורי מסך אחר.
+  React.useEffect(() => {
+    if (!openTarget?.id) return;
+    const match = donations.find((d: Donation) => d.id === openTarget.id);
+    if (!match) return;
+    setMainTab('donations');
+    setIsEditing(false);
+    setSelectedDonation(match);
+  }, [openTarget?.id, openTarget?.count, donations]);
   const [selectedDonor, setSelectedDonor] = useState<string | null>(null);
   const [selectedDonation, setSelectedDonation] = useState<Donation | null>(null);
   const [showThankYou, setShowThankYou] = useState(false);

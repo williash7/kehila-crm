@@ -17,8 +17,12 @@ import { BudgetEditor, emptyBudget } from './BudgetEditor';
 import { ACTIVITY_KIND_LABEL, ActivityKind, ActivityParticipant, activityDonations, activityPurposeTags, activityReadiness, normalizeActivity, normalizePurposeTags } from '../lib/activities';
 import { projectPurposeTags } from '../lib/projects';
 import { PurposeTagsEditor } from './PurposeTagsEditor';
+import { OpenTarget, useRevealEntity } from '../lib/openTarget';
 
-export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: number } } = {}) {
+export function EventsTab({ addTrigger, openTarget }: {
+  addTrigger?: { tab: string; count: number };
+  openTarget?: OpenTarget | null;
+} = {}) {
   const { eventsData, updateEventsData, visibleDonors, crm, hk, failures, settings, refresh, history, archiveOccurrence, importTasksFromHistory, donations, projects } = useAppStore();
   const [filter, setFilter] = useState('all');
   const [isAddingMode, setIsAddingMode] = useState(false);
@@ -54,6 +58,11 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
       setIsAddingMode(true);
     }
   }, [addTrigger]);
+
+  // לפעילות אין „חוזה פתיחה” — היא נפרשת ברשימה ואין מושג של „פתח פריט”.
+  // לכן מגוללים אליה ומדגישים אותה. פחות טוב מפתיחה ישירה, והרבה יותר
+  // טוב מלנחות על רשימה ולחפש מחדש.
+  useRevealEntity(openTarget, !!openTarget?.id);
 
   const [attSearch, setAttSearch] = useState('');
   const [attCategory, setAttCategory] = useState('all');
@@ -414,7 +423,7 @@ export function EventsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
             const readiness = activityReadiness(ev);
 
             return (
-              <div key={ev.id} className="bg-white rounded-xl shadow-sm border border-[#EDE6D6] overflow-hidden">
+              <div key={ev.id} data-entity-id={ev.id} className="bg-white rounded-xl shadow-sm border border-[#EDE6D6] overflow-hidden">
                  <div className="p-3.5 border-b border-[#EDE6D6] sm:flex sm:items-start sm:justify-between sm:gap-4">
                     <div className="flex items-start gap-3 min-w-0 flex-1">
                       <div className="w-11 h-11 bg-gray-50 rounded-full flex items-center justify-center text-xl shrink-0 opacity-80">{typeIcons[ev.type] || '📌'}</div>
