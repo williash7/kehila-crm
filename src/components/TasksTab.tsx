@@ -42,6 +42,16 @@ export function TasksTab({ setTab, addTrigger, openTarget, onOpenTargetConsumed 
   // כיווץ קבוצות משימות (לפי חג/אירוע) בתצוגה "לפי קטגוריה" — פתוח כברירת
   // מחדל, נשמר רק ב-state המקומי (לא בין רענונים) כדי לא לסבך את מודל הנתונים.
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  /**
+   * המשימה שהגיעו אליה מהחיפוש.
+   *
+   * כל הרשימות מסננות `!t.done`, ולכן **משימה שכבר בוצעה אינה נבנית כלל** —
+   * לא היא ולא הקבוצה שלה. חיפוש שלה היה מגיע למסך ריק ממנה, וההדגשה הייתה
+   * מוותרת בשקט. המיקוד הוא חריג נקודתי: משימה אחת מוצגת גם אם בוצעה.
+   */
+  const [focusTaskId, setFocusTaskId] = useState<string | null>(null);
+  /** האם פריט הוא היעד — ולכן מוצג גם כשהוא מסומן כבוצע. */
+  const isFocused = (t: any) => !!focusTaskId && t?.id === focusTaskId;
   const toggleGroupCollapse = (key: string) => {
     setCollapsedGroups(prev => {
       const next = new Set(prev);
@@ -68,11 +78,23 @@ export function TasksTab({ setTab, addTrigger, openTarget, onOpenTargetConsumed 
   React.useEffect(() => {
     if (!openTarget?.id) return;
     setViewMode('grouped');
+
+    // **המיקוד נשמר מקומית ולא נגזר מ-`openTarget`.**
+    //
+    // זו נקודה עדינה: היעד נצרך ברגע שההדגשה מסתיימת. אילו החריג „הצג גם
+    // אם בוצעה” היה תלוי ישירות ב-`openTarget`, המשימה הייתה נעלמת מהמסך
+    // באותו רגע — כלומר ההדגשה הייתה מהבהבת ונעלמת. המיקוד נשאר עד
+    // שמגיע יעד אחר או שעוזבים את המסך.
+    setFocusTaskId(openTarget.id);
+
     const parent = openTarget.parentId;
     if (parent) {
       setCollapsedGroups(prev => {
         const next = new Set(prev);
-        [`h-${parent}`, `e-${parent}`, `c-${parent}`].forEach(k => next.delete(k));
+        // `parentId` אינו מסגיר אם ההורה הוא חג, פעילות או קמפיין, ולכן
+        // פותחים את שלושת המפתחות. `hv-tasks` נוסף כי משימות ביקור בית
+        // נשמרות תחת המזהה החד-פעמי ואינן תואמות לאף אחד מהשלושה.
+        [`h-${parent}`, `e-${parent}`, `c-${parent}`, 'hv-tasks'].forEach(k => next.delete(k));
         return next;
       });
     }
@@ -156,7 +178,7 @@ export function TasksTab({ setTab, addTrigger, openTarget, onOpenTargetConsumed 
         const allTasks = holidayExtras[id]?.tasks || [];
         const tasks = allTasks
           .map((t: any, idx: number) => ({ t, idx, date: effectiveDate(t, contextDate) }))
-          .filter((x: any) => !x.t.done)
+          .filter((x: any) => !x.t.done || isFocused(x.t))
           .sort((a: any, b: any) => compareTasks(a.t, b.t, sortKey, a.date, b.date));
         return { id, tasks, contextDate };
       })
@@ -168,7 +190,7 @@ export function TasksTab({ setTab, addTrigger, openTarget, onOpenTargetConsumed 
       const allTasks = e.tasks || [];
       const tasks = allTasks
         .map((t: any, idx: number) => ({ t, idx, date: effectiveDate(t, contextDate) }))
-        .filter((x: any) => !x.t.done)
+        .filter((x: any) => !x.t.done || isFocused(x.t))
         .sort((a: any, b: any) => compareTasks(a.t, b.t, sortKey, a.date, b.date));
       return { id: e.id, name: e.name, tasks, contextDate };
     })
@@ -180,7 +202,7 @@ export function TasksTab({ setTab, addTrigger, openTarget, onOpenTargetConsumed 
       const contextDate = parsed && !isNaN(parsed.getTime()) ? parsed : null;
       const tasks = (project.tasks || [])
         .map((t: any, idx: number) => ({ t, idx, date: effectiveDate(t, contextDate) }))
-        .filter((x: any) => !x.t.done)
+        .filter((x: any) => !x.t.done || isFocused(x.t))
         .sort((a: any, b: any) => compareTasks(a.t, b.t, sortKey, a.date, b.date));
       return { id: project.id, name: project.name, tasks, contextDate };
     })
@@ -193,7 +215,7 @@ export function TasksTab({ setTab, addTrigger, openTarget, onOpenTargetConsumed 
   const allStandaloneTasks: any[] = holidayExtras[STANDALONE_TASKS_ID]?.tasks || [];
   const openStandaloneAll = allStandaloneTasks
     .map((t: any, idx: number) => ({ t, idx, date: effectiveDate(t, null) }))
-    .filter((x: any) => !x.t.done)
+    .filter((x: any) => !x.t.done || isFocused(x.t))
     .sort((a, b) => compareTasks(a.t, b.t, sortKey, a.date, b.date));
   // משימות ההכנה (prepTasks) של מערך ביקורים חיות ברשומת המערך עצמו
   // (homeVisits.rounds), לא במערך המשימות הרגיל — לכן בונים אותן כאן בנפרד
@@ -220,7 +242,9 @@ export function TasksTab({ setTab, addTrigger, openTarget, onOpenTargetConsumed 
     updateHomeVisitRoundMeta(roundId, { prepTasks: tasks });
   };
 
-  const homeVisitTasks = openStandaloneAll.filter(x => x.t.kind === 'homeVisit' && roundPrepDone(x.t.roundId));
+  // משימת היעד מוצגת גם אם ההכנות של המערך טרם הסתיימו. אחרת חיפוש של
+  // ביקור בית ספציפי היה מגיע למסך שבו הוא מוסתר עד שיסמנו את ההכנות.
+  const homeVisitTasks = openStandaloneAll.filter(x => x.t.kind === 'homeVisit' && (roundPrepDone(x.t.roundId) || isFocused(x.t)));
   const standaloneTasks = openStandaloneAll.filter(x => x.t.kind !== 'homeVisit');
 
   const openHolidayCount = holidayGroups.reduce((s, g) => s + g.tasks.length, 0);
