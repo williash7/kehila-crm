@@ -87,6 +87,7 @@ const libBundles = [
   ['lib/monthClose.ts', join(OUT, 'monthClose.js')],
   ['lib/activityScenario.ts', join(OUT, 'activityScenario.js')],
   ['lib/globalSearch.ts', join(OUT, 'globalSearch.js')],
+  ['lib/cycleTemplate.ts', join(OUT, 'cycleTemplate.js')],
   ['lib/activities.ts', join(OUT, 'activities.js')],
   ['lib/history.ts', join(OUT, 'history.js')],
   ['lib/homeVisits.ts', join(OUT, 'homeVisits.js')],
