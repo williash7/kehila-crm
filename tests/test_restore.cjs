@@ -1,6 +1,8 @@
 const assert = require('assert');
 const fs = require('fs');
 const R = require('/tmp/stub/restore.js');
+const B = require('/tmp/stub/backup.js');
+const C = require('/tmp/stub/clientBackup.js');
 
 function backup(overrides = {}) {
   return {
@@ -20,6 +22,23 @@ assert.strictEqual(plan.totalRows, 1);
 assert.strictEqual(plan.sheetCount, 1);
 assert.strictEqual(plan.syncCount, 1);
 assert.strictEqual(plan.sourceName, 'קהילה');
+
+const v2 = backup({
+  schemaVersion: 2,
+  clientState: {
+    schemaVersion: 1,
+    values: Object.fromEntries(C.CLIENT_BACKUP_KEYS.map(key => [key, key === 'custom_hols' ? '[]' : null])),
+    excludedSensitive: ['google_token_v1'],
+  },
+});
+v2.coverage = B.buildBackupCoverage(v2);
+const v2Plan = R.validateBackupForRestore(v2);
+assert.strictEqual(v2Plan.backup.clientState.values.custom_hols, '[]', 'מידע המכשיר מתקבל בגיבוי החדש');
+assert.throws(() => R.validateBackupForRestore({ ...v2, coverage: { ...v2.coverage, sheetRows: 99 } }), /כיסוי/,
+  'שינוי בתוכן או בספירות נעצר לפני שחזור');
+assert.throws(() => R.validateBackupForRestore(backup({
+  clientState: { schemaVersion: 1, values: { custom_hols: '[]' }, excludedSensitive: [] },
+})), /חסרים פריטי מכשיר/, 'גם גיבוי ישן שמכיל מצב מכשיר חלקי נעצר לפני שינוי הנתונים');
 
 const manifest = R.restoreManifest(plan);
 assert.deepStrictEqual(manifest.syncKeys, ['crm']);
@@ -50,5 +69,7 @@ const backupCard = fs.readFileSync('src/components/BackupCard.tsx', 'utf8');
 assert.ok(backupCard.includes('restoreRollback(token)'), 'כשל אחרי תחילת שחזור חייב להפעיל החזרה אוטומטית');
 assert.ok(backupCard.includes('עותק בטיחות מלא'), 'המשתמש חייב לקבל הסבר ברור על עותק הבטיחות');
 assert.ok(!backupCard.includes('שתי פעולות שאינן משנות דבר'), 'אסור להציג את השחזור כפעולה שאינה משנה נתונים');
+assert.ok(backupCard.lastIndexOf('restoreClientBackupState') > backupCard.indexOf('restoreFinish(token)'),
+  'מצב המכשיר חוזר רק אחרי שהשחזור בשרת הסתיים בהצלחה');
 
 console.log('✓ אימות ותכנון שחזור בצד הלקוח');

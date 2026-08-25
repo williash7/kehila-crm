@@ -21,15 +21,15 @@ import { DataOnboardingWizard } from './DataOnboardingWizard';
 import { NavigationSettingsCard } from './NavigationSettingsCard';
 import { AuditLogCard } from './AuditLogCard';
 import { DailyReminderCard } from './DailyReminderCard';
+import type { SettingsTarget, SettingsGroupId } from '../lib/featureCatalog';
+import { useRevealEntity } from '../lib/openTarget';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // בפתיחה מוצגות קטגוריות בלבד. לחיצה נכנסת לעמוד ההגדרות הרלוונטי,
 // וכפתור חזרה מחזיר למסך הקטגוריות — בלי רשימה ארוכה ובלי לשוניות צפופות.
 // ─────────────────────────────────────────────────────────────────────────────
 
-type SettingsGroup = 'organization' | 'navigation' | 'appearance' | 'people' | 'data';
-
-const SETTINGS_GROUPS: { id: SettingsGroup; label: string; icon: string; hint: string }[] = [
+const SETTINGS_GROUPS: { id: SettingsGroupId; label: string; icon: string; hint: string }[] = [
   { id: 'organization', label: 'ארגון',      icon: '🏠', hint: 'פרטי הארגון, חיבור, תרומות וכספים' },
   { id: 'navigation',   label: 'ניווט',      icon: '🧭', hint: 'הסרגל בטלפון, לוח שנה ותצוגת משימות' },
   { id: 'appearance',   label: 'מראה',       icon: '🎨', hint: 'צבעים, סגנון, גודל וכרטיסי הדשבורד' },
@@ -37,8 +37,13 @@ const SETTINGS_GROUPS: { id: SettingsGroup; label: string; icon: string; hint: s
   { id: 'data',         label: 'מידע וכלים', icon: '🧰', hint: 'גיבוי, ייבוא, אבחון וחיבורים מתקדמים' },
 ];
 
-export function SettingsTab() {
-  const [group, setGroup] = useState<SettingsGroup | null>(null);
+export interface SettingsOpenTarget extends SettingsTarget { count: number }
+
+export function SettingsTab({ openTarget, onOpenTargetConsumed }: {
+  openTarget?: SettingsOpenTarget | null;
+  onOpenTargetConsumed?: () => void;
+} = {}) {
+  const [group, setGroup] = useState<SettingsGroupId | null>(null);
   const currentGroup = SETTINGS_GROUPS.find(item => item.id === group);
 
   const { settings, updateSettings, donors, visibleDonors, eventsData, holidayExtras, donations, crm, refresh, holidays, summary } = useAppStore();
@@ -55,6 +60,16 @@ export function SettingsTab() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncProgress, setSyncProgress] = useState<{ done: number; total: number } | null>(null);
   const [syncResult, setSyncResult] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (openTarget?.group) setGroup(openTarget.group);
+  }, [openTarget?.group, openTarget?.count]);
+
+  useRevealEntity(
+    openTarget ? { id: `settings-${openTarget.section}`, count: openTarget.count } : null,
+    !!openTarget?.section,
+    onOpenTargetConsumed,
+  );
 
   // ── מה מהכלים המתקדמים בכלל רלוונטי כאן ואיפה ──────────────────────────
   //
@@ -200,10 +215,10 @@ export function SettingsTab() {
         {group === 'organization' && (<>
         {/* התשובה ל"האם הכול מעודכן?" — ראשונה, כי זו השאלה הראשונה
             שנשאלת כשמשהו לא מתנהג כמצופה */}
-        <SystemStatusCard />
-        <DailyReminderCard />
+        <div data-entity-id="settings-system-status"><SystemStatusCard /></div>
+        <div data-entity-id="settings-daily-reminder"><DailyReminderCard /></div>
         {/* פרטי הארגון — נקבעים באשף ההגדרה, וניתנים לעריכה כאן בכל עת */}
-        <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6]">
+        <div data-entity-id="settings-organization" className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6]">
           <h3 className="font-['Frank_Ruhl_Libre'] text-lg font-bold text-[#0D1B2A] mb-1">הארגון שלי</h3>
           <div className="text-sm text-gray-600 leading-relaxed mb-3">
             <div><b>{org.orgName.he || '— לא הוגדר —'}</b></div>
@@ -250,7 +265,7 @@ export function SettingsTab() {
             </button>
           </div>
         </div>
-        <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6] space-y-3">
+        <div data-entity-id="settings-data-onboarding" className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6] space-y-3">
           <div className="flex items-start gap-3">
             <span className="w-9 h-9 rounded-xl bg-[#C9A84C]/15 text-[#9B7A2F] flex items-center justify-center shrink-0"><Rocket size={18} /></span>
             <CardTitle title="קליטת נתוני התחלה">
@@ -261,7 +276,7 @@ export function SettingsTab() {
             פתח את אשף קליטת הנתונים
           </button>
         </div>
-        <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6] space-y-3">
+        <div data-entity-id="settings-donation-range" className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6] space-y-3">
           <CardTitle title="טווח תאריכים לסכומי תרומות">
             קובע מאיזה תאריך סופרים תרומות בכל הסכומים באפליקציה — בדשבורד, אצל אנשי
             הקשר ובדוחות. השארה ריקה = מתחילת השנה הנוכחית.
@@ -292,7 +307,7 @@ export function SettingsTab() {
             </div>
           )}
         </div>
-        <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6] space-y-3">
+        <div data-entity-id="settings-payment-statuses" className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6] space-y-3">
           <CardTitle title="מצבי תשלום והתאמה חודשית">
             מוסיף למסך התרומות תצוגת בקרה לקריאות בלבד: התקבל, עתידי, נכשל ומבוטל,
             וכלי להשוואת דוח חודשי מנדרים. הסכומים והדוחות הקיימים אינם משתנים.
@@ -316,7 +331,7 @@ export function SettingsTab() {
             </span>
           </button>
         </div>
-        <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6] space-y-3">
+        <div data-entity-id="settings-finance-center" className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6] space-y-3">
           <CardTitle title="מרכז כספי">
             מסך נפרד לניהול הוצאות, התחייבויות, תזרים, התחשבנות אישית ותקציבי
             אירועים. הפעלתו אינה משנה את התרומות, התקציבים או הדוחות הקיימים.
@@ -343,13 +358,15 @@ export function SettingsTab() {
         </>)}
 
         {group === 'appearance' && (<>
-        <AppearanceCard />
+        <div data-entity-id={`settings-${openTarget?.section === 'dashboard-cards' ? 'dashboard-cards' : 'appearance'}`}>
+          <AppearanceCard targetSection={openTarget?.section} />
+        </div>
         </>)}
 
         {group === 'navigation' && (<>
-        <NavigationSettingsCard />
+        <div data-entity-id="settings-bottom-navigation"><NavigationSettingsCard /></div>
         {/* אילו חגים מוצגים בלוח */}
-        <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6]">
+        <div data-entity-id="settings-holiday-visibility" className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6]">
           <h3 className="font-['Frank_Ruhl_Libre'] text-lg font-bold text-[#0D1B2A] mb-1">חגים ותאריכים בלוח</h3>
           <div className="flex justify-end">
             <Explain>
@@ -421,7 +438,7 @@ export function SettingsTab() {
             })}
           </div>
         </div>
-        <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6] space-y-3">
+        <div data-entity-id="settings-task-view" className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6] space-y-3">
           <div>
             <h3 className="font-['Frank_Ruhl_Libre'] text-lg font-bold text-[#0D1B2A]">תצוגת ברירת מחדל למשימות</h3>
             <p className="text-[11px] text-gray-400 mt-0.5">איזו תצוגה נפתחת כשנכנסים לטאב "משימות"</p>
@@ -447,7 +464,7 @@ export function SettingsTab() {
         </>)}
 
         {group === 'people' && (<>
-        <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6]">
+        <div data-entity-id="settings-people-filters" className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6]">
           <div className="text-sm text-gray-600">
             מציג <span className="font-bold text-[#0D1B2A]">{visible}</span> מתוך <span className="font-bold text-[#0D1B2A]">{total}</span> אנשי קשר
           </div>
@@ -499,11 +516,11 @@ export function SettingsTab() {
         </>)}
 
         {group === 'data' && (<>
-        <BackupCard />
+        <div data-entity-id="settings-backup"><BackupCard /></div>
 
-        <AuditLogCard />
+        <div data-entity-id="settings-audit-log"><AuditLogCard /></div>
 
-        <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6] space-y-3">
+        <div data-entity-id="settings-ai-import" className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6] space-y-3">
           <CardTitle title="ייבוא מידע קיים">
             יש לך רשימת אנשים, קובץ אקסל של תרומות, או דף מודפס? האפליקציה תכין הנחיה
             שתדביק בצ'אט AI יחד עם הקובץ, ותקלוט בחזרה את התוצאה. לפני השמירה תראה
@@ -595,7 +612,7 @@ export function SettingsTab() {
             </div>
           )}
         </div>
-        <div className="bg-white rounded-xl p-4 border border-[#EDE6D6] space-y-3">
+        <div data-entity-id="settings-facebook" className="bg-white rounded-xl p-4 border border-[#EDE6D6] space-y-3">
           <div className="text-sm font-bold text-[#0D1B2A] flex items-center gap-2">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="#1877F2"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" /></svg>
             הגדרות פייסבוק

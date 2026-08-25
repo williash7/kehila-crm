@@ -77,9 +77,9 @@ isolateSnapshotOverflow_(overflowSnapshot);
 assert.deepStrictEqual(JSON.parse(overflowSnapshot.data[SH.SYNC][1][1]), { __overflow: 'old-file-safety' },
   'עותק הבטיחות מקבל קובץ overflow מבודד');
 
-function manifest(syncKeys = ['crm']) {
+function manifest(syncKeys = ['crm'], schemaVersion = 1) {
   return {
-    schemaVersion: 1,
+    schemaVersion,
     sheets: exportSheetNames_().map(name => ({
       name, present: true, headerCount: table_(name).headers.length, rowCount: name === SH.CONTACTS ? 1 : 0,
     })),
@@ -87,21 +87,26 @@ function manifest(syncKeys = ['crm']) {
   };
 }
 
+assert.doesNotThrow(() => validateRestoreManifest_(manifest(['crm'], 2)), 'גיבוי מלא חדש בגרסה 2 מתקבל');
+assert.throws(() => validateRestoreManifest_(manifest(['crm'], 3)), /גרסת הגיבוי/, 'גרסה עתידית לא מוכרת נעצרת');
+
 assert.throws(() => restoreBegin_({ manifest: manifest(['evil']) }), /מפתח סנכרון/,
   'מפתח שאינו מאושר נעצר לפני יצירת עותק');
 assert.strictEqual(Object.keys(copies).length, 0);
 
-const begin = restoreBegin_({ manifest: manifest(), reqId: 'restore-begin-1' });
+const firstManifest = manifest();
+firstManifest.sheets.find(item => item.name === SH.CONTACTS).headerCount += 1;
+const begin = restoreBegin_({ manifest: firstManifest, reqId: 'restore-begin-1' });
 assert.strictEqual(begin.success, true);
 assert.strictEqual(Object.keys(copies).length, 1, 'עותק בטיחות נוצר לפני כתיבה');
-const retriedBegin = restoreBegin_({ manifest: manifest(), reqId: 'restore-begin-1' });
+const retriedBegin = restoreBegin_({ manifest: firstManifest, reqId: 'restore-begin-1' });
 assert.strictEqual(retriedBegin.token, begin.token, 'ניסיון רשת חוזר מקבל את אותו שחזור');
 assert.strictEqual(Object.keys(copies).length, 1, 'ניסיון רשת חוזר אינו יוצר עותק בטיחות נוסף');
 
 for (const name of exportSheetNames_()) {
-  const headers = seed[name][0];
+  const headers = name === SH.CONTACTS ? seed[name][0].concat(['שדה אישי']) : seed[name][0];
   const rows = name === SH.CONTACTS
-    ? [['חדש', '', '', '', '', { __type: 'date', value: '2026-01-02T00:00:00.000Z' }, '', '', '=לא נוסחה']]
+    ? [['חדש', '', '', '', '', { __type: 'date', value: '2026-01-02T00:00:00.000Z' }, '', '', '=לא נוסחה', 'ערך מותאם']]
     : [];
   restoreSheet_({ token: begin.token, sheet: name, offset: 0, total: rows.length, headers, rows });
 }
@@ -112,10 +117,26 @@ assert.strictEqual(finish.success, true);
 assert.strictEqual(active.data[SH.CONTACTS][1][0], 'חדש');
 assert.ok(active.data[SH.CONTACTS][1][5] instanceof Date, 'תאריך מפורש חוזר ל-Date');
 assert.strictEqual(active.data[SH.CONTACTS][1][8], "'=לא נוסחה", 'מחרוזת מסוכנת אינה הופכת לנוסחה');
+assert.strictEqual(active.data[SH.CONTACTS][0][9], 'שדה אישי', 'עמודה מותאמת נשמרת בשחזור');
+assert.strictEqual(active.data[SH.CONTACTS][1][9], 'ערך מותאם', 'ערך בעמודה מותאמת נשמר בשחזור');
 
 const rolled = restoreRollback_({ token: begin.token });
 assert.strictEqual(rolled.success, true);
 assert.strictEqual(active.data[SH.CONTACTS][1][0], 'ישן', 'החזרה משיבה את המצב שלפני השחזור');
+
+const allKeysManifest = manifest(RESTORE_SYNC_KEYS.slice(), 2);
+const allKeysBegin = restoreBegin_({ manifest: allKeysManifest, reqId: 'restore-all-keys' });
+for (const name of exportSheetNames_()) {
+  const rows = name === SH.CONTACTS ? [Array(seed[name][0].length).fill('')] : [];
+  restoreSheet_({ token: allKeysBegin.token, sheet: name, offset: 0, total: rows.length, headers: seed[name][0], rows });
+}
+RESTORE_SYNC_KEYS.forEach(key => restoreSync_({
+  token: allKeysBegin.token,
+  key,
+  data: key === 'projects' ? [{ id: 'p1', activityIds: ['e1'] }] : { restoredKey: key },
+}));
+assert.strictEqual(restoreFinish_({ token: allKeysBegin.token }).success, true,
+  'כל סוגי נתוני הסנכרון של האפליקציה עוברים שחזור מלא');
 
 assert.throws(() => restoreSheet_({ token: 'missing', sheet: SH.CONTACTS, offset: 0, total: 0, headers: [], rows: [] }), /אינו קיים/);
 console.log('✓ שחזור שרת: רשימות מותרות, עותק בטיחות, השלמה והחזרה');

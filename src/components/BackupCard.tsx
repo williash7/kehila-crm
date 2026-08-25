@@ -8,7 +8,7 @@ import {
 import {
   collectBackup, backupFileName, backupSummary, BackupIncomplete,
   sortIssues, headline, ISSUE_HELP, SEVERITY_LABEL,
-  Issue, IntegrityReport, Progress,
+  Issue, IntegrityReport, Progress, type BackupCoverage,
 } from '../lib/backup';
 import {
   BackupStamp, makeBackupStamp, readBackupStamp, writeBackupStamp,
@@ -16,6 +16,7 @@ import {
 import {
   RestorePlan, RESTORE_CONFIRM_WORD, restoreManifest, sheetChunks, validateBackupForRestore,
 } from '../lib/restore';
+import { collectClientBackupState, restoreClientBackupState } from '../lib/clientBackup';
 import { useAppStore } from '../store/AppContext';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -95,6 +96,7 @@ export function BackupCard() {
   const [restorePlan, setRestorePlan] = useState<RestorePlan | null>(null);
   const [restoreConfirm, setRestoreConfirm] = useState('');
   const [restoreMessage, setRestoreMessage] = useState('');
+  const [lastCoverage, setLastCoverage] = useState<BackupCoverage | null>(null);
 
   const reset = () => { setError(''); setFailures([]); setNeedsDeploy(false); };
 
@@ -106,7 +108,9 @@ export function BackupCard() {
         manifest,
         async (sheet, offset, limit) => await exportChunk(sheet, offset, limit),
         async key => await exportSync(key),
-        p => setProgress(p)
+        p => setProgress(p),
+        undefined,
+        collectClientBackupState()
       );
 
       // ההורדה קורית **רק** אחרי שכל מה שהמניפסט הכריז עליו התקבל.
@@ -132,6 +136,7 @@ export function BackupCard() {
       const stamp = makeBackupStamp(s, fileName);
       writeBackupStamp(stamp);
       setLastBackup(stamp);
+      setLastCoverage(file.coverage || null);
     } catch (e: any) {
       if (isNotDeployed(e)) setNeedsDeploy(true);
       else if (e instanceof BackupIncomplete || e?.name === 'BackupIncomplete') {
@@ -191,10 +196,14 @@ export function BackupCard() {
       }
       const finish = await restoreFinish(token);
       token = ''; // מכאן כשל רענון אינו סיבה להחזיר שחזור שכבר הושלם.
+      const clientItems = restoreClientBackupState(restorePlan.backup.clientState);
       tick('השחזור הושלם');
-      setRestoreMessage(`✓ השחזור הושלם. עותק הבטיחות נשמר ב-Drive בשם „${finish.snapshotName || snapshotName}”.`);
+      setRestoreMessage(`✓ השחזור הושלם${clientItems ? `, כולל ${clientItems} פריטי הגדרות ומכשיר` : ''}. עותק הבטיחות נשמר ב-Drive בשם „${finish.snapshotName || snapshotName}”.`);
       setRestorePlan(null); setRestoreConfirm('');
       await refresh();
+      // ההגדרות והארגון נטענים פעם אחת בפתיחת האפליקציה. רענון מלא מחזיר
+      // גם את המראה, הניווט והחגים המותאמים מהגיבוי.
+      window.location.reload();
     } catch (e: any) {
       if (isNotDeployed(e)) setNeedsDeploy(true);
       if (token) {
@@ -215,8 +224,9 @@ export function BackupCard() {
   return (
     <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6] space-y-3">
       <CardTitle title="גיבוי, שחזור ובדיקת נתונים">
-        הגיבוי והבדיקה אינם משנים דבר בגיליון. השחזור מופעל רק לאחר בחירת קובץ
-        ואישור מפורש, ולפניו נוצר אוטומטית עותק בטיחות מלא ב־Drive.
+        הגיבוי כולל את לשוניות הגיליון, הקשרים בין הרשומות וההגדרות החשובות
+        שבמכשיר. אסימוני כניסה אינם נכתבים לקובץ. השחזור מתחיל רק לאחר תצוגה
+        מקדימה ואישור, ולפניו נוצר עותק בטיחות מלא ב־Drive.
       </CardTitle>
 
       {needsDeploy && <NeedsDeploy />}
@@ -277,6 +287,8 @@ export function BackupCard() {
           </div>
         )}
 
+        {lastCoverage && <CoverageSummary coverage={lastCoverage} title="מה נכלל בקובץ שהורד" />}
+
         <p className="text-[10px] text-gray-400 mt-1.5 leading-relaxed">
           הנתונים יורדים במנות, ולכן זה לוקח כמה שניות. אם משהו לא מתקבל — לא
           יורד קובץ בכלל, כדי שלא יישאר גיבוי חסר שנראה שלם.
@@ -312,6 +324,9 @@ export function BackupCard() {
               {restorePlan.syncCount} מפתחות נתונים
               {restorePlan.sourceName ? ` · מתוך „${restorePlan.sourceName}”` : ''}
             </div>
+            {restorePlan.backup.coverage && (
+              <CoverageSummary coverage={restorePlan.backup.coverage} title="מה יחזור מהגיבוי" />
+            )}
             <div>
               השחזור יחליף את נתוני האפליקציה. לפני הכתיבה ייווצר אוטומטית עותק מלא של
               הגיליון הנוכחי ב־Drive. לשוניות שאינן שייכות לאפליקציה לא יימחקו.
@@ -400,6 +415,30 @@ export function BackupCard() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function CoverageSummary({ coverage, title }: { coverage: BackupCoverage; title: string }) {
+  const r = coverage.records;
+  const links = coverage.relationships;
+  return (
+    <div className="mt-2 bg-white/70 border border-current/10 rounded-xl p-2.5 text-[10px] leading-relaxed">
+      <div className="font-bold text-[11px] mb-1">{title}</div>
+      <div>
+        {r.contacts.toLocaleString()} אנשי קשר · {r.logRows.toLocaleString()} שורות תרומה ומפגש ·{' '}
+        {r.standingOrders.toLocaleString()} הוראות קבע · {r.nameAliases.toLocaleString()} קישורי שמות
+      </div>
+      <div>
+        {r.activities.toLocaleString()} פעילויות · {r.campaigns.toLocaleString()} קמפיינים ·{' '}
+        {r.tasks.toLocaleString()} משימות · {r.homeVisitRounds.toLocaleString()} מערכי ביקור ·{' '}
+        {r.financeTransactions.toLocaleString()} תנועות כספיות
+      </div>
+      <div>
+        קשרים שנבדקו: {links.namedLogRows.toLocaleString()} שמות ביומן ·{' '}
+        {links.purposedLogRows.toLocaleString()} ייעודים · {links.campaignActivityLinks.toLocaleString()} קישורי קמפיין–פעילות
+      </div>
+      <div>{coverage.clientKeys.length} פריטי הגדרות ומידע מכשיר · אסימוני כניסה אינם כלולים</div>
     </div>
   );
 }

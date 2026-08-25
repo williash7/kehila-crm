@@ -62,7 +62,7 @@ const before = JSON.stringify(stores);
 console.log('א. manifest קטן:');
 const manifest = exportAll_({});
 ok(manifest.success === true, 'הפעולה הצליחה');
-ok(manifest.schemaVersion === 1 && manifest.codeVersion === CODE_VERSION, 'גרסאות החוזה מצורפות');
+ok(manifest.schemaVersion === 2 && manifest.codeVersion === CODE_VERSION, 'גרסאות החוזה מצורפות');
 ok(manifest.spreadsheet.id === 'sheet-123' && manifest.spreadsheet.name === 'קהילה לבדיקה', 'זהות הגיליון מצורפת');
 ok(manifest.maxLimit === 500, 'תקרת המקטע מפורשת');
 ok(Object.keys(SH).every(k => manifest.sheets[SH[k]]), 'כל לשוניות האפליקציה מופיעות');

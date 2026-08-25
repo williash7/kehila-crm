@@ -75,12 +75,16 @@ const TABS: { id: TabId; label: string; icon: string }[] = [
   { id: 'dashboard', label: 'דשבורד', icon: '🏠' },
 ];
 
-export function AppearanceCard() {
+export function AppearanceCard({ targetSection }: { targetSection?: string } = {}) {
   const { settings, updateSettings } = useAppStore();
   // חמישה צירים, שתים־עשרה ערכות ושלושה בוררי תצוגה בטור אחד הפכו את
   // הכרטיס למסך גלילה. כל ציר מקבל לשונית משלו: בכל רגע רואים החלטה אחת,
   // ומעליה תמיד את התצוגה המקדימה שמראה מה היא עשתה.
   const [tab, setTab] = useState<TabId>('color');
+
+  React.useEffect(() => {
+    if (targetSection === 'dashboard-cards') setTab('dashboard');
+  }, [targetSection]);
 
   const cards = resolveCards(settings.dashboardCards);
   const hidden = hiddenCards(settings.dashboardCards);

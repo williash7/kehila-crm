@@ -1,3 +1,5 @@
+import type { ClientBackupState } from './clientBackup';
+
 // ─────────────────────────────────────────────────────────────────────────────
 // גיבוי מלא ודוח תקינות — הלוגיקה, בלי React.
 //
@@ -69,6 +71,100 @@ export interface BackupFile {
   sheets: Record<string, { present: boolean; headers: string[]; rows: any[][]; rowCount: number }>;
   /** ערכי הסנכרון שנמשכו, מפתח אחר מפתח. */
   syncResolved: Record<string, any>;
+  /** מידע חשוב שחי במכשיר ולא בגיליון. קיים מגירסה 2. */
+  clientState?: ClientBackupState;
+  /** מפת כיסוי קריאה לאדם וגם שער אימות לפני שחזור. */
+  coverage?: BackupCoverage;
+}
+
+export interface BackupCoverage {
+  sheets: number;
+  sheetRows: number;
+  syncKeys: string[];
+  clientKeys: string[];
+  records: {
+    contacts: number;
+    logRows: number;
+    standingOrders: number;
+    chargeFailures: number;
+    nameAliases: number;
+    activities: number;
+    campaigns: number;
+    tasks: number;
+    tasksWithId: number;
+    homeVisitRounds: number;
+    financeTransactions: number;
+    customHolidays: number;
+  };
+  relationships: {
+    namedLogRows: number;
+    purposedLogRows: number;
+    cashLocatedLogRows: number;
+    campaignActivityLinks: number;
+  };
+}
+
+function presentSheet(backup: BackupFile, name: string) {
+  return backup.sheets?.[name]?.present ? backup.sheets[name] : undefined;
+}
+
+function columnCount(backup: BackupFile, sheetName: string, header: string): number {
+  const sheet = presentSheet(backup, sheetName);
+  if (!sheet) return 0;
+  const index = sheet.headers.indexOf(header);
+  return index < 0 ? 0 : sheet.rows.filter(row => String(row?.[index] ?? '').trim()).length;
+}
+
+function taskLists(backup: BackupFile): any[][] {
+  const sync = backup.syncResolved || {};
+  const lists: any[][] = [];
+  Object.values(sync.holidayExtras || {}).forEach((extra: any) => {
+    if (Array.isArray(extra?.tasks)) lists.push(extra.tasks);
+  });
+  (Array.isArray(sync.events) ? sync.events : []).forEach((event: any) => {
+    if (Array.isArray(event?.tasks)) lists.push(event.tasks);
+  });
+  (Array.isArray(sync.projects) ? sync.projects : []).forEach((project: any) => {
+    if (Array.isArray(project?.tasks)) lists.push(project.tasks);
+  });
+  return lists;
+}
+
+/** ספירות מפורשות שמוכיחות אילו סוגי מידע וקשרים נמצאים בקובץ. */
+export function buildBackupCoverage(backup: BackupFile): BackupCoverage {
+  const sync = backup.syncResolved || {};
+  const tasks = taskLists(backup).flat();
+  const projects = Array.isArray(sync.projects) ? sync.projects : [];
+  const clientValues = backup.clientState?.values || {};
+  let customHolidays: any[] = [];
+  try { customHolidays = JSON.parse(clientValues.custom_hols || '[]'); } catch { /* מאומת בנפרד */ }
+  return {
+    sheets: Object.values(backup.sheets || {}).filter(sheet => sheet.present).length,
+    sheetRows: Object.values(backup.sheets || {}).reduce((sum, sheet) => sum + (sheet.rows?.length || 0), 0),
+    syncKeys: Object.keys(sync).sort(),
+    clientKeys: Object.keys(clientValues).sort(),
+    records: {
+      contacts: presentSheet(backup, 'אנשי קשר')?.rows.length || 0,
+      logRows: presentSheet(backup, 'יומן תרומות ומפגשים')?.rows.length || 0,
+      standingOrders: presentSheet(backup, 'הוראות קבע')?.rows.length || 0,
+      chargeFailures: presentSheet(backup, 'כשלי חיוב')?.rows.length || 0,
+      nameAliases: presentSheet(backup, 'מיפוי שמות')?.rows.length || 0,
+      activities: Array.isArray(sync.events) ? sync.events.length : 0,
+      campaigns: projects.length,
+      tasks: tasks.length,
+      tasksWithId: tasks.filter(task => String(task?.id || '').trim()).length,
+      homeVisitRounds: Array.isArray(sync.homeVisits?.rounds) ? sync.homeVisits.rounds.length : 0,
+      financeTransactions: Array.isArray(sync.finance?.transactions) ? sync.finance.transactions.length : 0,
+      customHolidays: Array.isArray(customHolidays) ? customHolidays.length : 0,
+    },
+    relationships: {
+      namedLogRows: columnCount(backup, 'יומן תרומות ומפגשים', 'שם'),
+      purposedLogRows: columnCount(backup, 'יומן תרומות ומפגשים', 'ייעוד'),
+      cashLocatedLogRows: columnCount(backup, 'יומן תרומות ומפגשים', 'מיקום מזומן'),
+      campaignActivityLinks: projects.reduce((sum: number, project: any) =>
+        sum + (Array.isArray(project?.activityIds) ? project.activityIds.length : (project?.eventId ? 1 : 0)), 0),
+    },
+  };
 }
 
 /** נזרקת כשרכיב כלשהו לא התקבל. אין קובץ, ויש למה. */
@@ -105,7 +201,8 @@ export async function collectBackup(
   fetchChunk: (sheet: string, offset: number, limit: number) => Promise<Chunk>,
   fetchSync: (key: string) => Promise<{ success: boolean; data?: any; error?: string }>,
   onProgress?: (p: Progress) => void,
-  hardLimit?: number
+  hardLimit?: number,
+  clientState?: ClientBackupState
 ): Promise<BackupFile> {
   const cap = manifest.maxLimit || 500;
   const limit = Math.max(1, Math.min(hardLimit || cap, cap));
@@ -186,6 +283,9 @@ export async function collectBackup(
     out.syncResolved[key] = r.data;
     tick(key);
   }
+
+  if (clientState) out.clientState = clientState;
+  out.coverage = buildBackupCoverage(out);
 
   return out;
 }

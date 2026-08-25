@@ -1,4 +1,5 @@
-import type { BackupFile } from './backup';
+import { BackupFile, buildBackupCoverage } from './backup';
+import { validateClientBackupState } from './clientBackup';
 
 export const RESTORE_CHUNK_SIZE = 500;
 export const RESTORE_CONFIRM_WORD = 'שחזר';
@@ -23,7 +24,8 @@ export function validateBackupForRestore(value: any): RestorePlan {
   if (!value || value.kind !== 'kehila-crm-backup' || value.success !== true) {
     throw new RestoreValidationError('זה אינו קובץ גיבוי מלא של האפליקציה');
   }
-  if (Number(value.schemaVersion) !== 1) {
+  const schemaVersion = Number(value.schemaVersion);
+  if (schemaVersion !== 1 && schemaVersion !== 2) {
     throw new RestoreValidationError(`גרסת גיבוי אינה נתמכת: ${value.schemaVersion ?? 'לא ידועה'}`);
   }
   if (!value.sheets || typeof value.sheets !== 'object' || Array.isArray(value.sheets)) {
@@ -55,6 +57,20 @@ export function validateBackupForRestore(value: any): RestorePlan {
     }
     if (sheet.present) { sheetCount++; totalRows += sheet.rows.length; }
   });
+
+  if (schemaVersion >= 2 || value.clientState !== undefined) {
+    try { validateClientBackupState(value.clientState); }
+    catch (e: any) { throw new RestoreValidationError(e?.message || String(e)); }
+  }
+  if (schemaVersion >= 2 || value.coverage !== undefined) {
+    if (!value.coverage || typeof value.coverage !== 'object') {
+      throw new RestoreValidationError('חסרה מפת כיסוי בגיבוי');
+    }
+    const recalculated = buildBackupCoverage(value as BackupFile);
+    if (JSON.stringify(recalculated) !== JSON.stringify(value.coverage)) {
+      throw new RestoreValidationError('מפת הכיסוי אינה תואמת לתוכן הקובץ');
+    }
+  }
 
   return {
     backup: value as BackupFile,
@@ -95,4 +111,3 @@ export function sheetChunks(plan: RestorePlan, sheetName: string, limit = RESTOR
   }
   return chunks;
 }
-

@@ -9,7 +9,7 @@ import { CalendarTab } from './components/CalendarTab';
 import { EventsTab } from './components/EventsTab';
 import { ReportsTab } from './components/ReportsTab';
 import { PosterTab } from './components/PosterTab';
-import { SettingsTab } from './components/SettingsTab';
+import { SettingsTab, type SettingsOpenTarget } from './components/SettingsTab';
 import { ProjectsTab } from './components/ProjectsTab';
 import { GuideTab } from './components/GuideTab';
 import { TasksTab } from './components/TasksTab';
@@ -58,6 +58,7 @@ function AppContent() {
   // לחזור למסך שלא היה בו מעולם.
   const [openContact, setOpenContact] = useState<{ name: string; from: 'score' | 'search' } | null>(null);
   const [openTarget, setOpenTarget] = useState<OpenTarget | null>(null);
+  const [settingsTarget, setSettingsTarget] = useState<SettingsOpenTarget | null>(null);
   const [dataOnboardingOpen, setDataOnboardingOpen] = useState(() => shouldShowDataOnboarding());
   // { tab, count } — לחיצה על "+" הגלובלי מעדכנת את זה, וכל מסך שמאזין (donors/tasks/events/calendar)
   // פותח את מודל ההוספה שלו כשה-tab תואם לו. count משתנה בכל לחיצה כדי שאפשר יהיה לפתוח שוב אחרי סגירה.
@@ -103,6 +104,11 @@ function AppContent() {
     if (!tab) return;   // סוג לא מוכר — עדיף לא לזוז מאשר לזרוק את המשתמש לדשבורד
     setActiveTab(tab);
     setOpenTarget({ id: result.target.entityId, parentId: result.target.parentId, count: Date.now() });
+  };
+
+  const openFeatureSettings = (target: Omit<SettingsOpenTarget, 'count'>) => {
+    setSettingsTarget({ ...target, count: Date.now() });
+    setActiveTab('settings');
   };
 
   if (loading) {
@@ -154,8 +160,15 @@ function AppContent() {
           {activeTab === 'tasks' && <TasksTab setTab={setActiveTab} addTrigger={addTrigger} openTarget={openTarget} onOpenTargetConsumed={consumeOpenTarget} />}
           {activeTab === 'score' && <ScoreTab onContactClick={name => setOpenContact({ name, from: 'score' })} />}
           {activeTab === 'projects' && <ProjectsTab addTrigger={addTrigger} openTarget={openTarget} onOpenTargetConsumed={consumeOpenTarget} />}
-          {activeTab === 'guide' && <GuideTab />}
-          {activeTab === 'settings' && <SettingsTab />}
+          {activeTab === 'guide' && (
+            <GuideTab onOpenTab={setActiveTab} onOpenSettings={openFeatureSettings} />
+          )}
+          {activeTab === 'settings' && (
+            <SettingsTab
+              openTarget={settingsTarget}
+              onOpenTargetConsumed={() => setSettingsTarget(null)}
+            />
+          )}
         </main>
       </div>
 

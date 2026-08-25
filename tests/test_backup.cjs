@@ -132,7 +132,35 @@ const goodSync = async key => ({ success: true, data: { key, v: 1 } });
        (missing.length ? ' — חסר: ' + missing.join(', ') : ''));
   }
 
-  console.log('\nח. המסך:');
+  console.log('\nח. מפת הכיסוי כוללת רשומות וקשרים:');
+  {
+    const rich = {
+      kind: 'kehila-crm-backup', success: true, schemaVersion: 2,
+      sheets: {
+        'אנשי קשר': { present: true, headers: ['שם'], rows: [['א'], ['ב']], rowCount: 2 },
+        'יומן תרומות ומפגשים': {
+          present: true, headers: ['שם', 'ייעוד', 'מיקום מזומן'],
+          rows: [['א', 'פסח', 'עמותה'], ['ב', '', '']], rowCount: 2,
+        },
+        'מיפוי שמות': { present: true, headers: ['שם'], rows: [['אחר']], rowCount: 1 },
+      },
+      syncResolved: {
+        events: [{ id: 'e1', tasks: [{ id: 't1' }] }],
+        projects: [{ id: 'p1', activityIds: ['e1'], tasks: [{ id: 't2' }, { title: 'ישן' }] }],
+        homeVisits: { rounds: [{ id: 'h1' }] },
+        finance: { transactions: [{ id: 'f1' }] },
+      },
+      clientState: { schemaVersion: 1, values: { custom_hols: '[{"id":"c1"}]' }, excludedSensitive: [] },
+    };
+    const coverage = B.buildBackupCoverage(rich);
+    ok(coverage.records.contacts === 2 && coverage.records.tasks === 3, 'אנשי קשר ומשימות נספרים');
+    ok(coverage.records.tasksWithId === 2, 'מזהים יציבים למשימות נספרים בנפרד');
+    ok(coverage.relationships.purposedLogRows === 1, 'ייעוד תרומה וקישור קמפיין–פעילות נספרים');
+    ok(coverage.relationships.campaignActivityLinks === 1, 'קישור פעילות לקמפיין נספר');
+    ok(coverage.records.customHolidays === 1, 'מידע מכשיר חשוב נכלל בכיסוי');
+  }
+
+  console.log('\nט. המסך:');
   {
     const root = path.join(__dirname, '..');
     const card = fs.readFileSync(root + '/src/components/BackupCard.tsx', 'utf8');
