@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useAppStore } from '../store/AppContext';
-import { X, Link2, Trash2, Sparkles, ArrowLeftRight } from 'lucide-react';
+import { X, Link2, Trash2, Sparkles, ArrowLeftRight, RotateCcw } from 'lucide-react';
 import { NameMergeSuggestion, suggestNameMerges } from '../lib/nameMerges';
 
 export function MergeContactsModal({ onClose, presetName, onMerged }: { onClose: () => void; presetName?: string; onMerged?: () => void }) {
@@ -12,6 +12,45 @@ export function MergeContactsModal({ onClose, presetName, onMerged }: { onClose:
   const [busy, setBusy] = useState(false);
   const [busySuggestion, setBusySuggestion] = useState('');
   const [error, setError] = useState('');
+  const [lastMerge, setLastMerge] = useState<{ alias: string; canonical: string; closeAfter: boolean; closeProfile: boolean } | null>(null);
+  const undoTimer = React.useRef<number | null>(null);
+
+  const clearUndoTimer = () => {
+    if (undoTimer.current != null) window.clearTimeout(undoTimer.current);
+    undoTimer.current = null;
+  };
+
+  React.useEffect(() => () => clearUndoTimer(), []);
+
+  const closeModal = () => {
+    clearUndoTimer();
+    if (lastMerge?.closeAfter && lastMerge.closeProfile && onMerged) onMerged();
+    else onClose();
+  };
+
+  const offerUndo = (alias: string, canonical: string, closeAfter: boolean, closeProfile = false) => {
+    clearUndoTimer();
+    setLastMerge({ alias, canonical, closeAfter, closeProfile });
+    undoTimer.current = window.setTimeout(() => {
+      setLastMerge(null);
+      undoTimer.current = null;
+      if (closeAfter) {
+        if (closeProfile && onMerged) onMerged();
+        else onClose();
+      }
+    }, 5000);
+  };
+
+  const undoLastMerge = async () => {
+    if (!lastMerge || busy) return;
+    clearUndoTimer();
+    setBusy(true);
+    setError('');
+    const ok = await unmergeContact(lastMerge.alias);
+    setBusy(false);
+    if (ok) setLastMerge(null);
+    else setError('לא הצלחתי לבטל את המיזוג. אפשר לנסות שוב בלשונית „מיזוגים קיימים”.');
+  };
 
   const donorNames = Object.keys(donors).sort((x, y) => x.localeCompare(y, 'he'));
   const mergeEntries = Object.entries(nameMerges);
@@ -63,8 +102,7 @@ export function MergeContactsModal({ onClose, presetName, onMerged }: { onClose:
     setNameA('');
     setNameB('');
     setKeep('a');
-    if (onMerged && (aliasName === presetName)) onMerged();
-    else onClose();
+    offerUndo(aliasName, canonicalName, true, aliasName === presetName);
   };
 
   const doSuggestedMerge = async (suggestion: NameMergeSuggestion, canonicalName: string) => {
@@ -78,6 +116,7 @@ export function MergeContactsModal({ onClose, presetName, onMerged }: { onClose:
     setBusy(false);
     setBusySuggestion('');
     if (!ok) setError('המיזוג לא נשמר בגיליון. בדוק את החיבור ונסה שוב.');
+    else offerUndo(aliasName, canonicalName, false);
   };
 
   const reasonLabel: Record<NameMergeSuggestion['reason'], string> = {
@@ -87,13 +126,13 @@ export function MergeContactsModal({ onClose, presetName, onMerged }: { onClose:
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 z-[300] flex items-end md:items-center justify-center p-0 md:p-4 backdrop-blur-sm" onClick={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="fixed inset-0 bg-black/60 z-[300] flex items-end md:items-center justify-center p-0 md:p-4 backdrop-blur-sm" onClick={(e) => e.target === e.currentTarget && closeModal()}>
       <div className="bg-[#FAF6EE] rounded-t-3xl md:rounded-3xl p-5 pb-8 md:pb-5 w-full max-w-[430px] md:max-w-lg max-h-[85vh] overflow-y-auto animate-in slide-in-from-bottom duration-300">
         <div className="flex justify-between items-center mb-4">
           <h2 className="font-['Frank_Ruhl_Libre'] text-xl font-bold text-[#0D1B2A] flex items-center gap-2">
             <Link2 className="text-[#C9A84C]" size={20} /> חיבור אנשי קשר כפולים
           </h2>
-          <button onClick={onClose} className="p-2 bg-white rounded-full shadow-sm"><X size={16} /></button>
+          <button onClick={closeModal} className="p-2 bg-white rounded-full shadow-sm"><X size={16} /></button>
         </div>
 
         <div className="grid grid-cols-3 bg-gray-100 p-1 rounded-xl mb-5">
@@ -255,6 +294,10 @@ export function MergeContactsModal({ onClose, presetName, onMerged }: { onClose:
           </div>
         )}
       </div>
+      {lastMerge && <div className="fixed bottom-24 md:bottom-6 left-1/2 -translate-x-1/2 z-[320] bg-[#0D1B2A] text-white rounded-2xl px-4 py-3 shadow-2xl flex items-center gap-4 text-sm whitespace-nowrap">
+        <span>„{lastMerge.alias}” מוזג ל„{lastMerge.canonical}”</span>
+        <button onClick={() => void undoLastMerge()} disabled={busy} className="text-[#E8C97A] font-bold flex items-center gap-1 disabled:opacity-50"><RotateCcw size={14} /> ביטול</button>
+      </div>}
     </div>
   );
 }
