@@ -145,15 +145,13 @@ function AppContent() {
           {activeTab === 'reports' && <ReportsTab />}
           {activeTab === 'poster' && <PosterTab onClose={() => setActiveTab('home')} />}
           {/*
-            משימות מקבלות ניווט ללשונית בלבד, בכוונה.
+            משימות מקבלות ניווט מדויק — אחרי שנוסף להן מזהה יציב.
             ─────────────────────────────────────────────────────────────────
-            למשימה אין מזהה יציב: `globalSearch` נופל ל-`${parent.id}:${index}`
-            כשאין `id`, ומיקום ברשימה משתנה בכל סינון או מיון. סימון לפי מזהה
-            כזה היה מדגיש **את המשימה הלא נכונה** — וזה גרוע יותר מלא להדגיש
-            כלום.
-            דיווחתי ליוסי; מזהה יציב למשימה הוא תנאי מקדים.
+            עד אז הזיהוי היה לפי המיקום ברשימה, והמיקום משתנה בכל סינון או
+            מחיקה — כלומר הסימון היה נופל על משימה אחרת. זו הסיבה שהיחידה
+            הזו חיכתה למזהה ולא נבנתה קודם.
           */}
-          {activeTab === 'tasks' && <TasksTab setTab={setActiveTab} addTrigger={addTrigger} />}
+          {activeTab === 'tasks' && <TasksTab setTab={setActiveTab} addTrigger={addTrigger} openTarget={openTarget} onOpenTargetConsumed={consumeOpenTarget} />}
           {activeTab === 'score' && <ScoreTab onContactClick={name => setOpenContact({ name, from: 'score' })} />}
           {activeTab === 'projects' && <ProjectsTab addTrigger={addTrigger} openTarget={openTarget} onOpenTargetConsumed={consumeOpenTarget} />}
           {activeTab === 'guide' && <GuideTab />}

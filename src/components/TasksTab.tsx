@@ -15,8 +15,12 @@ import { inviteRemainingMinutes, toggleInvitePerson, STANDALONE_TASKS_ID, PERSON
 import { effectiveDate, compareTasks, priorityWeight, applyTaskTime, TaskSortKey } from '../lib/taskSort';
 import { getCustomHols } from '../lib/api';
 import { logAction } from '../lib/score';
+import { OpenTargetProps, useRevealEntity } from '../lib/openTarget';
 
-export function TasksTab({ setTab, addTrigger }: { setTab: (t: string) => void; addTrigger?: { tab: string; count: number } }) {
+export function TasksTab({ setTab, addTrigger, openTarget, onOpenTargetConsumed }: {
+  setTab: (t: string) => void;
+  addTrigger?: { tab: string; count: number };
+} & OpenTargetProps) {
   const { holidayExtras, updateHolidayExtras, eventsData, updateEventsData, projects, updateProjects, visibleDonors, crm, holidays, markHomeVisitDone, settings, homeVisits, updateHomeVisitRoundMeta } = useAppStore();
   const [selectedDonor, setSelectedDonor] = useState<string | null>(null);
   const [selectedHoliday, setSelectedHoliday] = useState<any | null>(null);
@@ -49,6 +53,32 @@ export function TasksTab({ setTab, addTrigger }: { setTab: (t: string) => void; 
   React.useEffect(() => {
     if (addTrigger?.tab === 'tasks' && addTrigger.count) setIsAddOpen(true);
   }, [addTrigger]);
+
+  // ── הגעה מהחיפוש אל משימה מסוימת ──
+  //
+  // שני צעדים לפני הגלילה, ושניהם נחוצים:
+  //
+  // 1. **תצוגה מקובצת.** התצוגה השטוחה מציגה משימות פתוחות בלבד, ולכן חיפוש
+  //    של משימה שכבר בוצעה היה מגיע למסך שבו היא כלל אינה מופיעה.
+  // 2. **פתיחת הקבוצה.** קבוצה מכווצת מסתירה את המשימה מה-DOM, וההדגשה
+  //    הייתה מוותרת בשקט — בדיוק אותה תקלה שתיקנּו בפעילויות עם המסנן.
+  //
+  // `parentId` אינו יודע אם ההורה הוא חג, פעילות או קמפיין, ולכן פותחים את
+  // שלושת המפתחות האפשריים. פתיחת קבוצה שאינה רלוונטית אינה מזיקה.
+  React.useEffect(() => {
+    if (!openTarget?.id) return;
+    setViewMode('grouped');
+    const parent = openTarget.parentId;
+    if (parent) {
+      setCollapsedGroups(prev => {
+        const next = new Set(prev);
+        [`h-${parent}`, `e-${parent}`, `c-${parent}`].forEach(k => next.delete(k));
+        return next;
+      });
+    }
+  }, [openTarget?.id, openTarget?.count]);
+
+  useRevealEntity(openTarget, !!openTarget?.id, onOpenTargetConsumed);
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -388,7 +418,16 @@ export function TasksTab({ setTab, addTrigger }: { setTab: (t: string) => void; 
     setIsAddOpen(false);
   };
 
+  // כל משימה מסמנת את עצמה במזהה שלה, כדי שהחיפוש יוכל למצוא אותה.
+  //
+  // המזהה נוסף ליחידת הנתונים של יוסי, ורק בזכותו אפשר לסמן **את המשימה
+  // הנכונה**. קודם הזיהוי היה לפי המיקום ברשימה, והמיקום משתנה בכל סינון —
+  // כלומר הסימון היה נופל על משימה אחרת.
+  //
+  // משימה בלי מזהה (מסונתזת — תאריך אישי, הכנה לביקור) אינה מסומנת כלל,
+  // וגם אינה נכנסת לחיפוש.
   const renderTaskItem = (t: any, onToggle: () => void, onDelete: () => void, onTogglePerson: (person: string) => void, onPatch: (patch: Partial<any>) => void, extra?: React.ReactNode) => (
+    <div data-entity-id={t.id || undefined}>{
     t.kind === 'invite' ? (
       <div className="bg-white rounded-xl p-3 shadow-sm border border-[#EDE6D6]">
         <div className="flex items-center justify-between mb-2">
@@ -432,6 +471,7 @@ export function TasksTab({ setTab, addTrigger }: { setTab: (t: string) => void; 
         <TaskDetailsPanel task={t} onPatch={onPatch} />
       </div>
     )
+  }</div>
   );
 
   // כפתורים ייחודיים לפי kind — מוצאים לכפתור משותף כדי לשמש גם בתצוגה

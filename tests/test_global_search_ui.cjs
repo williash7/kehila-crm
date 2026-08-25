@@ -64,14 +64,40 @@ assert.match(projects, /setShowClosed\(true\)/,
 assert.match(events, /useRevealEntity\(openTarget/, 'פעילות: מגוללים ומדגישים');
 assert.match(events, /data-entity-id=\{ev\.id\}/, 'והכרטיס מסמן את עצמו כיעד');
 
-// ── משימות: החרגה מכוונת ──
+// ── משימות: ניווט מדויק, אחרי שנוסף מזהה יציב ──
 //
-// למשימה אין מזהה יציב (`globalSearch` נופל ל-`parent:index`), ומיקום
-// ברשימה משתנה בכל סינון. סימון לפי מזהה כזה היה מדגיש את המשימה הלא
-// נכונה — גרוע יותר מלא להדגיש כלל.
-assert.doesNotMatch(app, /<TasksTab[^>]*openTarget/,
-  'משימות אינן מקבלות יעד עד שיהיה להן מזהה יציב');
-assert.match(app, /מזהה יציב/, 'וההחרגה מתועדת במקום להיראות כשכחה');
+// זו הייתה היחידה שעצרנו בכוונה. כל עוד המשימה זוהתה לפי המיקום ברשימה,
+// סימון היה נופל על **משימה אחרת** בכל סינון או מחיקה — גרוע יותר מלא
+// לסמן כלל, כי המשתמש סומך על הסימון.
+const tasks = read('src/components/TasksTab.tsx');
+
+assert.match(app, /<TasksTab[\s\S]*?openTarget=\{openTarget\}/,
+  'משימות מקבלות יעד');
+assert.match(app, /<TasksTab[\s\S]*?onOpenTargetConsumed=\{consumeOpenTarget\}/,
+  'ונצרך כמו השאר');
+assert.match(tasks, /OpenTargetProps/, 'TasksTab מקבל את החוזה');
+
+// המשימה מסמנת את עצמה **לפי המזהה של יוסי**, לא לפי מיקום.
+assert.match(tasks, /data-entity-id=\{t\.id \|\| undefined\}/,
+  'הסימון לפי t.id בלבד');
+assert.doesNotMatch(tasks, /data-entity-id=\{idx/, 'ולא לפי מיקום ברשימה');
+
+// שני צעדים שבלעדיהם המשימה כלל אינה על המסך, וההדגשה מוותרת בשקט:
+assert.match(tasks, /setViewMode\('grouped'\)/,
+  'עוברים לתצוגה מקובצת — השטוחה מציגה פתוחות בלבד, ומשימה שבוצעה לא הייתה שם');
+assert.match(tasks, /\[`h-\$\{parent\}`, `e-\$\{parent\}`, `c-\$\{parent\}`\]\.forEach\(k => next\.delete\(k\)\)/,
+  'ופותחים את הקבוצה לפי parentId — קבוצה מכווצת מסתירה את המשימה מה-DOM');
+
+// הסדר קובע, כמו בפעילויות: פתיחה לפני הדגשה.
+const groupIdx = tasks.indexOf("setViewMode('grouped')");
+const taskRevealIdx = tasks.indexOf('useRevealEntity(openTarget');
+assert.ok(groupIdx > 0 && taskRevealIdx > groupIdx,
+  'פתיחת התצוגה והקבוצה קורית לפני ההדגשה');
+
+// משימה מסונתזת (תאריך אישי, הכנה לביקור) אינה נשמרת ואין לה מזהה —
+// `|| undefined` מוודא שלא ייווצר סימון ריק שהבורר עלול לתפוס בטעות.
+assert.match(tasks, /t\.id \|\| undefined/,
+  'משימה בלי מזהה אינה מסומנת כלל');
 
 // ── ההדגשה עצמה ──
 assert.match(openTarget, /CSS\.escape/, 'מזהה עם תווים מיוחדים אינו שובר את הבורר');
