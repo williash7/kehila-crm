@@ -12,12 +12,27 @@ import { computeOverdueContacts, computeLastContactByName, formatLastContact } f
 import { withCity } from '../lib/orgConfig';
 import { avatarGradient, hasDisplayName } from '../lib/donorDisplay';
 
+const DONOR_SORT_KEY = 'kehila:list-sort:contacts';
+type DonorSortState = { field: string; direction: 'asc' | 'desc' };
+
+function readDonorSort(): DonorSortState {
+  try {
+    const saved = JSON.parse(localStorage.getItem(DONOR_SORT_KEY) || 'null');
+    if (['total', 'name', 'circle', 'date'].includes(saved?.field)
+      && ['asc', 'desc'].includes(saved?.direction)) {
+      return saved;
+    }
+  } catch { /* הגדרת נוחות בלבד — אינה חוסמת את הרשימה */ }
+  return { field: 'total', direction: 'desc' };
+}
+
 export function DonorsTab({ addTrigger }: { addTrigger?: { tab: string; count: number } } = {}) {
   const { donors, visibleDonors, hk, failures, crm, donations, refresh, updateCrm, nameMerges } = useAppStore();
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
-  const [sort, setSort] = useState('total');
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const [initialSort] = useState(readDonorSort);
+  const [sort, setSort] = useState(initialSort.field);
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>(initialSort.direction);
   const [detailFilter, setDetailFilter] = useState('all');
   const [selectedDonor, setSelectedDonor] = useState<string | null>(null);
 
@@ -29,6 +44,11 @@ export function DonorsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
     setSort(mode);
     setSortDir(defaultDirFor(mode));
   };
+
+  React.useEffect(() => {
+    try { localStorage.setItem(DONOR_SORT_KEY, JSON.stringify({ field: sort, direction: sortDir })); }
+    catch { /* הגדרת נוחות בלבד */ }
+  }, [sort, sortDir]);
 
   const [isAddContactOpen, setIsAddContactOpen] = useState(false);
   const [newContactName, setNewContactName] = useState('');
@@ -212,7 +232,7 @@ export function DonorsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
 
       {/* Search + filters — full width on all screens */}
       <div className="p-4 pb-2 md:px-6 md:py-4">
-        <div className="md:flex md:items-center md:gap-4">
+        <div className="md:flex md:flex-wrap md:items-center md:gap-4">
           <div className="bg-white rounded-xl py-2.5 px-3.5 flex items-center gap-2.5 shadow-sm border-[1.5px] border-transparent focus-within:border-[#C9A84C] transition-colors mb-3 md:mb-0 md:w-72 md:shrink-0">
             <Search size={18} className="text-gray-400 shrink-0" />
             <input
@@ -224,9 +244,9 @@ export function DonorsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
             />
           </div>
 
-          <div className="md:hidden mb-3 flex gap-2">
+          <div className="mb-3 flex gap-2 md:mb-0 md:shrink-0">
             <select
-              className="flex-1 bg-white border border-[#EDE6D6] text-sm rounded-xl px-3 py-1.5 focus:outline-none focus:border-[#C9A84C] text-[#0D1B2A] font-medium shadow-sm"
+              className="flex-1 md:w-40 bg-white border border-[#EDE6D6] text-sm rounded-xl px-3 py-1.5 focus:outline-none focus:border-[#C9A84C] text-[#0D1B2A] font-medium shadow-sm"
               value={sort}
               onChange={e => changeSort(e.target.value)}
             >
