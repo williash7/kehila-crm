@@ -84,6 +84,8 @@ const libBundles = [
   ['lib/todayFocus.ts', join(OUT, 'todayFocus.js')],
   ['lib/donationFilter.ts', join(OUT, 'df.js')],
   ['lib/finance.ts', join(OUT, 'finance.js')],
+  ['lib/monthClose.ts', join(OUT, 'monthClose.js')],
+  ['lib/activityScenario.ts', join(OUT, 'activityScenario.js')],
   ['lib/activities.ts', join(OUT, 'activities.js')],
   ['lib/history.ts', join(OUT, 'history.js')],
   ['lib/homeVisits.ts', join(OUT, 'homeVisits.js')],
