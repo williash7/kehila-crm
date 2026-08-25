@@ -30,6 +30,7 @@ import { DataOnboardingWizard } from './components/DataOnboardingWizard';
 import { shouldShowDataOnboarding } from './lib/dataOnboarding';
 import { GlobalSearchTab } from './components/GlobalSearchTab';
 import { GlobalSearchResult } from './lib/globalSearch';
+import { QuickInboxTab } from './components/QuickInboxTab';
 
 // תווית לכפתור "+" הגלובלי (FAB במובייל, "הוסף X" בסיידבר) לפי המסך הפעיל.
 // מסכים שלא ברשימה (דוחות, פוסטר, הגדרות) — אין פעולת "הוספה" משמעותית, הכפתור מוסתר בהם.
@@ -105,6 +106,7 @@ function AppContent() {
         <main className="flex-1 min-w-0 pb-20 md:pb-6">
           {activeTab === 'home' && <HomeTab setTab={setActiveTab} onDonationClick={() => setIsDonationOpen(true)} onQuickAdd={requestAddFor} />}
           {activeTab === 'search' && <GlobalSearchTab onNavigate={openSearchResult} />}
+          {activeTab === 'inbox' && <QuickInboxTab />}
           {activeTab === 'donors' && <DonorsTab addTrigger={addTrigger} />}
           {activeTab === 'homevisits' && <HomeVisitsTab addTrigger={addTrigger} />}
           {activeTab === 'donations' && <DonationsTab onAddDonation={() => setIsDonationOpen(true)} />}

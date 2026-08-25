@@ -2,7 +2,7 @@ import React from 'react';
 import {
   Home, Users, CalendarDays, PieChart, CalendarCheck, Settings, ClipboardList,
   TrendingUp, HandCoins, History, DoorOpen, Target, Image as ImageIcon,
-  BookOpen, CalendarHeart, WalletCards, MoreHorizontal, Search,
+  BookOpen, CalendarHeart, WalletCards, MoreHorizontal, Search, Inbox,
 } from 'lucide-react';
 import { useAppStore } from '../store/AppContext';
 import {
@@ -18,6 +18,7 @@ interface BottomNavProps {
 const ICONS: Record<NavItemId, React.ComponentType<{ size?: number; className?: string }>> = {
   home: Home,
   search: Search,
+  inbox: Inbox,
   tasks: ClipboardList,
   score: TrendingUp,
   donors: Users,
