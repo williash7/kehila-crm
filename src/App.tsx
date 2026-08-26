@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { AppProvider, useAppStore } from './store/AppContext';
 import { BottomNav } from './components/BottomNav';
 import { SideNav } from './components/SideNav';
@@ -30,7 +30,7 @@ import { DataOnboardingWizard } from './components/DataOnboardingWizard';
 import { shouldShowDataOnboarding } from './lib/dataOnboarding';
 import { GlobalSearchTab } from './components/GlobalSearchTab';
 import { GlobalSearchResult } from './lib/globalSearch';
-import { OpenTarget } from './lib/openTarget';
+import { OpenTarget, onOpenItemRequest } from './lib/openTarget';
 import { QuickInboxTab } from './components/QuickInboxTab';
 import { DailyReminderAgent } from './components/DailyReminderAgent';
 
@@ -94,6 +94,24 @@ function AppContent() {
   // בלי זה הוא היה נשאר ב-App לנצח: מעבר למסך אחר וחזרה מרכיב מחדש את
   // רכיב היעד, ה-effect רץ שוב — ופריט מלפני שעה נפתח לבד.
   const consumeOpenTarget = () => setOpenTarget(null);
+
+  // ── בקשה לפתוח פריט, שמגיעה מתוך מסך אחר ──
+  //
+  // מי שלוחץ על תרומה בכרטיס איש הקשר מבקש להגיע **לתרומה**, לא לרשימה.
+  // אותו מסלול בדיוק של תוצאת חיפוש, ולכן אותו מנגנון: מחליפים לשונית
+  // ומעבירים את המזהה הלאה.
+  React.useEffect(() => onOpenItemRequest(req => {
+    const tabs: Record<string, string> = {
+      donation: 'donations', activity: 'events', campaign: 'projects', task: 'tasks',
+    };
+    const tab = tabs[req.kind];
+    if (!tab) return;
+    // סוגרים את הכרטיס שממנו הגיעה הבקשה — אחרת הוא היה נשאר פתוח מעל
+    // המסך החדש, והמשתמש היה חושב שכלום לא קרה.
+    setOpenContact(null);
+    setActiveTab(tab);
+    setOpenTarget({ id: req.id, parentId: req.parentId, count: Date.now() });
+  }), []);
 
   const openSearchResult = (result: GlobalSearchResult) => {
     if (result.kind === 'contact') {

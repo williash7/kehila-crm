@@ -26,6 +26,7 @@ import { CalendarPlus } from 'lucide-react';
 import { withCity } from '../lib/orgConfig';
 import { avatarGradient } from '../lib/donorDisplay';
 import { updateDonorFieldQueued, updatePersonalDateQueued } from '../lib/api';
+import { requestOpenItem } from '../lib/openTarget';
 
 export function ProfileModal({ name, onClose, backLabel, siblings, onSelectSibling }: {
   name: string;
@@ -746,11 +747,37 @@ export function ProfileModal({ name, onClose, backLabel, siblings, onSelectSibli
                       <div className="bg-white border border-[#EDE6D6] rounded-xl p-3 shadow-sm">
                         {e.type === 'donation' ? (
                           <div className="flex justify-between items-start">
+                            {/*
+                              לחיצה על התרומה מובילה **לתרומה עצמה**.
+                              ────────────────────────────────────────────────
+                              עד כה אפשר היה לראות כאן שיוסף תרם ₪500 ולא היה
+                              אפשר לגעת בזה — צריך היה לצאת, להיכנס לתרומות,
+                              ולחפש אותה מחדש.
+
+                              תרומה בלי מזהה (רשומה ותיקה מהגיליון) נשארת
+                              טקסט רגיל: עדיף שלא ייראה כפתור מאשר שייראה
+                              כפתור שלא עושה כלום.
+                            */}
+                            {e.data.id ? (
+                              <button
+                                onClick={() => requestOpenItem('donation', e.data.id)}
+                                className="text-right group flex-1 min-w-0"
+                                title="פתח את התרומה לעריכה"
+                              >
+                                <div className="text-sm font-semibold text-[#0D1B2A] group-hover:text-[#9B7A2F] transition-colors">
+                                  💰 {e.data.purpose || 'תרומה'}
+                                  <span className="text-[10px] text-gray-300 group-hover:text-[#C9A84C] mr-1">←</span>
+                                </div>
+                                <div className="text-[11px] text-gray-500 mt-1">{e.date} · {e.data.method} {e.data.notes ? `· ${e.data.notes}` : ''}</div>
+                                <div className="font-['Frank_Ruhl_Libre'] font-bold text-[#9B7A2F] mt-1.5">₪{(e.data.amount || 0).toLocaleString()}</div>
+                              </button>
+                            ) : (
                             <div>
                               <div className="text-sm font-semibold text-[#0D1B2A]">💰 {e.data.purpose || 'תרומה'}</div>
                               <div className="text-[11px] text-gray-500 mt-1">{e.date} · {e.data.method} {e.data.notes ? `· ${e.data.notes}` : ''}</div>
                               <div className="font-['Frank_Ruhl_Libre'] font-bold text-[#9B7A2F] mt-1.5">₪{(e.data.amount || 0).toLocaleString()}</div>
                             </div>
+                            )}
                             <div className="flex flex-col gap-1.5 shrink-0">
                               <button 
                                 onClick={() => {

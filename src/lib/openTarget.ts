@@ -116,3 +116,50 @@ export function useRevealEntity(
     return () => { cancelAnimationFrame(frame); clearTimeout(timer); };
   }, [target?.id, target?.count, enabled]);
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// „קח אותי לפריט הזה” — הפעם **מלמטה למעלה**.
+//
+// ── למה נדרש ערוץ ולא prop ────────────────────────────────────────────────
+//
+// אשר ביקש: „בתוך איש הקשר של יוסף אני רואה את התרומות שלו, אני לוחץ על
+// תרומה וזה מעביר אותי לעריכת התרומה הספציפית הזו.”
+//
+// אבל `ProfileModal` מוצג מ**שבעה** מקומות שונים — אנשי קשר, תרומות, משימות,
+// דף הבית, תאריכים, הוראות קבע ו-App. רק `App` יודע להחליף לשונית, והוא
+// אינו מרנדר את רובם.
+//
+// prop היה מחייב להשחיל אותו דרך שבעה רכיבים שאין להם שום קשר לתרומות —
+// וכל מי שישכח להשחיל ייצור מסך שבו הלחיצה פשוט לא עובדת. **בקשה שנעלמת
+// בשקט היא בדיוק מה שאנחנו מנסים לחסל.**
+//
+// ערוץ אחד: מי שמבקש קורא, `App` מקשיב. אין דרך „לשכוח לחבר”.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type OpenItemKind = 'donation' | 'activity' | 'campaign' | 'task';
+
+export interface OpenItemRequest {
+  kind: OpenItemKind;
+  id: string;
+  parentId?: string;
+}
+
+const itemListeners = new Set<(r: OpenItemRequest) => void>();
+
+/** `App` נרשם כאן. מחזיר פונקציית ביטול. */
+export function onOpenItemRequest(fn: (r: OpenItemRequest) => void): () => void {
+  itemListeners.add(fn);
+  return () => itemListeners.delete(fn);
+}
+
+/**
+ * מבקש לפתוח פריט מתוך הקשר אחר.
+ *
+ * מחזיר `false` כשאין מי שמקשיב — כדי שהמסך המבקש יוכל להימנע מלהציג
+ * כפתור שאינו עושה דבר, במקום להציג אותו ולתת ללחיצה ליפול לחלל.
+ */
+export function requestOpenItem(kind: OpenItemKind, id: string, parentId?: string): boolean {
+  if (!id || itemListeners.size === 0) return false;
+  itemListeners.forEach(fn => { try { fn({ kind, id, parentId }); } catch { /* מאזין שנפל לא יפיל את השאר */ } });
+  return true;
+}

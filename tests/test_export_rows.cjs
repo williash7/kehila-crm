@@ -119,3 +119,44 @@ SCREENS.forEach(([file, label]) => {
 }
 
 console.log('✓ הורדה בכל מסך — בדיוק מה שמוצג, ובחירה מרובה של אפיקי גבייה');
+
+// ═══════════════════════════════════════════════════════════════════════════
+// לחיצה על פריט מתוך הקשר אחר.
+//
+// אשר: „בתוך איש הקשר של יוסף אני רואה את התרומות שלו, אני לוחץ על תרומה
+// וזה מעביר אותי לעריכת התרומה הספציפית הזו.”
+// ═══════════════════════════════════════════════════════════════════════════
+
+const openTargetSrc = read('src/lib/openTarget.ts');
+const profile = read('src/components/ProfileModal.tsx');
+const app = read('src/App.tsx');
+
+// ── למה ערוץ ולא prop ──
+//
+// ProfileModal מוצג משבעה מקומות. prop היה מחייב להשחיל אותו דרך כולם, וכל
+// מי שישכח ייצור מסך שבו הלחיצה לא עובדת — בקשה שנעלמת בשקט.
+const profileUsages = (app + read('src/components/AllDatesModal.tsx') + read('src/components/DonationsTab.tsx')
+  + read('src/components/DonorsTab.tsx') + read('src/components/HomeTab.tsx')
+  + read('src/components/TasksTab.tsx')).match(/<ProfileModal/g) || [];
+assert.ok(profileUsages.length >= 6,
+  `ProfileModal מוצג מהרבה מקומות (${profileUsages.length}) — ולכן ערוץ ולא prop`);
+
+assert.match(openTargetSrc, /export function requestOpenItem/, 'קיימת בקשה');
+assert.match(openTargetSrc, /export function onOpenItemRequest/, 'וקיים מאזין');
+assert.match(openTargetSrc, /if \(!id \|\| itemListeners\.size === 0\) return false/,
+  'בקשה בלי מאזין מחזירה false ולא נופלת לחלל');
+
+// ── הצד המבקש ──
+assert.match(profile, /requestOpenItem\('donation', e\.data\.id\)/, 'לחיצה על תרומה מבקשת לפתוח אותה');
+assert.match(profile, /e\.data\.id \? \(/,
+  'תרומה בלי מזהה נשארת טקסט — עדיף בלי כפתור מאשר כפתור שלא עושה כלום');
+
+// ── הצד המאזין ──
+assert.match(app, /onOpenItemRequest\(req =>/, 'App מקשיב');
+assert.match(app, /setOpenTarget\(\{ id: req\.id, parentId: req\.parentId/,
+  'ומעביר את המזהה הלאה — אותו מסלול של תוצאת חיפוש');
+// בלי זה הכרטיס נשאר פתוח מעל המסך החדש, והמשתמש חושב שכלום לא קרה.
+assert.match(app, /setOpenContact\(null\);\s*\n\s*setActiveTab\(tab\)/,
+  'והכרטיס נסגר לפני המעבר');
+
+console.log('✓ לחיצה על תרומה בכרטיס מובילה לתרומה עצמה');

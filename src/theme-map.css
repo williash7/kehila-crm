@@ -1,5 +1,5 @@
 /* ═══ נוצר אוטומטית על ידי scripts/gen-theme-map.mjs — אין לערוך ביד ═══
-   71 כללים, מתוך סריקה של 138 קבצים.
+   73 כללים, מתוך סריקה של 138 קבצים.
    לעדכון: npm run theme
    ═════════════════════════════════════════════════════════════════════ */
 
@@ -42,6 +42,8 @@
 [data-theme] .focus\:ring-\[\#C9A84C\]\/20:focus { --tw-ring-color: color-mix(in srgb, var(--c-gold) 20%, transparent); }
 [data-theme] .from-\[\#0D1B2A\] { --tw-gradient-from: var(--c-chrome-bg); }
 [data-theme] .from-\[\#C9A84C\] { --tw-gradient-from: var(--c-gold); }
+[data-theme] .group:hover .group-hover\:text-\[\#9B7A2F\] { color: var(--c-gold-dark); }
+[data-theme] .group:hover .group-hover\:text-\[\#C9A84C\] { color: var(--c-gold); }
 [data-theme] .hover\:bg-\[\#0D1B2A\]\/10:hover { background-color: color-mix(in srgb, var(--c-chrome-bg) 10%, transparent); }
 [data-theme] .hover\:bg-\[\#16283d\]:hover { background-color: var(--c-chrome-bg); }
 [data-theme] .hover\:bg-\[\#1a2d44\]:hover { background-color: var(--c-chrome-bg); }
