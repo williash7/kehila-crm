@@ -16,6 +16,8 @@ import { effectiveDate, compareTasks, priorityWeight, applyTaskTime, TaskSortKey
 import { getCustomHols } from '../lib/api';
 import { logAction } from '../lib/score';
 import { OpenTargetProps, useRevealEntity } from '../lib/openTarget';
+import { ExportButton } from './ExportButton';
+import { TASK_COLUMNS } from '../lib/exportRows';
 
 export function TasksTab({ setTab, addTrigger, openTarget, onOpenTargetConsumed }: {
   setTab: (t: string) => void;
@@ -246,6 +248,25 @@ export function TasksTab({ setTab, addTrigger, openTarget, onOpenTargetConsumed 
   // ביקור בית ספציפי היה מגיע למסך שבו הוא מוסתר עד שיסמנו את ההכנות.
   const homeVisitTasks = openStandaloneAll.filter(x => x.t.kind === 'homeVisit' && (roundPrepDone(x.t.roundId) || isFocused(x.t)));
   const standaloneTasks = openStandaloneAll.filter(x => x.t.kind !== 'homeVisit');
+
+  // ── מה שיירד לקובץ ──
+  //
+  // `flatRows` מחזיק **צמתי React** ולא נתונים, ולכן אי אפשר לייצא ממנו.
+  // כאן נבנית רשימה שטוחה מארבעת המקורות — חג, פעילות, קמפיין וחד-פעמית —
+  // עם השם של ההורה, כי „להתקשר למאיר” בלי לדעת לאיזה חג הוא שייך אינו
+  // אומר כלום בקובץ.
+  const taskExportRows = React.useMemo(() => {
+    const rows: any[] = [];
+    holidayGroups.forEach(g => g.tasks.forEach(({ t }: any) =>
+      rows.push({ ...t, parentName: g.id })));
+    eventGroups.forEach(g => g.tasks.forEach(({ t }: any) =>
+      rows.push({ ...t, parentName: g.name || g.id })));
+    campaignGroups.forEach(g => g.tasks.forEach(({ t }: any) =>
+      rows.push({ ...t, parentName: g.name || g.id })));
+    standaloneTasks.forEach(({ t }: any) => rows.push({ ...t, parentName: 'משימה חד-פעמית' }));
+    homeVisitTasks.forEach(({ t }: any) => rows.push({ ...t, parentName: 'ביקורי בית' }));
+    return rows;
+  }, [holidayGroups, eventGroups, campaignGroups, standaloneTasks, homeVisitTasks]);
 
   const openHolidayCount = holidayGroups.reduce((s, g) => s + g.tasks.length, 0);
   const openEventCount = eventGroups.reduce((s, g) => s + g.tasks.length, 0);
@@ -799,6 +820,11 @@ export function TasksTab({ setTab, addTrigger, openTarget, onOpenTargetConsumed 
             >
               📆 לוח שנה
             </button>
+            {/* ההורדה מכסה את כל המשימות מארבעת המקורות, לא רק את התצוגה
+                הנוכחית — התצוגה היא דרך הצגה, לא סינון תוכן. */}
+            <span className="mr-auto">
+              <ExportButton rows={taskExportRows} columns={TASK_COLUMNS} fileName="משימות" />
+            </span>
           </div>
         </div>
       )}

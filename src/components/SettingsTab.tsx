@@ -306,54 +306,14 @@ export function SettingsTab({ openTarget, onOpenTargetConsumed }: {
             </div>
           )}
         </div>
-        <div data-entity-id="settings-payment-statuses" className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6] space-y-3">
-          <CardTitle title="מצבי תשלום והתאמה חודשית">
-            מוסיף למסך התרומות תצוגת בקרה לקריאות בלבד: התקבל, עתידי, נכשל ומבוטל,
-            וכלי להשוואת דוח חודשי מנדרים. הסכומים והדוחות הקיימים אינם משתנים.
-          </CardTitle>
-          <button
-            type="button"
-            onClick={() => updateSettings({ showPaymentStatuses: !settings.showPaymentStatuses })}
-            className="w-full flex items-center justify-between gap-3 text-right"
-            aria-pressed={settings.showPaymentStatuses}
-          >
-            <span className="min-w-0">
-              <span className="block text-sm font-bold text-[#0D1B2A]">
-                {settings.showPaymentStatuses ? 'התצוגה פעילה' : 'הצג תצוגת בקרה בתרומות'}
-              </span>
-              <span className="block text-[11px] text-gray-500 mt-0.5">
-                כבוי כברירת מחדל ונשמר במכשיר הזה בלבד
-              </span>
-            </span>
-            <span className={`w-[46px] h-[26px] rounded-full relative transition-colors shrink-0 ${settings.showPaymentStatuses ? 'bg-[#C9A84C]' : 'bg-[#EDE6D6]'}`}>
-              <span className={`w-[22px] h-[22px] bg-white rounded-full absolute top-[2px] shadow transition-all ${settings.showPaymentStatuses ? 'left-[2px]' : 'right-[2px]'}`} />
-            </span>
-          </button>
-        </div>
-        <div data-entity-id="settings-finance-center" className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6] space-y-3">
-          <CardTitle title="מרכז כספי">
-            מסך נפרד לניהול הוצאות, התחייבויות, תזרים, התחשבנות אישית ותקציבי
-            אירועים. הפעלתו אינה משנה את התרומות, התקציבים או הדוחות הקיימים.
-          </CardTitle>
-          <button
-            type="button"
-            onClick={() => updateSettings({ showFinanceCenter: !settings.showFinanceCenter })}
-            className="w-full flex items-center justify-between gap-3 text-right"
-            aria-pressed={settings.showFinanceCenter}
-          >
-            <span className="min-w-0">
-              <span className="block text-sm font-bold text-[#0D1B2A]">
-                {settings.showFinanceCenter ? 'המרכז הכספי פעיל' : 'הצג מרכז כספי'}
-              </span>
-              <span className="block text-[11px] text-gray-500 mt-0.5">
-                כבוי כברירת מחדל; כשהוא פעיל נוסף פריט „כספים” בניווט
-              </span>
-            </span>
-            <span className={`w-[46px] h-[26px] rounded-full relative transition-colors shrink-0 ${settings.showFinanceCenter ? 'bg-[#C9A84C]' : 'bg-[#EDE6D6]'}`}>
-              <span className={`w-[22px] h-[22px] bg-white rounded-full absolute top-[2px] shadow transition-all ${settings.showFinanceCenter ? 'left-[2px]' : 'right-[2px]'}`} />
-            </span>
-          </button>
-        </div>
+        {/*
+          שני המתגים שהיו כאן — „מצבי תשלום” ו„מרכז כספי” — הוסרו.
+          ─────────────────────────────────────────────────────────────────
+          אשר שאל „מה ההבדל בינו לשאר הפונקציות?”, ולא היה הבדל. הם נוצרו
+          כבויים כדי לא להעמיס כשנוספו, ומאז נבנה מנגנון כללי להסתרת מסכים
+          בהגדרות ← ניווט. שני מקומות להסתרה יצרו חוסר עקביות שהוא הבחין
+          בה: אפשר היה לכבות כספים ולא דוחות.
+        */}
         </>)}
 
         {group === 'appearance' && (<>

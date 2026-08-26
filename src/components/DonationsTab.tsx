@@ -163,7 +163,9 @@ export function DonationsTab({ onAddDonation, openTarget, onOpenTargetConsumed }
     { id: 'donations', label: 'תרומות', count: donationRecords.length },
     { id: 'hk', label: 'הוראות קבע', count: hk.length },
     { id: 'errors', label: 'שגיאות', count: failures.length },
-    ...(settings.showPaymentStatuses ? [{ id: 'payments' as MainTab, label: 'מצבי חיוב' }] : []),
+    // בקרת התשלומים היא תת-לשונית ולא מסך, ולכן מנגנון הניווט אינו יכול
+    // להסתיר אותה. היא לקריאה בלבד ואינה משנה סכומים — ולכן פשוט מוצגת.
+    { id: 'payments' as MainTab, label: 'מצבי חיוב' },
   ];
 
   return (
@@ -497,7 +499,7 @@ export function DonationsTab({ onAddDonation, openTarget, onOpenTargetConsumed }
           </div>
         )}
 
-        {mainTab === 'payments' && settings.showPaymentStatuses && <PaymentLedgerView />}
+        {mainTab === 'payments' && <PaymentLedgerView />}
       </div>
 
       {selectedDonor && <ProfileModal name={selectedDonor} onClose={() => setSelectedDonor(null)} backLabel="תרומות" />}

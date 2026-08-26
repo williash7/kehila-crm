@@ -42,6 +42,20 @@ export function normalizeBottomNavPrimary(raw: unknown, order?: NavItemId[]): Na
   return Array.from(new Set(requested.filter((id): id is NavItemId => typeof id === 'string' && allowed.has(id))));
 }
 
-export function availableNavigationItems(showFinanceCenter: boolean) {
-  return NAV_ITEMS.filter(item => !('requiresFinance' in item) || !item.requiresFinance || showFinanceCenter);
+/**
+ * כל מסכי הניווט.
+ *
+ * ── למה אין כאן יותר תנאי ──
+ *
+ * למרכז הכספי היה מתג הפעלה נפרד בהגדרות, ולבקרת התשלומים מתג משלה. אשר
+ * שאל את השאלה הנכונה: **„מה ההבדל בינו לשאר הפונקציות?”**
+ *
+ * לא היה הבדל. הם נוצרו כבויים כדי לא להעמיס כשנוספו, ומאז נבנה מנגנון
+ * כללי — הגדרות ← ניווט — שמאפשר להסתיר ולסדר **כל** מסך. שני המתגים היו
+ * כפולים לו, ויצרו חוסר עקביות: אפשר היה לכבות כספים ולא דוחות.
+ *
+ * מקום אחד להסתרה, לא שניים.
+ */
+export function availableNavigationItems(_legacyUnused?: boolean) {
+  return NAV_ITEMS;
 }

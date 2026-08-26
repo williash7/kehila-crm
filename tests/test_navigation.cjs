@@ -16,8 +16,13 @@ const allPrimary = N.normalizeBottomNavPrimary(N.DEFAULT_BOTTOM_NAV_ORDER, N.DEF
 assert.strictEqual(allPrimary.length, N.DEFAULT_BOTTOM_NAV_ORDER.length);
 
 console.log('ג. מרכז כספי מופיע רק כשהאפשרות שלו פעילה:');
-assert.ok(!N.availableNavigationItems(false).some(item => item.id === 'finance'));
-assert.ok(N.availableNavigationItems(true).some(item => item.id === 'finance'));
+// המתג הנפרד של המרכז הכספי בוטל: **הסתרת מסכים נעשית במקום אחד בלבד** —
+// הגדרות ← ניווט. שני מנגנונים יצרו חוסר עקביות שאשר הבחין בה: אפשר היה
+// לכבות כספים ולא דוחות.
+assert.ok(N.availableNavigationItems().some(item => item.id === 'finance'),
+  'הכספים זמינים תמיד ברשימת המסכים');
+assert.ok(N.availableNavigationItems(false).some(item => item.id === 'finance'),
+  'וגם קריאה ישנה עם false אינה מסתירה יותר');
 
 console.log('ד. הסרגל, תפריט עוד ועורך ההגדרות מחוברים:');
 const bottom = fs.readFileSync('src/components/BottomNav.tsx', 'utf8');

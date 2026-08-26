@@ -126,6 +126,39 @@ export const ACTIVITY_COLUMNS: ExportColumn<any>[] = [
   { header: 'מזהה', value: e => asText(e.id) },
 ];
 
+// ── היסטוריה: מופעים שהסתיימו ───────────────────────────────────────────────
+//
+// כאן יושב הידע שנצבר — כמה הגיעו, מה עלה, מה עבד ומה לא. **זה החומר שהכי
+// כדאי לשמור מחוץ לאפליקציה**, כי הוא לא ניתן לשחזור מהזיכרון בעוד שנה.
+export const HISTORY_COLUMNS: ExportColumn<any>[] = [
+  { header: 'שם', value: h => asText(h.name) },
+  { header: 'סוג', value: h => (h.type === 'holiday' ? 'חג' : 'פעילות') },
+  { header: 'תאריך המופע', value: h => asText(h.occurrenceDate) },
+  { header: 'נשמר בתאריך', value: h => asText(h.archivedAt).slice(0, 10) },
+  { header: 'נוכחות', value: h => asNumber(h.attendanceCount) },
+  { header: 'משימות', value: h => asNumber((h.tasks || []).length) },
+  { header: 'הוצאות', value: h => asNumber(h.expenseTotal) },
+  { header: 'הכנסות', value: h => asNumber(h.incomeTotal) },
+  { header: 'סיכום', value: h => asText(h.insights?.summary) },
+  { header: 'מה עבד', value: h => asText(h.insights?.good) },
+  { header: 'מה לשפר', value: h => asText(h.insights?.improve) },
+  { header: 'לפעם הבאה', value: h => asText(h.insights?.plan) },
+  { header: 'מזהה', value: h => asText(h.id) },
+];
+
+// ── נוכחות ──────────────────────────────────────────────────────────────────
+//
+// שורה לכל אדם בכל מופע — לא טבלה רחבה עם עמודה לכל תאריך.
+//
+// זה מכוון: טבלה רחבה נשברת ברגע שנוסף מופע, ואי אפשר לסנן בה באקסל.
+// שורה לכל צירוף היא מה שמאפשר „תראה לי את כל מי שהגיע בחנוכה”.
+export const ATTENDANCE_COLUMNS: ExportColumn<any>[] = [
+  { header: 'שם', value: a => asText(a.name) },
+  { header: 'פעילות', value: a => asText(a.activityName) },
+  { header: 'תאריך', value: a => asText(a.date) },
+  { header: 'נכח', value: a => (a.present ? 'כן' : 'לא') },
+];
+
 /**
  * הופך רשימה מוצגת לשורות לייצוא.
  *

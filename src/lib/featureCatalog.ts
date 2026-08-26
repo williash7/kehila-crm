@@ -184,7 +184,7 @@ export const FEATURE_CATALOG: FeatureDefinition[] = [
     id: 'payment-control', icon: '🧾', title: 'בקרת תשלומים', category: 'money', tab: 'donations',
     summary: 'תצוגה אופציונלית של מצבי תשלום והתאמה חודשית.',
     practical: 'מבדילים בין כסף שנקלט, עתידי, נכשל או בוטל.',
-    settings: { group: 'organization', section: 'payment-statuses' },
+    settings: { group: 'navigation', section: 'bottom-navigation' },
     data: ['סטטוס כל שורת יומן', 'כשלי חיוב', 'הגדרת הצגת הבקרה'],
   },
   {
@@ -198,7 +198,7 @@ export const FEATURE_CATALOG: FeatureDefinition[] = [
     id: 'finance-center', icon: '💼', title: 'מרכז כספי', category: 'money', tab: 'finance',
     summary: 'מרכז הכנסות, הוצאות, התחייבויות, תזרים והתחשבנות אישית.',
     practical: 'יודעים כמה באמת יש, מה עתיד לצאת והאם אפשר להתחייב לפעילות חדשה.',
-    settings: { group: 'organization', section: 'finance-center' },
+    settings: { group: 'navigation', section: 'bottom-navigation' },
     data: ['כל התנועות הכספיות', 'מקורות חשבון וכיס', 'התחייבויות', 'תנועות צפויות וקבועות'],
   },
   {

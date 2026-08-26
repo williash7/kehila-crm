@@ -46,11 +46,18 @@ assert.strictEqual(duplicateResult.ambiguous.length, 1, 'שורת דוח כפו�
 assert.throws(() => R.parseReconciliationFile('עמודה,אחרת\nא,ב'), /עמודות הנדרשות/);
 
 const settings = require('/tmp/settings.js');
-assert.strictEqual(settings.DEFAULT_SETTINGS.showPaymentStatuses, false, 'התצוגה האופציונלית כבויה כברירת מחדל');
 const donationsTab = fs.readFileSync('src/components/DonationsTab.tsx', 'utf8');
-assert.ok(donationsTab.includes('settings.showPaymentStatuses'), 'הטאב מופיע רק דרך ההגדרה');
 const setupWizard = fs.readFileSync('src/components/SetupWizard.tsx', 'utf8');
 assert.ok(/if \(step === 2\) return true/.test(setupWizard), 'מצב ההדגמה המובטח באשף אינו חוסם את כפתור ההמשך');
 const orgConfig = fs.readFileSync('src/lib/orgConfig.ts', 'utf8');
 assert.ok(/return o\.configured && !!o\.orgName\.he;/.test(orgConfig), 'מצב הדגמה אינו דורש כתובת גיליון לאחר סיום האשף');
+// ── הטאב מוצג תמיד ──
+//
+// היה כאן מתג נפרד בהגדרות. הוא בוטל: התצוגה היא לקריאה בלבד, אינה משנה
+// סכומים, ואינה מסך ניווט — ולכן מנגנון הניווט אינו יכול להסתיר אותה.
+// מתג שלישי רק היה מוסיף מקום נוסף לחפש בו.
+assert.ok(!donationsTab.includes('settings.showPaymentStatuses'),
+  'הטאב אינו תלוי יותר במתג שבוטל');
+assert.ok(donationsTab.includes("id: 'payments' as MainTab"), 'והוא קיים ברשימת הלשוניות');
+
 console.log('✓ מצבי תשלום והתאמה חודשית בצד הלקוח');

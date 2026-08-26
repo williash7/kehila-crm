@@ -169,6 +169,24 @@ export function loadSettings(): AppSettings {
   try {
     const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
     const bottomNavOrder = normalizeBottomNavOrder(raw.bottomNavOrder);
+    let bottomNavPrimary = normalizeBottomNavPrimary(raw.bottomNavPrimary, bottomNavOrder);
+
+    // ── הגירה: המתג של המרכז הכספי בוטל ──
+    //
+    // מי שהיה לו כבוי לא צריך לגלות פתאום מסך חדש בסרגל. מוציאים את
+    // „כספים” מהכפתורים הראשיים — הוא עדיין נגיש תחת „עוד”, וניתן להחזיר
+    // אותו בהגדרות ← ניווט.
+    //
+    // ההגירה רצה **פעם אחת בלבד**: אחריה `showFinanceCenter` נמחק, כך
+    // שמי שיחזיר את המסך ידנית לא ימצא אותו מוסתר שוב בטעינה הבאה.
+    if (raw.showFinanceCenter === false) {
+      bottomNavPrimary = bottomNavPrimary.filter(id => id !== 'finance');
+      delete raw.showFinanceCenter;
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...raw, bottomNavPrimary }));
+      } catch { /* הגירת נוחות — לא חוסמת טעינה */ }
+    }
+
     return {
       ...DEFAULT_SETTINGS,
       ...raw,
@@ -177,7 +195,7 @@ export function loadSettings(): AppSettings {
       surface: raw.surface || raw.nav || DEFAULT_SETTINGS.surface,
       visibleCircles: raw.visibleCircles || DEFAULT_SETTINGS.visibleCircles,
       bottomNavOrder,
-      bottomNavPrimary: normalizeBottomNavPrimary(raw.bottomNavPrimary, bottomNavOrder),
+      bottomNavPrimary,
       // מיזוג עמוק: קטגוריה שנוספה בגרסה חדשה מקבלת את ברירת המחדל שלה
       // במקום להיעלם כי ההגדרות השמורות לא הכירו אותה.
       holidayVisibility: {

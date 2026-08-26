@@ -6,6 +6,8 @@ import { countAttendance, sumBudget, HistoryEntry, emptyHistoryInsights } from '
 import { STANDALONE_TASKS_ID, PERSONAL_DATE_EXTRAS_ID } from '../lib/tasks';
 import { PastOccurrenceSummaryModal } from './PastOccurrenceSummaryModal';
 import { GlobalAIImportModal } from './GlobalAIImportModal';
+import { ExportButton } from './ExportButton';
+import { HISTORY_COLUMNS, ATTENDANCE_COLUMNS } from '../lib/exportRows';
 
 const COMPLETED_TASKS_PAGE = 15;
 
@@ -98,6 +100,29 @@ export function HistoryTab() {
     [history]
   );
   const list = filter === 'all' ? sorted : sorted.filter(h => h.type === filter);
+
+  // ── שני קבצים, כי אלה שתי שאלות שונות ──
+  //
+  // „מה היה בחנוכה” הוא סיכום אחד לכל מופע. „מי הגיע” הוא שורה לכל אדם.
+  // דחיסת שניהם לקובץ אחד הייתה מכריחה לבחור מי משניהם ייפגע.
+  const historyExportRows = React.useMemo(() => list.map(h => ({
+    ...h,
+    attendanceCount: countAttendance(h.attendance),
+    expenseTotal: sumBudget(h.budget).actualExpense,
+    incomeTotal: sumBudget(h.budget).actualIncome,
+  })), [list]);
+
+  const attendanceExportRows = React.useMemo(() => {
+    const rows: any[] = [];
+    list.forEach(h => {
+      Object.entries(h.attendance || {}).forEach(([date, people]) => {
+        Object.entries(people || {}).forEach(([name, present]) => {
+          if (present) rows.push({ name, activityName: h.name, date, present: true });
+        });
+      });
+    });
+    return rows;
+  }, [list]);
 
   const getForm = (h: typeof history[number]) => forms[h.id] || { ...emptyHistoryInsights(), ...(h.insights || {}) };
 
@@ -238,6 +263,15 @@ export function HistoryTab() {
             </button>
           ))}
         </div>
+
+        {list.length > 0 && (
+          <div className="flex justify-end gap-2 mb-3">
+            <ExportButton rows={historyExportRows} columns={HISTORY_COLUMNS}
+                          fileName="היסטוריה" filterHint={filter !== 'all' ? filter : ''} label="הורד סיכומים" />
+            <ExportButton rows={attendanceExportRows} columns={ATTENDANCE_COLUMNS}
+                          fileName="נוכחות" filterHint={filter !== 'all' ? filter : ''} label="הורד נוכחות" />
+          </div>
+        )}
 
         {list.length === 0 ? (
           <EmptyState
