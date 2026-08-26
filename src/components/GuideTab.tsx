@@ -24,7 +24,7 @@ export function GuideTab({ onOpenTab, onOpenSettings }: {
   onOpenSettings?: (target: SettingsTarget) => void;
 } = {}) {
   const sections = useMemo(() => buildGuide(), []);
-  const [openId, setOpenId] = useState<string | null>('intro');
+  const [openId, setOpenId] = useState<string | null>('start');
   const [featureSearch, setFeatureSearch] = useState('');
   const org = getOrg();
   const visibleFeatures = useMemo(() => {
@@ -56,18 +56,18 @@ export function GuideTab({ onOpenTab, onOpenSettings }: {
         </button>
       </div>
 
-      <div className="p-4 md:p-6 max-w-3xl guide-print">
+      <div className="p-4 md:p-6 max-w-3xl guide-print flex flex-col">
         {/* כותרת שמופיעה רק בהדפסה */}
-        <div className="print-only mb-6">
+        <div className="print-only mb-6 order-1">
           <h1 className="font-['Frank_Ruhl_Libre'] text-3xl font-bold text-[#0D1B2A]">מדריך למשתמש</h1>
           <p className="text-sm text-gray-500 mt-1">{org.orgName.he || 'לוח בקרה קהילתי'}</p>
         </div>
 
-        <p className="text-sm text-gray-500 mb-4 no-print leading-relaxed">
+        <p className="text-sm text-gray-500 mt-5 mb-4 no-print leading-relaxed order-3">
           לחיצה על "הורד PDF" פותחת את חלון ההדפסה — בוחרים שם <b>"שמור כ-PDF"</b> ומקבלים את החוברת המלאה כקובץ.
         </p>
 
-        <section className="mb-5 no-print">
+        <section className="mb-5 no-print order-4">
           <div className="mb-3">
             <h1 className="font-['Frank_Ruhl_Libre'] text-2xl font-bold text-[#0D1B2A]">מפת כל הפונקציות</h1>
             <p className="text-xs text-gray-500 mt-1 leading-relaxed">
@@ -115,7 +115,7 @@ export function GuideTab({ onOpenTab, onOpenSettings }: {
           </div>
         </section>
 
-        <div className="print-only mb-4">
+        <div className="print-only mb-4 order-4">
           <h2 className="font-['Frank_Ruhl_Libre'] text-2xl font-bold text-[#0D1B2A]">מפת כל הפונקציות</h2>
           {FEATURE_CATEGORIES.map(category => (
             <section key={category.id} className="guide-section mt-3">
@@ -131,7 +131,7 @@ export function GuideTab({ onOpenTab, onOpenSettings }: {
           ))}
         </div>
 
-        <div className="space-y-2.5">
+        <div className="space-y-2.5 order-2">
           {sections.map(sec => (
             <SectionCard
               key={sec.id}

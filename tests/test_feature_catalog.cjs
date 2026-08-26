@@ -24,6 +24,9 @@ const guideSource = fs.readFileSync('src/components/GuideTab.tsx', 'utf8');
 const appSource = fs.readFileSync('src/App.tsx', 'utf8');
 assert.ok(guideSource.includes('FEATURE_CATALOG') && guideSource.includes('מה זה עוזר'), 'המדריך מציג את הקטלוג והתועלת');
 assert.ok(guideSource.includes('onOpenSettings(feature.settings'), 'פריט במדריך פותח את ההגדרה שלו');
+assert.ok(guideSource.includes("useState<string | null>('start')"), 'הפרק המעשי הראשון פתוח כברירת מחדל');
+assert.ok(guideSource.includes('space-y-2.5 order-2') && guideSource.includes('no-print order-4'),
+  'פרקי המדריך מוצגים לפני מפת הפונקציות הארוכה');
 assert.ok(appSource.includes('openFeatureSettings') && appSource.includes('openTarget={settingsTarget}'),
   'האפליקציה מעבירה את היעד המדויק למסך ההגדרות');
 
