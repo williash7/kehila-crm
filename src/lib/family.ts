@@ -55,6 +55,28 @@ export function hasAnyDate(f: FamilyMember): boolean {
   return !!(f.birthday || f.birthdayHebrew || f.yahrzeit || f.yahrzeitHebrew);
 }
 
+/** מזהה תוכן יציב למניעת הוספה חוזרת של אותו קרוב בהעברת נתונים ישנים. */
+export function familyMemberFingerprint(f: Partial<FamilyMember>): string {
+  const clean = (value: unknown) => String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  return [
+    clean(f.relation), clean(f.linkedName), clean(f.freeName), clean(f.fatherName),
+    clean(f.birthday), clean(f.birthdayHebrew), clean(f.yahrzeit), clean(f.yahrzeitHebrew),
+  ].join('|');
+}
+
+/** מסיר רק רשומות משפחה זהות לחלוטין בתוכן; הבדלים בתאריך או בשם נשמרים. */
+export function dedupeFamilyMembers(members: FamilyMember[]): { members: FamilyMember[]; removed: number } {
+  const seen = new Set<string>();
+  const unique: FamilyMember[] = [];
+  (Array.isArray(members) ? members : []).forEach(member => {
+    const key = familyMemberFingerprint(member);
+    if (seen.has(key)) return;
+    seen.add(key);
+    unique.push(member);
+  });
+  return { members: unique, removed: Math.max(0, members.length - unique.length) };
+}
+
 // ── המרה מהמבנה הישן ────────────────────────────────────────────────────────
 //
 // עמודות ישנות נראות כך:

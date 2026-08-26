@@ -164,6 +164,7 @@ const goodSync = async key => ({ success: true, data: { key, v: 1 } });
   {
     const root = path.join(__dirname, '..');
     const card = fs.readFileSync(root + '/src/components/BackupCard.tsx', 'utf8');
+    const download = fs.readFileSync(root + '/src/lib/backupDownload.ts', 'utf8');
     const settings = fs.readFileSync(root + '/src/components/SettingsTab.tsx', 'utf8');
     const api = fs.readFileSync(root + '/src/lib/api.ts', 'utf8');
 
@@ -174,12 +175,12 @@ const goodSync = async key => ({ success: true, data: { key, v: 1 } });
     ok(/getMockData/.test(api) && !/getMockData/.test(card),
        'הגיבוי אינו נופל לנתוני דמה — גיבוי של דמה נראה כמו גיבוי אמיתי');
     ok(/ISSUE_HELP\[issue\.code\]/.test(card), 'לכל ממצא מוצג מה לעשות איתו');
-    ok(/file\?\.success !== true/.test(card),
-       'המסך מאמת במפורש שהקובץ מצהיר על עצמו כשלם לפני ההורדה');
+    ok(/file\?\.success !== true/.test(download),
+       'כל מסך שמשתמש בהורדה מאמת במפורש שהקובץ מצהיר על עצמו כשלם');
 
     // ההורדה חייבת להיות **אחרי** האיסוף, אחרת ירד קובץ חלקי.
-    const iCollect = card.indexOf('collectBackup');
-    const iDownload = card.indexOf('a.click()');
+    const iCollect = download.indexOf('collectBackup');
+    const iDownload = download.indexOf('anchor.click()');
     ok(iCollect > 0 && iDownload > iCollect, 'ההורדה קורית רק אחרי איסוף מלא');
   }
 

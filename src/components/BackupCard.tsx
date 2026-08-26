@@ -2,21 +2,20 @@ import React, { useRef, useState } from 'react';
 import { Download, ShieldCheck, AlertTriangle, CheckCircle2, Loader2, RefreshCw, Upload } from 'lucide-react';
 import { CardTitle } from './Explain';
 import {
-  exportManifest, exportChunk, exportSync, fetchIntegrity, isNotDeployed,
+  fetchIntegrity, isNotDeployed,
   restoreBegin, restoreSheet, restoreSync, restoreFinish, restoreRollback,
 } from '../lib/api';
 import {
-  collectBackup, backupFileName, backupSummary, BackupIncomplete,
+  BackupIncomplete,
   sortIssues, headline, ISSUE_HELP, SEVERITY_LABEL,
   Issue, IntegrityReport, Progress, type BackupCoverage,
 } from '../lib/backup';
-import {
-  BackupStamp, makeBackupStamp, readBackupStamp, writeBackupStamp,
-} from '../lib/backupHistory';
+import { BackupStamp, readBackupStamp } from '../lib/backupHistory';
 import {
   RestorePlan, RESTORE_CONFIRM_WORD, restoreManifest, sheetChunks, validateBackupForRestore,
 } from '../lib/restore';
-import { collectClientBackupState, restoreClientBackupState } from '../lib/clientBackup';
+import { restoreClientBackupState } from '../lib/clientBackup';
+import { createAndDownloadFullBackup } from '../lib/backupDownload';
 import { useAppStore } from '../store/AppContext';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -103,38 +102,7 @@ export function BackupCard() {
   const runBackup = async () => {
     reset(); setBusy('backup'); setProgress({ ratio: 0, label: 'מתחיל...' });
     try {
-      const manifest = await exportManifest();
-      const file = await collectBackup(
-        manifest,
-        async (sheet, offset, limit) => await exportChunk(sheet, offset, limit),
-        async key => await exportSync(key),
-        p => setProgress(p),
-        undefined,
-        collectClientBackupState()
-      );
-
-      // ההורדה קורית **רק** אחרי שכל מה שהמניפסט הכריז עליו התקבל.
-      //
-      // הבדיקה המפורשת הזו נראית מיותרת — collectBackup כבר זורקת בכל
-      // כשל — וזו בדיוק הסיבה שהיא כאן: היא שער אחרון לפני כתיבת קובץ
-      // שמישהו יסמוך עליו. אם מישהו ישנה בעתיד את זרימת השגיאות
-      // ב-collectBackup, השורה הזו עדיין תעצור קובץ שאינו מצהיר על עצמו
-      // כשלם.
-      if (file?.success !== true) {
-        throw new BackupIncomplete([{ what: 'הקובץ', error: 'הגיבוי לא סומן כשלם' }]);
-      }
-
-      const blob = new Blob([JSON.stringify(file, null, 2)], { type: 'application/json' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      const fileName = backupFileName();
-      a.download = fileName;
-      a.click();
-      URL.revokeObjectURL(a.href);
-
-      const s = backupSummary(file);
-      const stamp = makeBackupStamp(s, fileName);
-      writeBackupStamp(stamp);
+      const { file, stamp } = await createAndDownloadFullBackup(p => setProgress(p));
       setLastBackup(stamp);
       setLastCoverage(file.coverage || null);
     } catch (e: any) {

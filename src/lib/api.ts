@@ -229,6 +229,14 @@ export const addDonationQueued = (data: any): Promise<WriteOutcome> =>
 export const addMeetingQueued = (data: any): Promise<WriteOutcome> =>
   submitWrite('addMeeting', data, apiPost);
 
+/** ביטול מרוכז של תרומות שנבחרו, בלי מחיקת שורות המקור. */
+export const cancelDonationsBulkQueued = (data: any): Promise<WriteOutcome> =>
+  submitWrite('cancelDonationsBulk', data, apiPost);
+
+/** סימון חיוב הוראת קבע שנכשל גם כשלא התקבל מייל מהספק. */
+export const addManualChargeFailureQueued = (data: any): Promise<WriteOutcome> =>
+  submitWrite('addManualChargeFailure', data, apiPost);
+
 /** עדכון שדה איש קשר. המסך מעדכן במקביל את עותק ה־CRM המקומי. */
 export const updateDonorFieldQueued = (data: any): Promise<WriteOutcome> =>
   submitWrite('updateDonorField', data, apiPost);

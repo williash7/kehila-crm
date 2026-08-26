@@ -8,6 +8,7 @@ import { AddHkDialog } from './AddHkDialog';
 import { CampaignTag } from './CampaignTag';
 import { ProfileModal } from './ProfileModal';
 import { useCloseOnBack } from './FullScreenView';
+import { ManualFailureDialog } from './ManualFailureDialog';
 
 // "הסתיימה לאחרונה" — כדי לא להציג כברירת מחדל הוראות קבע שהסתיימו לפני
 // שנים ואינן רלוונטיות יותר. אפשר להרחיב לצפייה בהיסטוריה המלאה דרך המתג
@@ -42,6 +43,7 @@ export function StandingOrdersModal({ onClose }: { onClose: () => void }) {
   const [amountTarget, setAmountTarget] = useState<any | null>(null);
   const [renewTarget, setRenewTarget] = useState<any | null>(null);
   const [editTarget, setEditTarget] = useState<any | null>(null);
+  const [failureTarget, setFailureTarget] = useState<any | null>(null);
   const [addOpen, setAddOpen] = useState(false);
 
   // גם כאן כפתור "אחורה" של הטלפון סוגר את המסך במקום לצאת מהאפליקציה
@@ -241,7 +243,7 @@ export function StandingOrdersModal({ onClose }: { onClose: () => void }) {
                     )}
                   </div>
 
-                  <CancelHkButton hk={h} onOpen={setCancelTarget} onChangeAmount={setAmountTarget} onRenew={setRenewTarget} onEdit={setEditTarget} />
+                  <CancelHkButton hk={h} onOpen={setCancelTarget} onChangeAmount={setAmountTarget} onRenew={setRenewTarget} onEdit={setEditTarget} onMarkFailure={setFailureTarget} />
                 </div>
               );
             })}
@@ -253,6 +255,7 @@ export function StandingOrdersModal({ onClose }: { onClose: () => void }) {
       {amountTarget && <ChangeHkAmountDialog target={amountTarget} onClose={() => setAmountTarget(null)} />}
       {renewTarget && <RenewHkDialog target={renewTarget} onClose={() => setRenewTarget(null)} />}
       {editTarget && <EditHkDialog target={editTarget} onClose={() => setEditTarget(null)} />}
+      {failureTarget && <ManualFailureDialog target={failureTarget} onClose={() => setFailureTarget(null)} />}
       {addOpen && <AddHkDialog onClose={() => setAddOpen(false)} />}
 
       {selectedDonor && <ProfileModal name={selectedDonor} onClose={() => setSelectedDonor(null)} backLabel="הוראות קבע" />}

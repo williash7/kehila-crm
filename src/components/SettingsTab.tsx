@@ -3,9 +3,9 @@ import { useAppStore } from '../store/AppContext';
 import { Settings as SettingsIcon, RotateCcw, History, Loader2, ChevronDown, ChevronRight, Bot, Rocket } from 'lucide-react';
 import { GlobalAIImportModal } from './GlobalAIImportModal';
 import { MigrateYahrzeitsModal } from './MigrateYahrzeitsModal';
-import { DatesRescueModal } from './DatesRescueModal';
 import { SystemStatusCard } from './SystemStatusCard';
 import { BackupCard } from './BackupCard';
+import { DataCleanupCard } from './DataCleanupCard';
 import { ALL_CIRCLES, CIRCLE_LABELS, DEFAULT_SETTINGS } from '../lib/settings';
 import { computeMissingAttendanceContacts } from '../lib/backfillContacts';
 import { collectLegacyYahrzeits } from '../lib/family';
@@ -55,7 +55,6 @@ export function SettingsTab({ openTarget, onOpenTargetConsumed }: {
   const [dataWizardOpen, setDataWizardOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [migrateOpen, setMigrateOpen] = useState(false);
-  const [rescueOpen, setRescueOpen] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncProgress, setSyncProgress] = useState<{ done: number; total: number } | null>(null);
@@ -74,9 +73,9 @@ export function SettingsTab({ openTarget, onOpenTargetConsumed }: {
   // ── מה מהכלים המתקדמים בכלל רלוונטי כאן ואיפה ──────────────────────────
   //
   // חלק מהמסכים באפליקציה נולדו מתקלה ספציפית ולא ממשהו שמשתמש חדש צריך:
-  // העברת היארצייטים למבנה החדש, האבחון "איפה התאריכים שלי", והשלמת
-  // נוכחויות עבר. הם לא מיותרים — הם פשוט לא רלוונטיים לרוב המסכים ולרוב
-  // הזמן, ובהגדרות הם תפסו שלושה כרטיסים במשקל שווה לכל השאר.
+  // העברת היארצייטים למבנה החדש והשלמת נוכחויות עבר נולדו מתיקוני עבר.
+  // הם רלוונטיים רק כל עוד נשאר מידע שבאמת צריך להעביר, ובהגדרות קבועות
+  // הם היו תופסים משקל שווה לכלים יומיומיים.
   //
   // הפתרון: הם מופיעים **רק כשיש להם מה לעשות**, ומה שנשאר יושב תחת סעיף
   // מקופל. שום פונקציונליות לא נמחקה.
@@ -518,6 +517,8 @@ export function SettingsTab({ openTarget, onOpenTargetConsumed }: {
         {group === 'data' && (<>
         <div data-entity-id="settings-backup"><BackupCard /></div>
 
+        <div data-entity-id="settings-data-cleanup"><DataCleanupCard /></div>
+
         <div data-entity-id="settings-audit-log"><AuditLogCard /></div>
 
         <div data-entity-id="settings-ai-import" className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6] space-y-3">
@@ -537,6 +538,7 @@ export function SettingsTab({ openTarget, onOpenTargetConsumed }: {
             מה שיושב כאן אינו מיותר — הוא פשוט לא נחוץ ברוב הימים. מסך
             שנולד מתקלה ספציפית ומופיע לנצח במשקל שווה לכל השאר הופך את
             ההגדרות לרשימת דברים שאי אפשר להבין. */}
+        {(legacyYahrzeitCount > 0 || missingAttendance > 0) && (
         <div className="bg-white rounded-2xl shadow-sm border border-[#EDE6D6] overflow-hidden">
           <button
             onClick={() => setAdvancedOpen(v => !v)}
@@ -545,9 +547,7 @@ export function SettingsTab({ openTarget, onOpenTargetConsumed }: {
             <div className="min-w-0">
               <h3 className="font-['Frank_Ruhl_Libre'] text-lg font-bold text-[#0D1B2A]">כלים מתקדמים</h3>
               <p className="text-[11px] text-gray-400 mt-0.5">
-                {legacyYahrzeitCount > 0 || missingAttendance > 0
-                  ? `יש כאן ${[legacyYahrzeitCount > 0 ? 'יארצייטים להעברה' : '', missingAttendance > 0 ? 'נוכחויות להשלמה' : ''].filter(Boolean).join(' ו')}`
-                  : 'אבחון, תיקונים והשלמות. אין כרגע משהו שדורש טיפול.'}
+                {`יש כאן ${[legacyYahrzeitCount > 0 ? 'יארצייטים להעברה' : '', missingAttendance > 0 ? 'נוכחויות להשלמה' : ''].filter(Boolean).join(' ו')}`}
               </p>
             </div>
             <ChevronDown size={18} className={`text-gray-400 shrink-0 transition-transform ${advancedOpen ? 'rotate-180' : ''}`} />
@@ -601,17 +601,10 @@ export function SettingsTab({ openTarget, onOpenTargetConsumed }: {
           )}
         </div>
               )}
-
-              {/* האבחון זמין תמיד — הוא הדבר שמחפשים כשמשהו נעלם */}
-              <button
-                onClick={() => setRescueOpen(true)}
-                className="w-full border border-[#EDE6D6] text-[#0D1B2A] text-sm font-bold py-2.5 rounded-xl hover:border-[#C9A84C] transition-colors"
-              >
-                איפה התאריכים שלי?
-              </button>
             </div>
           )}
         </div>
+        )}
         <div data-entity-id="settings-facebook" className="bg-white rounded-xl p-4 border border-[#EDE6D6] space-y-3">
           <div className="text-sm font-bold text-[#0D1B2A] flex items-center gap-2">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="#1877F2"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" /></svg>
@@ -663,7 +656,6 @@ export function SettingsTab({ openTarget, onOpenTargetConsumed }: {
 
       {importOpen && <GlobalAIImportModal onClose={() => setImportOpen(false)} />}
       {migrateOpen && <MigrateYahrzeitsModal onClose={() => setMigrateOpen(false)} />}
-      {rescueOpen && <DatesRescueModal onClose={() => setRescueOpen(false)} />}
     </div>
   );
 }

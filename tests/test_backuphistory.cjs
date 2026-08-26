@@ -31,11 +31,12 @@ assert.strictEqual(H.writeBackupStamp(stamp, { getItem: () => null, setItem: () 
 
 // שער סדר הפעולות בממשק: לא כותבים חותמת לפני אימות הקובץ והפעלת ההורדה.
 const card = fs.readFileSync(__dirname + '/../src/components/BackupCard.tsx', 'utf8');
-const verified = card.indexOf('file?.success !== true');
-const downloaded = card.indexOf('a.click()');
-const stamped = card.indexOf('writeBackupStamp(');
-assert.ok(verified >= 0 && downloaded > verified && stamped > downloaded,
+const download = fs.readFileSync(__dirname + '/../src/lib/backupDownload.ts', 'utf8');
+const verified = download.indexOf('file?.success !== true');
+const downloaded = download.indexOf('anchor.click()');
+const stamped = download.indexOf('writeBackupStamp(');
+const awaited = card.indexOf('await createAndDownloadFullBackup');
+assert.ok(verified >= 0 && downloaded > verified && stamped > downloaded && awaited >= 0,
   'החותמת נכתבת רק אחרי אימות קובץ שלם והפעלת ההורדה');
 
 console.log('✓ זכירת הגיבוי האחרון');
-

@@ -17,6 +17,7 @@ import { Donation } from '../types';
 import { CASH_DESTINATION_OPTIONS, cashDestinationLabel, cleanPaymentMethod, isCashPaymentMethod } from '../lib/cashDonations';
 import { compareListValues, ListSortControl, usePersistentListSort } from './ListSortControl';
 import { OpenTargetProps } from '../lib/openTarget';
+import { ManualFailureDialog } from './ManualFailureDialog';
 
 type MainTab = 'donations' | 'hk' | 'errors' | 'payments';
 
@@ -55,6 +56,7 @@ export function DonationsTab({ onAddDonation, openTarget, onOpenTargetConsumed }
   const [amountTarget, setAmountTarget] = useState<HkEntry | null>(null);
   const [renewTarget, setRenewTarget] = useState<HkEntry | null>(null);
   const [editTarget, setEditTarget] = useState<HkEntry | null>(null);
+  const [failureTarget, setFailureTarget] = useState<HkEntry | null>(null);
   const [addHkOpen, setAddHkOpen] = useState(false);
 
   // ── תרומות ──────────────────────────────────────────────────────────────
@@ -393,7 +395,7 @@ export function DonationsTab({ onAddDonation, openTarget, onOpenTargetConsumed }
                         </span>
                       )}
                     </div>
-                    <CancelHkButton hk={h} onOpen={setCancelTarget} onChangeAmount={setAmountTarget} onRenew={setRenewTarget} onEdit={setEditTarget} />
+                    <CancelHkButton hk={h} onOpen={setCancelTarget} onChangeAmount={setAmountTarget} onRenew={setRenewTarget} onEdit={setEditTarget} onMarkFailure={setFailureTarget} />
                   </div>
                 );
               })}
@@ -671,6 +673,7 @@ export function DonationsTab({ onAddDonation, openTarget, onOpenTargetConsumed }
       {amountTarget && <ChangeHkAmountDialog target={amountTarget} onClose={() => setAmountTarget(null)} />}
       {renewTarget && <RenewHkDialog target={renewTarget} onClose={() => setRenewTarget(null)} />}
       {editTarget && <EditHkDialog target={editTarget} onClose={() => setEditTarget(null)} />}
+      {failureTarget && <ManualFailureDialog target={failureTarget} onClose={() => setFailureTarget(null)} />}
       {addHkOpen && <AddHkDialog onClose={() => setAddHkOpen(false)} />}
     </div>
   );

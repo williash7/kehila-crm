@@ -175,6 +175,12 @@ export const FEATURE_CATALOG: FeatureDefinition[] = [
     data: ['כל פרטי הוראת הקבע', 'שרשרת חידושים', 'חיובים וכשלים מקושרים'],
   },
   {
+    id: 'manual-charge-failure', icon: '⚠️', title: 'סימון כשל חיוב ידני', category: 'money', tab: 'donations',
+    summary: 'מסמן חיוב הוראת קבע שנדחה גם כשלא הגיע מייל שגיאה מהספק.',
+    practical: 'הכסף שלא נכנס אינו נספר בטעות, והכשל נשמר לצורך טיפול בתורם בלי לבטל את ההוראה.',
+    data: ['מספר הוראת הקבע', 'חודש וסכום החיוב', 'סיבת הכשל', 'סטטוס החיוב ביומן'],
+  },
+  {
     id: 'payment-control', icon: '🧾', title: 'בקרת תשלומים', category: 'money', tab: 'donations',
     summary: 'תצוגה אופציונלית של מצבי תשלום והתאמה חודשית.',
     practical: 'מבדילים בין כסף שנקלט, עתידי, נכשל או בוטל.',
@@ -358,6 +364,13 @@ export const FEATURE_CATALOG: FeatureDefinition[] = [
     practical: 'אם האפליקציה או הגיליון נמחקו, אפשר להחזיר את הנתונים, הקשרים וההגדרות למצב הגיבוי.',
     settings: { group: 'data', section: 'backup' },
     data: ['כל לשוניות האפליקציה', 'כל נתוני הסנכרון', 'הגדרות ומידע מקומי חשוב', 'מפת כיסוי וספירות'],
+  },
+  {
+    id: 'data-cleanup', icon: '🧹', title: 'ניקוי נתונים ממוקד', category: 'tools', tab: 'settings',
+    summary: 'מסנן ובוחר תרומות או תנועות כספיות שגויות ומוציא רק אותן מהחישובים.',
+    practical: 'מתקנים טעויות לפי מקור ותאריך בלי לאפס את כל האפליקציה ובלי לאבד היסטוריה.',
+    settings: { group: 'data', section: 'data-cleanup' },
+    data: ['מזהי הרשומות שנבחרו', 'סטטוס ביטול והיסטוריית עריכה', 'גיבוי מלא שנוצר לפני הפעולה'],
   },
   {
     id: 'integrity-check', icon: '🛡️', title: 'בדיקת תקינות', category: 'tools', tab: 'settings',

@@ -547,12 +547,13 @@ export function EditHkDialog({ target, onClose }: { target: any; onClose: () => 
 }
 
 /** כפתורי הפעולה של שורת הוראת קבע. עוצרים את ה-click כדי שלא ייפתח כרטיס התורם. */
-export function CancelHkButton({ hk, onOpen, onChangeAmount, onRenew, onEdit }: {
+export function CancelHkButton({ hk, onOpen, onChangeAmount, onRenew, onEdit, onMarkFailure }: {
   hk: any;
   onOpen: (hk: any) => void;
   onChangeAmount?: (hk: any) => void;
   onRenew?: (hk: any) => void;
   onEdit?: (hk: any) => void;
+  onMarkFailure?: (hk: any) => void;
 }) {
   if (!hk.id) return null;
   const cancelled = !!hk.cancelDate;
@@ -564,7 +565,7 @@ export function CancelHkButton({ hk, onOpen, onChangeAmount, onRenew, onEdit }: 
       {canRenew && (
         <button
           onClick={e => { e.stopPropagation(); onRenew!(hk); }}
-          className="flex-1 text-[11px] font-bold py-1.5 rounded-lg border text-indigo-700 border-indigo-200 hover:bg-indigo-50 transition-colors"
+          className="flex-1 min-w-[92px] text-[11px] font-bold py-1.5 rounded-lg border text-indigo-700 border-indigo-200 hover:bg-indigo-50 transition-colors"
         >
           ↻ חידוש
         </button>
@@ -572,7 +573,7 @@ export function CancelHkButton({ hk, onOpen, onChangeAmount, onRenew, onEdit }: 
       {onEdit && (
         <button
           onClick={e => { e.stopPropagation(); onEdit(hk); }}
-          className="flex-1 text-[11px] font-bold py-1.5 rounded-lg border text-[#0D1B2A] border-[#EDE6D6] hover:bg-gray-50 transition-colors"
+          className="flex-1 min-w-[92px] text-[11px] font-bold py-1.5 rounded-lg border text-[#0D1B2A] border-[#EDE6D6] hover:bg-gray-50 transition-colors"
         >
           ✎ עריכה
         </button>
@@ -580,14 +581,22 @@ export function CancelHkButton({ hk, onOpen, onChangeAmount, onRenew, onEdit }: 
       {onChangeAmount && !cancelled && (
         <button
           onClick={e => { e.stopPropagation(); onChangeAmount(hk); }}
-          className="flex-1 text-[11px] font-bold py-1.5 rounded-lg border text-[#0D1B2A] border-[#EDE6D6] hover:bg-gray-50 transition-colors"
+          className="flex-1 min-w-[92px] text-[11px] font-bold py-1.5 rounded-lg border text-[#0D1B2A] border-[#EDE6D6] hover:bg-gray-50 transition-colors"
         >
           ₪ שינוי סכום
         </button>
       )}
+      {onMarkFailure && (
+        <button
+          onClick={e => { e.stopPropagation(); onMarkFailure(hk); }}
+          className="flex-1 min-w-[92px] text-[11px] font-bold py-1.5 rounded-lg border text-red-700 border-red-200 hover:bg-red-50 transition-colors"
+        >
+          ⚠ חיוב נכשל
+        </button>
+      )}
       <button
         onClick={e => { e.stopPropagation(); onOpen(hk); }}
-        className={`flex-1 text-[11px] font-bold py-1.5 rounded-lg border transition-colors ${
+        className={`flex-1 min-w-[92px] text-[11px] font-bold py-1.5 rounded-lg border transition-colors ${
           cancelled
             ? 'text-emerald-700 border-emerald-200 hover:bg-emerald-50'
             : 'text-orange-700 border-orange-200 hover:bg-orange-50'

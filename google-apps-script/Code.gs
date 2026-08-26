@@ -67,7 +67,7 @@
  *
  * **מעדכנים אותה בכל שינוי מהותי בקובץ.**
  */
-var CODE_VERSION = '2026-08-26a';
+var CODE_VERSION = '2026-08-26b';
 var EXPORT_SCHEMA_VERSION = 2;
 var EXPORT_MAX_LIMIT = 500;
 var CRM_MERGES_KEY = '__nameMerges__';
@@ -825,6 +825,7 @@ function route_(action, body) {
     case 'addDonation':        return addDonation_(body);
     case 'updateDonation':     return updateDonation_(body);
     case 'deleteDonation':     return deleteDonation_(body);
+    case 'cancelDonationsBulk': return cancelDonationsBulk_(body);
     case 'addMeeting':         return addMeeting_(body);
     case 'addStandingOrder':   return addStandingOrder_(body);
     case 'cancelStandingOrder': return cancelStandingOrder_(body);
@@ -833,6 +834,7 @@ function route_(action, body) {
     case 'updateStandingOrder': return updateStandingOrder_(body);
     case 'previewStandingOrderUpdate': return previewStandingOrderUpdate_(body);
     case 'previewRenewalDate': return previewRenewalDate_(body);
+    case 'addManualChargeFailure': return addManualChargeFailure_(body);
     case 'updateDonorField':   return updateDonorField_(body);
     case 'deleteContactColumns': return deleteContactColumns_(body);
     case 'updatePersonalDate': return updateDonorField_(body);
@@ -870,12 +872,14 @@ var AUDITED_ACTIONS = {
   addDonation: 'הוספת תרומה',
   updateDonation: 'עריכת תרומה',
   deleteDonation: 'מחיקת תרומה',
+  cancelDonationsBulk: 'ניקוי תרומות ממוקד',
   addMeeting: 'הוספת מפגש',
   addStandingOrder: 'הוספת הוראת קבע',
   cancelStandingOrder: 'ביטול הוראת קבע',
   updateStandingOrderAmount: 'עדכון סכום הוראת קבע',
   renewStandingOrder: 'חידוש הוראת קבע',
   updateStandingOrder: 'עריכת הוראת קבע',
+  addManualChargeFailure: 'סימון כשל חיוב ידני',
   updateDonorField: 'עדכון איש קשר',
   updatePersonalDate: 'עדכון תאריך אישי',
   deleteContactColumns: 'מחיקת שדות אנשי קשר',
@@ -1914,6 +1918,55 @@ function addDonation_(body) {
   return { success: true, id: id };
 }
 
+/**
+ * מבטל רק תרומות שנבחרו במפורש במרכז הניקוי.
+ *
+ * השורות אינן נמחקות: סטטוס „מבוטל” מוציא אותן מכל הסכומים, אבל משאיר
+ * היסטוריה ויכולת שחזור. חיובי הוראת קבע ושורות שמשמשות גם כמפגש מוגנים
+ * בכוונה — שינוי בהם דרך ניקוי קבוצתי עלול להסתיר מידע נוסף שלא נבחר.
+ */
+function cancelDonationsBulk_(body) {
+  var raw = Array.isArray(body.ids) ? body.ids : [];
+  var ids = [];
+  var wanted = {};
+  raw.forEach(function (value) {
+    var id = String(value || '').trim();
+    if (id && !wanted[id]) { wanted[id] = true; ids.push(id); }
+  });
+  if (!ids.length) return { success: false, error: 'לא נבחרו תרומות לניקוי' };
+  if (ids.length > 200) return { success: false, error: 'אפשר לנקות עד 200 תרומות בכל פעולה' };
+
+  ensureSheet_(SpreadsheetApp.getActiveSpreadsheet(), SH.LOG, COLS.LOG);
+  __tableCache = {};
+  var t = table_(SH.LOG);
+  var cId = t.col('מזהה'), cAmount = t.col('סכום'), cStatus = t.col('סטטוס');
+  var cMeetDate = t.col('תאריך מפגש');
+  var matched = {}, cancelled = 0, already = 0, protectedCount = 0, mixed = 0;
+  t.rows.forEach(function (row, rowIndex) {
+    var id = String(row[cId] || '').trim();
+    if (!wanted[id]) return;
+    matched[id] = true;
+    if (id.indexOf('hk:') === 0) { protectedCount++; return; }
+    if (cMeetDate >= 0 && String(row[cMeetDate] || '').trim()) { mixed++; return; }
+    if (cAmount < 0 || !asNumber_(row[cAmount])) { protectedCount++; return; }
+    if (String(row[cStatus] || '').trim() === STATUS_CANCELLED) { already++; return; }
+
+    row[cStatus] = STATUS_CANCELLED;
+    t.sheet.getRange(rowIndex + 2, cStatus + 1).setValue(STATUS_CANCELLED);
+    cancelled++;
+  });
+
+  var missing = ids.filter(function (id) { return !matched[id]; }).length;
+  return {
+    success: true,
+    cancelled: cancelled,
+    already: already,
+    protected: protectedCount,
+    mixed: mixed,
+    missing: missing,
+  };
+}
+
 function addMeeting_(body) {
   var name = standardName(body.name);
   if (!name) return { success: false, error: 'חסר שם' };
@@ -2553,7 +2606,10 @@ function updateDonorField_(body) {
  */
 function deleteContactColumns_(body) {
   var names = (body && body.columns) || [];
-  if (Object.prototype.toString.call(names) !== '[object Array]' || !names.length) {
+  var clearCells = (body && body.clearCells) || [];
+  if (Object.prototype.toString.call(names) !== '[object Array]' ||
+      Object.prototype.toString.call(clearCells) !== '[object Array]' ||
+      (!names.length && !clearCells.length)) {
     return { success: false, error: 'לא צוינו עמודות למחיקה' };
   }
 
@@ -2570,11 +2626,41 @@ function deleteContactColumns_(body) {
     if (c >= 0) indices.push(c);
   });
 
+  // העמודה הכללית „יארצייט” היא עמודת ליבה ולכן אי אפשר למחוק אותה.
+  // אחרי שהערך הועבר לרשומת משפחה מנקים רק את התא של האדם הרלוונטי;
+  // אחרת הכלי מציע להעביר אותו שוב בכל פתיחה ויוצר כפילויות.
+  var cleared = 0;
+  var seenCells = {};
+  clearCells.slice(0, 1000).forEach(function (item) {
+    var contact = standardName(item && item.contact);
+    var columns = item && item.columns;
+    if (!contact || Object.prototype.toString.call(columns) !== '[object Array]') return;
+    var rowIndex = -1;
+    for (var r = 0; r < t.rows.length; r++) {
+      if (standardName(t.rows[r][0]) === contact) { rowIndex = r + 2; break; }
+    }
+    if (rowIndex < 0) return;
+    columns.forEach(function (value) {
+      var columnName = String(value || '').trim();
+      if (PROTECTED.indexOf(columnName) < 0) return;
+      if (!/^(יארצייט|יורצייט|יום השנה|פטירה)(\s*\([^)]*\))?(\s*\(לועזי\))?$/.test(columnName)) return;
+      var columnIndex = t.col(columnName);
+      var key = rowIndex + ':' + columnIndex;
+      if (columnIndex < 0 || seenCells[key]) return;
+      seenCells[key] = true;
+      if (String(t.rows[rowIndex - 2][columnIndex] || '').trim()) {
+        t.sheet.getRange(rowIndex, columnIndex + 1).setValue('');
+        t.rows[rowIndex - 2][columnIndex] = '';
+        cleared++;
+      }
+    });
+  });
+
   indices.sort(function (a, b) { return b - a; });   // מימין לשמאל
   indices.forEach(function (c) { t.sheet.deleteColumn(c + 1); });
 
   Logger.log('נמחקו ' + indices.length + ' עמודות מאנשי הקשר');
-  return { success: true, deleted: indices.length };
+  return { success: true, deleted: indices.length, cleared: cleared };
 }
 
 /**
@@ -3005,7 +3091,11 @@ function markChargeFailed_(orderId, failDate, reason, amount, name) {
   for (var i = 0; i < t.rows.length; i++) {
     if (String(t.rows[i][cId] || '').trim() !== chargeId) continue;
     if (cStatus >= 0) t.sheet.getRange(i + 2, cStatus + 1).setValue(STATUS_FAILED);
-    if (cNotes >= 0) t.sheet.getRange(i + 2, cNotes + 1).setValue(reason || '');
+    if (cNotes >= 0 && reason) {
+      var previous = String(t.rows[i][cNotes] || '').trim();
+      var nextNote = previous.indexOf(reason) >= 0 ? previous : (previous ? previous + ' · ' + reason : reason);
+      t.sheet.getRange(i + 2, cNotes + 1).setValue(nextNote);
+    }
     return;
   }
 
@@ -3015,6 +3105,60 @@ function markChargeFailed_(orderId, failDate, reason, amount, name) {
     'אפיק גבייה': 'הוראת קבע', 'מקור': 'הוראת קבע ' + orderId,
     'סטטוס': STATUS_FAILED, 'סיכום ותובנות': reason || '',
   });
+}
+
+/**
+ * רישום ידני של כשל כשלא הגיע מייל מהספק.
+ *
+ * המפתח הוא מספר הוראה + חודש, בדיוק כמו בקליטת המיילים. לכן לחיצה חוזרת
+ * או שליחה חוזרת אינן יוצרות שני כשלים. השם והסכום נלקחים מהוראת הקבע
+ * עצמה — לא סומכים על טקסט חופשי שעלול לסמן חיוב של אדם אחר.
+ */
+function addManualChargeFailure_(body) {
+  var orderId = String(body.orderId || '').trim();
+  var failDate = toDate_(body.date);
+  if (!orderId) return { success: false, error: 'חסר מספר הוראת קבע' };
+  if (!failDate) return { success: false, error: 'תאריך הכשל אינו תקין' };
+
+  var hkT = table_(SH.HK);
+  var orderRow = null;
+  for (var i = 0; i < hkT.rows.length; i++) {
+    if (String(get_(hkT.rows[i], hkT, 'מזהה') || '').trim() === orderId) {
+      orderRow = hkT.rows[i];
+      break;
+    }
+  }
+  if (!orderRow) return { success: false, error: 'הוראת הקבע לא נמצאה בגיליון' };
+
+  var name = standardName(get_(orderRow, hkT, 'שם'));
+  var orderAmount = asNumber_(get_(orderRow, hkT, 'סכום'));
+  var requestedAmount = asNumber_(body.amount);
+  var amount = requestedAmount || orderAmount;
+  var reason = auditText_(body.reason || 'סומן ידנית — לא התקבל מייל שגיאה', 240);
+
+  var failT = table_(SH.FAILURES);
+  var exists = failT.rows.some(function (row) {
+    var date = toDate_(get_(row, failT, 'תאריך'));
+    return String(get_(row, failT, 'מזהה הוראה') || '').trim() === orderId && date &&
+      date.getFullYear() === failDate.getFullYear() && date.getMonth() === failDate.getMonth();
+  });
+
+  if (!exists) {
+    appendByName_(SH.FAILURES, {
+      'תאריך': failDate,
+      'שם': name,
+      'מזהה הוראה': orderId,
+      'סכום': amount,
+      'סיבה': reason,
+    });
+  }
+
+  // גם במקרה של כפילות מסמנים שוב את החיוב. זה מתקן מצב שבו שורת הכשל
+  // קיימת אך סטטוס החיוב נמחק ידנית מהיומן.
+  flushWrites_();
+  __tableCache = {};
+  markChargeFailed_(orderId, failDate, reason, amount, name);
+  return { success: true, duplicate: exists, orderId: orderId, name: name, amount: amount };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

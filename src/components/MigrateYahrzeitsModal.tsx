@@ -5,6 +5,7 @@ import { useAppStore } from '../store/AppContext';
 import { apiPost, explainApiError} from '../lib/api';
 import {
   FamilyMember, collectLegacyYahrzeits, legacyToFamilyMember, familyLabel,
+  familyMemberFingerprint, dedupeFamilyMembers,
 } from '../lib/family';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -28,13 +29,15 @@ import {
 interface Plan {
   contact: string;
   members: FamilyMember[];
+  existing: FamilyMember[];
+  duplicates: number;
   columns: string[];
 }
 
 export function MigrateYahrzeitsModal({ onClose }: { onClose: () => void }) {
   const { donors, crm, updateCrmMany, refresh } = useAppStore();
   const [busy, setBusy] = useState('');
-  const [done, setDone] = useState<{ contacts: number; records: number; columns: number } | null>(null);
+  const [done, setDone] = useState<{ contacts: number; records: number; duplicates: number; columns: number; cleared: number } | null>(null);
   const [error, setError] = useState('');
   const [backedUp, setBackedUp] = useState(false);
 
@@ -44,9 +47,19 @@ export function MigrateYahrzeitsModal({ onClose }: { onClose: () => void }) {
       const fields = { ...(donors[name] as any), ...(crm[name]?.customFields || {}) };
       const legacy = collectLegacyYahrzeits(fields);
       if (!legacy.length) return;
+      const deduped = dedupeFamilyMembers(crm[name]?.family || []);
+      const known = new Set(deduped.members.map(familyMemberFingerprint));
+      const members = legacy.map(legacyToFamilyMember).filter(member => {
+        const key = familyMemberFingerprint(member);
+        if (known.has(key)) return false;
+        known.add(key);
+        return true;
+      });
       out.push({
         contact: name,
-        members: legacy.map(legacyToFamilyMember),
+        members,
+        existing: deduped.members,
+        duplicates: deduped.removed,
         columns: legacy.flatMap(l => l.columns),
       });
     });
@@ -58,6 +71,7 @@ export function MigrateYahrzeitsModal({ onClose }: { onClose: () => void }) {
     [plan]
   );
   const totalRecords = plan.reduce((s, p) => s + p.members.length, 0);
+  const totalDuplicates = plan.reduce((s, p) => s + p.duplicates, 0);
 
   const downloadBackup = () => {
     const blob = new Blob([JSON.stringify({ savedAt: new Date().toISOString(), plan }, null, 2)],
@@ -77,13 +91,13 @@ export function MigrateYahrzeitsModal({ onClose }: { onClose: () => void }) {
     setBusy('שומר את הרשומות...');
     const updates: Record<string, any> = {};
     plan.forEach(p => {
-      const existing: FamilyMember[] = crm[p.contact]?.family || [];
-      updates[p.contact] = { family: [...existing, ...p.members] };
+      if (!p.members.length && !p.duplicates) return;
+      updates[p.contact] = { family: [...p.existing, ...p.members] };
     });
 
-    let saved = false;
+    let saved = Object.keys(updates).length === 0;
     try {
-      saved = await updateCrmMany(updates);
+      if (!saved) saved = await updateCrmMany(updates);
     } catch (e: any) {
       setError(String(e?.message || e));
     }
@@ -97,19 +111,24 @@ export function MigrateYahrzeitsModal({ onClose }: { onClose: () => void }) {
     // ── 2. ורק עכשיו העמודות ──────────────────────────────────────────────
     setBusy('מנקה את העמודות...');
     let deleted = 0;
+    let cleared = 0;
     try {
-      const res = await apiPost('deleteContactColumns', { columns: allColumns });
+      const res = await apiPost('deleteContactColumns', {
+        columns: allColumns,
+        clearCells: plan.map(p => ({ contact: p.contact, columns: p.columns })),
+      });
       if (res?.error || res?.success === false) {
         setError(`הרשומות נשמרו בהצלחה, אבל מחיקת העמודות נכשלה: ${explainApiError(res.error)} — אפשר למחוק אותן ידנית בגיליון. שום מידע לא אבד.`);
       } else {
         deleted = res?.deleted ?? 0;
+        cleared = res?.cleared ?? 0;
       }
     } catch (e: any) {
       setError(`הרשומות נשמרו בהצלחה, אבל מחיקת העמודות נכשלה: ${e?.message || e}. שום מידע לא אבד.`);
     }
 
     setBusy('');
-    setDone({ contacts: plan.length, records: totalRecords, columns: deleted });
+    setDone({ contacts: plan.length, records: totalRecords, duplicates: totalDuplicates, columns: deleted, cleared });
     refresh();
   };
 
@@ -128,8 +147,9 @@ export function MigrateYahrzeitsModal({ onClose }: { onClose: () => void }) {
           <div className="space-y-3">
             <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-sm text-emerald-800">
               <div className="font-bold mb-1">הועבר ✓</div>
-              <div>{done.records} יארצייטים אצל {done.contacts} אנשי קשר</div>
-              <div>{done.columns} עמודות נמחקו מהגיליון</div>
+              <div>{done.records > 0 ? `${done.records} יארצייטים חדשים נשמרו` : 'היארצייטים כבר היו שמורים — לא נוצרו כפילויות'}</div>
+              {done.duplicates > 0 && <div>{done.duplicates} רשומות משפחה זהות שנוצרו מהרצות קודמות אוחדו</div>}
+              <div>{done.columns} עמודות נמחקו ו־{done.cleared} תאים ישנים נוקו אצל {done.contacts} אנשי קשר</div>
             </div>
             {error && <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800">{error}</div>}
             <button onClick={onClose} className="w-full bg-[#0D1B2A] text-[#E8C97A] py-2.5 rounded-xl font-bold text-sm">סגור</button>
