@@ -36,9 +36,13 @@ const v2Plan = R.validateBackupForRestore(v2);
 assert.strictEqual(v2Plan.backup.clientState.values.custom_hols, '[]', 'מידע המכשיר מתקבל בגיבוי החדש');
 assert.throws(() => R.validateBackupForRestore({ ...v2, coverage: { ...v2.coverage, sheetRows: 99 } }), /כיסוי/,
   'שינוי בתוכן או בספירות נעצר לפני שחזור');
-assert.throws(() => R.validateBackupForRestore(backup({
+const oldClientState = backup({
+  schemaVersion: 2,
   clientState: { schemaVersion: 1, values: { custom_hols: '[]' }, excludedSensitive: [] },
-})), /חסרים פריטי מכשיר/, 'גם גיבוי ישן שמכיל מצב מכשיר חלקי נעצר לפני שינוי הנתונים');
+});
+oldClientState.coverage = B.buildBackupCoverage(oldClientState);
+assert.doesNotThrow(() => R.validateBackupForRestore(oldClientState),
+  'גיבוי ישן עם פחות מפתחות מכשיר נשאר ניתן לשחזור');
 
 const manifest = R.restoreManifest(plan);
 assert.deepStrictEqual(manifest.syncKeys, ['crm']);
@@ -51,6 +55,23 @@ const chunkPlan = R.validateBackupForRestore(backup({
 const chunks = R.sheetChunks(chunkPlan, 'X');
 assert.deepStrictEqual(chunks.map(c => c.rows.length), [500, 500, 1]);
 assert.ok(chunks[0].headers && chunks[1].headers === undefined, 'כותרות נשלחות רק במקטע הראשון');
+
+const completion = R.buildRestoreCompletionReport(v2Plan, {
+  snapshotName: 'עותק בטיחות',
+  restoreReport: {
+    sheets: [{ name: 'אנשי קשר', expectedRows: 1, restoredRows: 1, verified: true }],
+    syncKeys: ['crm'],
+    verifiedAt: '2026-08-26T18:00:00.000Z',
+  },
+}, 1);
+assert.strictEqual(completion.rows.find(row => row.label === 'אנשי קשר').restored, 1);
+assert.strictEqual(completion.snapshotName, 'עותק בטיחות');
+assert.throws(() => R.buildRestoreCompletionReport(v2Plan, {
+  restoreReport: {
+    sheets: [{ name: 'אנשי קשר', expectedRows: 1, restoredRows: 0, verified: false }],
+    syncKeys: ['crm'],
+  },
+}, 1), /אינו תואם/, 'דוח שרת שאינו תואם לגיבוי אינו מוצג כהצלחה');
 
 for (const bad of [
   null,
@@ -71,5 +92,9 @@ assert.ok(backupCard.includes('עותק בטיחות מלא'), 'המשתמש ח�
 assert.ok(!backupCard.includes('שתי פעולות שאינן משנות דבר'), 'אסור להציג את השחזור כפעולה שאינה משנה נתונים');
 assert.ok(backupCard.lastIndexOf('restoreClientBackupState') > backupCard.indexOf('restoreFinish(token)'),
   'מצב המכשיר חוזר רק אחרי שהשחזור בשרת הסתיים בהצלחה');
+assert.ok(backupCard.indexOf('buildRestoreCompletionReport(restorePlan, finish, 0)') < backupCard.indexOf('const clientItems = restoreClientBackupState'),
+  'דוח השרת מאומת לפני שינוי מצב המכשיר');
+assert.ok(backupCard.includes('RestoreCompletionSummary') && backupCard.includes('saveLastRestoreReport'),
+  'דוח השלמות נשמר להצגה גם אחרי רענון האפליקציה');
 
 console.log('✓ אימות ותכנון שחזור בצד הלקוח');

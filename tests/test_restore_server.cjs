@@ -89,6 +89,10 @@ function manifest(syncKeys = ['crm'], schemaVersion = 1) {
 
 assert.doesNotThrow(() => validateRestoreManifest_(manifest(['crm'], 2)), 'גיבוי מלא חדש בגרסה 2 מתקבל');
 assert.throws(() => validateRestoreManifest_(manifest(['crm'], 3)), /גרסת הגיבוי/, 'גרסה עתידית לא מוכרת נעצרת');
+const oldManifest = manifest(['crm'], 2);
+oldManifest.sheets.pop();
+assert.doesNotThrow(() => validateRestoreManifest_(oldManifest),
+  'גיבוי ישן אינו נפסל רק מפני שנוספה מאז לשונית חדשה');
 
 assert.throws(() => restoreBegin_({ manifest: manifest(['evil']) }), /מפתח סנכרון/,
   'מפתח שאינו מאושר נעצר לפני יצירת עותק');
@@ -114,6 +118,13 @@ assert.throws(() => restoreFinish_({ token: begin.token }), /המפתח/, 'אי 
 restoreSync_({ token: begin.token, key: 'crm', data: { חדש: { phone: '1' } } });
 const finish = restoreFinish_({ token: begin.token });
 assert.strictEqual(finish.success, true);
+assert.ok(finish.restoreReport && finish.restoreReport.sheets.length === exportSheetNames_().length,
+  'בסיום מוחזר דוח שלמות לכל הלשוניות ששוחזרו');
+const contactsReport = finish.restoreReport.sheets.find(item => item.name === SH.CONTACTS);
+assert.deepStrictEqual(
+  { expected: contactsReport.expectedRows, restored: contactsReport.restoredRows, verified: contactsReport.verified },
+  { expected: 1, restored: 1, verified: true },
+  'דוח השלמות משווה בין הכמות בגיבוי לכמות שנכתבה בפועל');
 assert.strictEqual(active.data[SH.CONTACTS][1][0], 'חדש');
 assert.ok(active.data[SH.CONTACTS][1][5] instanceof Date, 'תאריך מפורש חוזר ל-Date');
 assert.strictEqual(active.data[SH.CONTACTS][1][8], "'=לא נוסחה", 'מחרוזת מסוכנת אינה הופכת לנוסחה');

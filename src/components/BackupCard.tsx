@@ -12,13 +12,28 @@ import {
 } from '../lib/backup';
 import { BackupStamp, readBackupStamp } from '../lib/backupHistory';
 import {
-  RestorePlan, RESTORE_CONFIRM_WORD, restoreManifest, sheetChunks, validateBackupForRestore,
+  RestorePlan, RestoreCompletionReport, RESTORE_CONFIRM_WORD, buildRestoreCompletionReport,
+  restoreManifest, sheetChunks, validateBackupForRestore,
 } from '../lib/restore';
 import { restoreClientBackupState } from '../lib/clientBackup';
 import { createAndDownloadFullBackup } from '../lib/backupDownload';
 import { useAppStore } from '../store/AppContext';
 
 // ─────────────────────────────────────────────────────────────────────────────
+
+const LAST_RESTORE_REPORT_KEY = 'kehila:last-restore-report';
+
+function readLastRestoreReport(): RestoreCompletionReport | null {
+  try {
+    const raw = sessionStorage.getItem(LAST_RESTORE_REPORT_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
+function saveLastRestoreReport(report: RestoreCompletionReport) {
+  try { sessionStorage.setItem(LAST_RESTORE_REPORT_KEY, JSON.stringify(report)); }
+  catch { /* הדוח מוצג מיד גם אם אחסון הלשונית חסום */ }
+}
 // גיבוי מלא ובדיקת תקינות.
 //
 // שתי פעולות שנוגעות באותה שאלה — "האם הנתונים שלי בסדר, ומה יקרה אם
@@ -95,6 +110,7 @@ export function BackupCard() {
   const [restorePlan, setRestorePlan] = useState<RestorePlan | null>(null);
   const [restoreConfirm, setRestoreConfirm] = useState('');
   const [restoreMessage, setRestoreMessage] = useState('');
+  const [lastRestoreReport, setLastRestoreReport] = useState<RestoreCompletionReport | null>(readLastRestoreReport);
   const [lastCoverage, setLastCoverage] = useState<BackupCoverage | null>(null);
 
   const reset = () => { setError(''); setFailures([]); setNeedsDeploy(false); };
@@ -163,8 +179,14 @@ export function BackupCard() {
         tick(`נתוני ${key}`);
       }
       const finish = await restoreFinish(token);
-      token = ''; // מכאן כשל רענון אינו סיבה להחזיר שחזור שכבר הושלם.
+      // קודם מאמתים את דוח השרת, ורק אחר כך נוגעים בהגדרות המקומיות. כך
+      // כשל בדוח יכול להחזיר את הגיליון בלי להשאיר מכשיר במצב אחר.
+      const verifiedReport = buildRestoreCompletionReport(restorePlan, finish, 0);
       const clientItems = restoreClientBackupState(restorePlan.backup.clientState);
+      const completionReport = { ...verifiedReport, clientItems };
+      saveLastRestoreReport(completionReport);
+      setLastRestoreReport(completionReport);
+      token = ''; // מכאן כשל רענון אינו סיבה להחזיר שחזור שכבר אומת והושלם.
       tick('השחזור הושלם');
       setRestoreMessage(`✓ השחזור הושלם${clientItems ? `, כולל ${clientItems} פריטי הגדרות ומכשיר` : ''}. עותק הבטיחות נשמר ב-Drive בשם „${finish.snapshotName || snapshotName}”.`);
       setRestorePlan(null); setRestoreConfirm('');
@@ -333,6 +355,8 @@ export function BackupCard() {
               : 'bg-amber-50 border-amber-200 text-amber-900'
           }`}>{restoreMessage}</div>
         )}
+
+        {lastRestoreReport && <RestoreCompletionSummary report={lastRestoreReport} />}
       </div>
 
       {/* ── בדיקה ── */}
@@ -383,6 +407,33 @@ export function BackupCard() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function RestoreCompletionSummary({ report }: { report: RestoreCompletionReport }) {
+  return (
+    <div className="mt-2 bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-[11px] text-emerald-900">
+      <div className="font-bold flex items-center gap-1.5 mb-1">
+        <CheckCircle2 size={14} /> השחזור האחרון נבדק והושלם
+      </div>
+      <div className="text-[10px] opacity-75 mb-2">
+        {new Date(report.completedAt).toLocaleString('he-IL')} · {report.sheetCount} לשוניות ·{' '}
+        {report.syncCount} קבוצות מידע
+        {report.clientItems ? ` · ${report.clientItems} פריטי הגדרות ומכשיר` : ''}
+      </div>
+      <div className="space-y-1">
+        {report.rows.map(row => (
+          <div key={row.label} className="flex items-center gap-2 bg-white/70 rounded-lg px-2 py-1.5">
+            <span className="flex-1 font-medium">{row.label}</span>
+            <span className="tabular-nums">{row.expected.toLocaleString()} → {row.restored.toLocaleString()}</span>
+            <CheckCircle2 size={12} className="text-emerald-700" />
+          </div>
+        ))}
+      </div>
+      {report.snapshotName && (
+        <div className="mt-2 text-[10px] opacity-75">עותק הבטיחות: „{report.snapshotName}”</div>
+      )}
     </div>
   );
 }

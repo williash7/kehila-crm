@@ -69,8 +69,8 @@ export function validateClientBackupState(value: any): ClientBackupState {
     if (!ALLOWED.has(key)) throw new Error(`מפתח מכשיר אינו מוכר: ${key}`);
     if (raw !== null && typeof raw !== 'string') throw new Error(`ערך מכשיר אינו תקין: ${key}`);
   });
-  const missing = CLIENT_BACKUP_KEYS.filter(key => !Object.prototype.hasOwnProperty.call(value.values, key));
-  if (missing.length) throw new Error(`חסרים פריטי מכשיר בגיבוי: ${missing.join(', ')}`);
+  // גיבוי ישן מכיר רק את המפתחות שהיו קיימים ביום שבו נוצר. מפתח שנוסף
+  // מאוחר יותר נשמר כפי שהוא במכשיר הנוכחי; מפתח זר עדיין נדחה למעלה.
   return value as ClientBackupState;
 }
 
@@ -84,11 +84,13 @@ export function restoreClientBackupState(value: ClientBackupState | undefined, s
   const state = validateClientBackupState(value);
   const currentSettings = safeJson(storage.getItem('app_settings_v1')) || {};
   const currentOrg = safeJson(storage.getItem('org_config_v1')) || {};
-  const before = Object.fromEntries(CLIENT_BACKUP_KEYS.map(key => [key, storage.getItem(key)]));
+  const restorableKeys = CLIENT_BACKUP_KEYS.filter(key =>
+    Object.prototype.hasOwnProperty.call(state.values, key));
+  const before = Object.fromEntries(restorableKeys.map(key => [key, storage.getItem(key)]));
   let restored = 0;
 
   try {
-    CLIENT_BACKUP_KEYS.forEach(key => {
+    restorableKeys.forEach(key => {
       const raw = state.values[key];
       if (raw === null) storage.removeItem(key);
       else if (key === 'app_settings_v1') {
@@ -105,7 +107,7 @@ export function restoreClientBackupState(value: ClientBackupState | undefined, s
   } catch (error: any) {
     // מצב המכשיר חוזר כיחידה אחת: אם הדפדפן מלא או חסום, לא משאירים
     // חצי הגדרות מהגיבוי וחצי מהמצב הקודם.
-    CLIENT_BACKUP_KEYS.forEach(key => {
+    restorableKeys.forEach(key => {
       try {
         const raw = before[key];
         if (raw === null) storage.removeItem(key); else storage.setItem(key, raw);

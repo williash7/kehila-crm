@@ -67,7 +67,7 @@
  *
  * **מעדכנים אותה בכל שינוי מהותי בקובץ.**
  */
-var CODE_VERSION = '2026-08-26b';
+var CODE_VERSION = '2026-08-26c';
 var EXPORT_SCHEMA_VERSION = 2;
 var EXPORT_MAX_LIMIT = 500;
 var CRM_MERGES_KEY = '__nameMerges__';
@@ -1477,9 +1477,9 @@ function validateRestoreManifest_(manifest) {
     sheets[name] = { present: !!s.present, rowCount: rowCount, headerCount: headerCount,
                      nextOffset: 0, started: false, done: !s.present };
   });
-  allowed.forEach(function (name) {
-    if (!seen[name]) throw new Error('לשונית חסרה במניפסט: ' + name);
-  });
+  // גיבוי ישן אינו מכיר לשונית שנוספה לאפליקציה אחרי יצירתו. משחזרים רק
+  // לשוניות שהגיבוי מכיר ומשאירים את החדשות ללא שינוי. שם זר עדיין נדחה
+  // למעלה, ולכן תאימות לאחור אינה מרחיבה את הרשאות השחזור.
   var sync = {};
   manifest.syncKeys.forEach(function (key) {
     key = String(key || '').trim();
@@ -1625,8 +1625,31 @@ function restoreFinish_(body) {
   return withRestoreLock_(function () {
     var state = restoreState_(body.token);
     if (state.status !== 'active') throw new Error('השחזור אינו פעיל');
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var restoredSheets = [];
     Object.keys(state.sheets).forEach(function (name) {
-      if (!state.sheets[name].done) throw new Error('השחזור טרם השלים את הלשונית: ' + name);
+      var item = state.sheets[name];
+      if (!item.done) throw new Error('השחזור טרם השלים את הלשונית: ' + name);
+      if (!item.present) return;
+      var sheet = ss.getSheetByName(name);
+      if (!sheet) throw new Error('הלשונית לא נמצאה לאחר השחזור: ' + name);
+      // לשונית הסנכרון נכתבת שוב, מפתח-מפתח, מיד אחרי שחזור השורות הגולמיות
+      // שלה. לכן הספירה הפיזית הסופית עשויה להשתנות בלי שחסר מידע; היא
+      // מאומתת בנפרד דרך state.sync למטה.
+      var actualRows = name === SH.SYNC
+        ? item.nextOffset
+        : Math.max(sheet.getLastRow() - 1, 0);
+      var actualHeaders = sheet.getLastColumn();
+      if (actualRows !== item.rowCount || actualHeaders !== item.headerCount) {
+        throw new Error('בדיקת השלמות נכשלה בלשונית ' + name +
+                        ': נשמרו ' + item.rowCount + ' שורות וחזרו ' + actualRows);
+      }
+      restoredSheets.push({
+        name: name,
+        expectedRows: item.rowCount,
+        restoredRows: actualRows,
+        verified: true,
+      });
     });
     Object.keys(state.sync).forEach(function (key) {
       if (!state.sync[key]) throw new Error('השחזור טרם השלים את המפתח: ' + key);
@@ -1634,7 +1657,16 @@ function restoreFinish_(body) {
     state.status = 'completed';
     state.completedAt = Date.now();
     saveRestoreState_(state);
-    return { success: true, snapshotId: state.snapshotId, snapshotName: state.snapshotName };
+    return {
+      success: true,
+      snapshotId: state.snapshotId,
+      snapshotName: state.snapshotName,
+      restoreReport: {
+        sheets: restoredSheets,
+        syncKeys: Object.keys(state.sync),
+        verifiedAt: new Date().toISOString(),
+      },
+    };
   });
 }
 

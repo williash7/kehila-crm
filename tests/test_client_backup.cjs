@@ -45,6 +45,22 @@ assert.throws(() => C.validateClientBackupState({
   schemaVersion: 1, values: { dangerous_unknown_key: 'x' }, excludedSensitive: [],
 }), /אינו מוכר/);
 
+const oldBackup = {
+  schemaVersion: 1,
+  values: { custom_hols: JSON.stringify([{ id: 'ישן' }]) },
+  excludedSensitive: [],
+};
+const newerTarget = new MemoryStorage({
+  custom_hols: '[]',
+  'kehila:list-sort:finance-cashflow': JSON.stringify({ field: 'date', direction: 'desc' }),
+});
+assert.doesNotThrow(() => C.validateClientBackupState(oldBackup),
+  'גיבוי ישן אינו נפסל רק מפני שנוספו מאז מפתחות חדשים');
+assert.strictEqual(C.restoreClientBackupState(oldBackup, newerTarget), 1);
+assert.strictEqual(JSON.parse(newerTarget.getItem('custom_hols'))[0].id, 'ישן');
+assert.ok(newerTarget.getItem('kehila:list-sort:finance-cashflow'),
+  'מפתח חדש שלא היה בגיבוי הישן נשמר ולא נמחק');
+
 class FailingStorage extends MemoryStorage {
   constructor(values) { super(values); this.failOnce = true; }
   setItem(key, value) {

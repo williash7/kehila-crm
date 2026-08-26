@@ -13,6 +13,21 @@ export interface RestorePlan {
   generatedAt: string;
 }
 
+export interface RestoreReportRow {
+  label: string;
+  expected: number;
+  restored: number;
+}
+
+export interface RestoreCompletionReport {
+  completedAt: string;
+  snapshotName: string;
+  rows: RestoreReportRow[];
+  sheetCount: number;
+  syncCount: number;
+  clientItems: number;
+}
+
 export class RestoreValidationError extends Error {
   constructor(message: string) {
     super(message);
@@ -110,4 +125,66 @@ export function sheetChunks(plan: RestorePlan, sheetName: string, limit = RESTOR
     });
   }
   return chunks;
+}
+
+const RECORD_LABELS: { key: keyof NonNullable<BackupFile['coverage']>['records']; label: string }[] = [
+  { key: 'contacts', label: 'אנשי קשר' },
+  { key: 'logRows', label: 'תרומות ומפגשים' },
+  { key: 'standingOrders', label: 'הוראות קבע' },
+  { key: 'nameAliases', label: 'מיזוגים וקישורי שמות' },
+  { key: 'activities', label: 'פעילויות' },
+  { key: 'campaigns', label: 'קמפיינים' },
+  { key: 'tasks', label: 'משימות' },
+  { key: 'homeVisitRounds', label: 'מערכי ביקורי בית' },
+  { key: 'financeTransactions', label: 'תנועות כספיות' },
+  { key: 'customHolidays', label: 'חגים מותאמים' },
+];
+
+/**
+ * בונה דוח רק אחרי שהשרת החזיר ספירות שנבדקו בפועל. נתוני הסנכרון
+ * נחשבים משוחזרים רק אם כל המפתחות שהיו בגיבוי אושרו על ידי השרת.
+ */
+export function buildRestoreCompletionReport(
+  plan: RestorePlan,
+  finish: any,
+  clientItems: number,
+): RestoreCompletionReport {
+  const serverReport = finish?.restoreReport;
+  if (!serverReport || !Array.isArray(serverReport.sheets) || !Array.isArray(serverReport.syncKeys)) {
+    throw new Error('השחזור הסתיים ללא דוח שלמות; יש לעדכן את הסקריפט ולבדוק שוב');
+  }
+
+  const byName = new Map(serverReport.sheets.map((item: any) => [String(item?.name || ''), item]));
+  const presentSheets = Object.entries(plan.backup.sheets).filter(([, sheet]) => sheet.present);
+  presentSheets.forEach(([name, sheet]) => {
+    const actual: any = byName.get(name);
+    if (!actual || actual.verified !== true || Number(actual.expectedRows) !== sheet.rowCount ||
+        Number(actual.restoredRows) !== sheet.rowCount) {
+      throw new Error(`דוח השלמות אינו תואם ללשונית ${name}`);
+    }
+  });
+
+  const expectedSync = Object.keys(plan.backup.syncResolved).sort();
+  const restoredSync = serverReport.syncKeys.map(String).sort();
+  if (JSON.stringify(expectedSync) !== JSON.stringify(restoredSync)) {
+    throw new Error('דוח השלמות אינו תואם לנתוני המערכת');
+  }
+
+  const coverage = plan.backup.coverage;
+  const rows: RestoreReportRow[] = coverage
+    ? RECORD_LABELS.map(({ key, label }) => ({
+        label,
+        expected: Number(coverage.records[key] || 0),
+        restored: Number(coverage.records[key] || 0),
+      }))
+    : presentSheets.map(([name, sheet]) => ({ label: name, expected: sheet.rowCount, restored: sheet.rowCount }));
+
+  return {
+    completedAt: String(serverReport.verifiedAt || new Date().toISOString()),
+    snapshotName: String(finish?.snapshotName || ''),
+    rows,
+    sheetCount: presentSheets.length,
+    syncCount: expectedSync.length,
+    clientItems,
+  };
 }
