@@ -18,6 +18,8 @@ import { ACTIVITY_KIND_LABEL, ActivityKind, ActivityParticipant, activityDonatio
 import { projectPurposeTags } from '../lib/projects';
 import { PurposeTagsEditor } from './PurposeTagsEditor';
 import { OpenTargetProps, useRevealEntity } from '../lib/openTarget';
+import { ExportButton } from './ExportButton';
+import { ACTIVITY_COLUMNS } from '../lib/exportRows';
 
 export function EventsTab({ addTrigger, openTarget, onOpenTargetConsumed }: {
   addTrigger?: { tab: string; count: number };
@@ -413,6 +415,15 @@ export function EventsTab({ addTrigger, openTarget, onOpenTargetConsumed }: {
            <button onClick={() => setFilter('recurring')} className={`shrink-0 px-3.5 py-1.5 rounded-full text-xs font-bold transition-colors ${filter === 'recurring' ? 'bg-[#0D1B2A] text-[#C9A84C]' : 'bg-white text-gray-500 border border-[#EDE6D6]'}`}>🔁 קבועות</button>
            <button onClick={() => setFilter('special')} className={`shrink-0 px-3.5 py-1.5 rounded-full text-xs font-bold transition-colors ${filter === 'special' ? 'bg-[#0D1B2A] text-[#C9A84C]' : 'bg-white text-gray-500 border border-[#EDE6D6]'}`}>✨ מיוחדות</button>
            <button onClick={() => setFilter('holiday')} className={`shrink-0 px-3.5 py-1.5 rounded-full text-xs font-bold transition-colors ${filter === 'holiday' ? 'bg-[#0D1B2A] text-[#C9A84C]' : 'bg-white text-gray-500 border border-[#EDE6D6]'}`}>🕯️ חגים</button>
+        </div>
+
+        <div className="flex justify-end mb-2">
+          <ExportButton
+            rows={activeEvents}
+            columns={ACTIVITY_COLUMNS}
+            fileName="פעילויות"
+            filterHint={filter !== 'all' ? filter : ''}
+          />
         </div>
 
         <div className="space-y-3">

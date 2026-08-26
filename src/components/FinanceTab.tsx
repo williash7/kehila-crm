@@ -20,6 +20,8 @@ import { parseDdMmYyyy } from '../lib/dateUtils';
 import { GlobalAIImportModal } from './GlobalAIImportModal';
 import { compareListValues, ListSortControl, usePersistentListSort } from './ListSortControl';
 import { FinancePlanningTools } from './FinancePlanningTools';
+import { ExportButton } from './ExportButton';
+import { FINANCE_COLUMNS } from '../lib/exportRows';
 
 type Pane = 'overview' | 'transactions' | 'cashflow' | 'scopes' | 'planning' | 'import' | 'settings';
 type BudgetSource = { id?: string; title?: string; name?: string; budget?: { expenses?: unknown[]; income?: unknown[] } };
@@ -284,7 +286,36 @@ function Transactions({ data, donations, onAdd, onEdit, onCancel }: {
       </div>
       <div className="flex flex-col sm:flex-row gap-2 sm:items-end"><div className="flex-1"><ListSortControl value={sort} onChange={setSort} /></div><button onClick={() => { setStatus('all'); setDateFrom(''); setDateTo(''); setAmountFrom(''); setAmountTo(''); }} className="text-xs text-[#9B7A2F] font-bold px-3 py-2">נקה סינונים</button></div>
     </div>}
-    <div className="bg-[#FAF6EE] px-4 py-2.5 flex flex-wrap gap-x-5 gap-y-1 text-xs"><span>הכנסות בפועל <b className="text-emerald-700">{money(totals.income)}</b></span><span>הוצאות בפועל <b className="text-red-600">{money(totals.expense)}</b></span><span>עוד מחויב לצאת <b className="text-amber-700">{money(totals.committed)}</b></span></div>
+    <div className="bg-[#FAF6EE] px-4 py-2.5 flex flex-wrap items-center gap-x-5 gap-y-1 text-xs">
+      <span>הכנסות בפועל <b className="text-emerald-700">{money(totals.income)}</b></span>
+      <span>הוצאות בפועל <b className="text-red-600">{money(totals.expense)}</b></span>
+      <span>עוד מחויב לצאת <b className="text-amber-700">{money(totals.committed)}</b></span>
+      {/*
+        ייצוא **התנועות המסוננות**, ולא כל הנתונים.
+        קיים כאן כבר ייצוא כולל (`financeCsv`) שמוריד את הכול — הוא נשאר
+        לגיבוי, אבל הוא לא עונה על „סיננתי לחודש הזה, תן לי את החודש הזה”.
+      */}
+      <span className="mr-auto">
+        <ExportButton
+          rows={list.map(row => ({
+            date: row.date,
+            kind: row.direction === 'out' ? 'expense' : 'income',
+            kindLabel: row.title,
+            amount: row.amount,
+            statusLabel: row.statusLabel || row.status,
+            category: row.category,
+            scopeLabel: row.scopeName,
+            description: row.title,
+            method: row.method,
+            notes: row.notes,
+            id: row.sourceId,
+          }))}
+          columns={FINANCE_COLUMNS}
+          fileName="תנועות-כספיות"
+          filterHint={[status !== 'all' ? status : '', dateFrom || dateTo ? `${dateFrom || ''}-${dateTo || ''}` : '', search].filter(Boolean).join('_')}
+        />
+      </span>
+    </div>
     {list.length === 0 ? <p className="p-8 text-center text-sm text-gray-400">לא נמצאו תנועות</p> : <div className="divide-y divide-[#F1ECE1]">
       {list.map(row => {
         const tx = row.source === 'finance' ? data.transactions.find(item => item.id === row.sourceId) : undefined;

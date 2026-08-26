@@ -17,6 +17,8 @@ import { Donation } from '../types';
 import { CASH_DESTINATION_OPTIONS, cashDestinationLabel, cleanPaymentMethod, isCashPaymentMethod } from '../lib/cashDonations';
 import { compareListValues, ListSortControl, usePersistentListSort } from './ListSortControl';
 import { OpenTargetProps } from '../lib/openTarget';
+import { ExportButton } from './ExportButton';
+import { DONATION_COLUMNS, STANDING_ORDER_COLUMNS } from '../lib/exportRows';
 import { ManualFailureDialog } from './ManualFailureDialog';
 
 type MainTab = 'donations' | 'hk' | 'errors' | 'payments';
@@ -63,7 +65,13 @@ export function DonationsTab({ onAddDonation, openTarget, onOpenTargetConsumed }
   const [search, setSearch] = useState('');
   const [dateFrom, setDateFrom] = useState(settings.donationsSinceDate || '');
   const [dateTo, setDateTo] = useState('');
-  const [method, setMethod] = useState('');
+  // בחירה **מרובה** של אפיקי גבייה.
+  //
+  // היה כאן `<select>` יחיד, ולכן „מזומן וגם אתר חב״ד” — הבקשה המקורית של
+  // אשר — לא הייתה אפשרית כלל. קבוצה ריקה פירושה „הכל”, כמו קודם.
+  const [methods, setMethods] = useState<string[]>([]);
+  const toggleMethod = (m: string) =>
+    setMethods(prev => prev.includes(m) ? prev.filter(x => x !== m) : [...prev, m]);
   const [purpose, setPurpose] = useState('');
   const [donationSort, setDonationSort] = usePersistentListSort('kehila:list-sort:donations');
   const [showFilters, setShowFilters] = useState(false);
@@ -78,7 +86,7 @@ export function DonationsTab({ onAddDonation, openTarget, onOpenTargetConsumed }
   const filteredDonations = useMemo(() => {
     let list = [...donationRecords];
     if (search) list = list.filter(d => (d.name || '').toLowerCase().includes(search.toLowerCase()));
-    if (method) list = list.filter(d => d.method === method);
+    if (methods.length) list = list.filter(d => methods.includes(d.method || ''));
     if (purpose) list = list.filter(d => d.purpose === purpose);
     if (dateFrom) {
       const from = new Date(dateFrom); from.setHours(0, 0, 0, 0);
@@ -90,13 +98,22 @@ export function DonationsTab({ onAddDonation, openTarget, onOpenTargetConsumed }
     }
     list.sort((a, b) => compareListValues(a, b, donationSort, parseDdMmYyyy));
     return list;
-  }, [donationRecords, search, method, purpose, dateFrom, dateTo, donationSort]);
+  }, [donationRecords, search, methods, purpose, dateFrom, dateTo, donationSort]);
 
   const pagedDonations = filteredDonations.slice(0, (page + 1) * PAGE_SIZE);
   const filteredTotal = filteredDonations.reduce((s, d) => s + (d.amount || 0), 0);
 
-  const clearFilters = () => { setSearch(''); setDateFrom(''); setDateTo(''); setMethod(''); setPurpose(''); };
-  const hasActiveFilters = !!(search || dateFrom || dateTo || method || purpose);
+  const clearFilters = () => { setSearch(''); setDateFrom(''); setDateTo(''); setMethods([]); setPurpose(''); };
+  const hasActiveFilters = !!(search || dateFrom || dateTo || methods.length || purpose);
+
+  // תיאור קצר של הסינון, לשם הקובץ. שלושה קבצים בשם „תרומות” בתיקיית
+  // ההורדות הם שלושה קבצים שאי אפשר להבדיל ביניהם.
+  const donationFilterHint = [
+    methods.length ? methods.join('+') : '',
+    purpose,
+    dateFrom || dateTo ? `${dateFrom || ''}-${dateTo || ''}` : '',
+    search,
+  ].filter(Boolean).join('_');
 
   // ── הוראות קבע ──────────────────────────────────────────────────────────
   const [hkFilter, setHkFilter] = useState<'all' | HkStatus | 'errors'>('active');
@@ -223,11 +240,29 @@ export function DonationsTab({ onAddDonation, openTarget, onOpenTargetConsumed }
                 </div>
                 {uniqueMethods.length > 0 && (
                   <div>
-                    <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">אפיק גבייה</label>
-                    <select value={method} onChange={e => setMethod(e.target.value)} className="w-full bg-gray-50 border border-[#EDE6D6] rounded-lg px-2 py-2 text-xs outline-none focus:border-[#C9A84C]">
-                      <option value="">הכל</option>
-                      {uniqueMethods.map(m => <option key={m as string} value={m as string}>{m as string}</option>)}
-                    </select>
+                    <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">
+                      אפיק גבייה {methods.length > 0 && <span className="text-[#9B7A2F] normal-case">· {methods.length} נבחרו</span>}
+                    </label>
+                    <div className="flex flex-wrap gap-1.5">
+                      <button
+                        onClick={() => setMethods([])}
+                        className={`px-2.5 py-1 rounded-full text-[11px] font-bold border transition-colors ${methods.length === 0 ? 'bg-[#0D1B2A] text-[#C9A84C] border-[#0D1B2A]' : 'bg-white text-gray-500 border-[#EDE6D6]'}`}
+                      >
+                        הכל
+                      </button>
+                      {uniqueMethods.map(m => {
+                        const on = methods.includes(m as string);
+                        return (
+                          <button
+                            key={m as string}
+                            onClick={() => toggleMethod(m as string)}
+                            className={`px-2.5 py-1 rounded-full text-[11px] font-bold border transition-colors ${on ? 'bg-[#0D1B2A] text-[#C9A84C] border-[#0D1B2A]' : 'bg-white text-gray-500 border-[#EDE6D6]'}`}
+                          >
+                            {on && '✓ '}{m as string}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
                 {uniquePurposes.length > 0 && (
@@ -284,9 +319,26 @@ export function DonationsTab({ onAddDonation, openTarget, onOpenTargetConsumed }
                   הצג עוד ({filteredDonations.length - pagedDonations.length} נותרו)
                 </button>
               )}
-              <div className="px-4 py-2.5 bg-[#FAF6EE] border-t border-[#EDE6D6] flex justify-between items-center text-sm">
-                <span className="text-gray-500">{filteredDonations.length} רשומות</span>
-                <span className="font-['Frank_Ruhl_Libre'] font-bold text-[#0D1B2A]">סה"כ: ₪{filteredTotal.toLocaleString()}</span>
+              {/*
+                ההורדה יושבת ליד המונה והסכום, וזה מכוון: שלושתם מתארים את
+                **אותה** רשימה מסוננת. „24 רשומות · ₪12,000 · הורד 24” —
+                המספר על הכפתור הוא ההבטחה שמה שירד הוא מה שנספר כאן.
+
+                שים לב ל-`filteredDonations` ולא ל-`pagedDonations`: המסך
+                מציג חמישים בכל פעם, אבל מי שסינן למזומן מצפה לקבל את **כל**
+                תרומות המזומן, לא את החמישים הראשונות.
+              */}
+              <div className="px-4 py-2.5 bg-[#FAF6EE] border-t border-[#EDE6D6] flex justify-between items-center gap-2 text-sm">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-gray-500 shrink-0">{filteredDonations.length} רשומות</span>
+                  <ExportButton
+                    rows={filteredDonations}
+                    columns={DONATION_COLUMNS}
+                    fileName="תרומות"
+                    filterHint={donationFilterHint}
+                  />
+                </div>
+                <span className="font-['Frank_Ruhl_Libre'] font-bold text-[#0D1B2A] shrink-0">סה"כ: ₪{filteredTotal.toLocaleString()}</span>
               </div>
             </div>
           </>
@@ -344,6 +396,22 @@ export function DonationsTab({ onAddDonation, openTarget, onOpenTargetConsumed }
                 <ListSortControl value={hkSort} onChange={setHkSort} />
               </div>
             </details>
+            {/*
+              הסטטוס („פעילה”, „מסתיימת”, „נכשלה”) מחושב ואינו שדה בנתונים,
+              ולכן הוא מחושב כאן לפני הייצוא. בלעדיו הקובץ היה מכיל מספרים
+              בלי המידע שבגללו מסתכלים על המסך הזה מלכתחילה.
+            */}
+            <div className="flex justify-end mb-2">
+              <ExportButton
+                rows={hkList.map(h => ({
+                  ...h,
+                  statusLabel: HK_STATUS_LABEL[getHkStatus(h, threshold)] || '',
+                }))}
+                columns={STANDING_ORDER_COLUMNS}
+                fileName="הוראות-קבע"
+                filterHint={[hkFilter !== 'all' ? hkFilter : '', hkSearch].filter(Boolean).join('_')}
+              />
+            </div>
             <div className="space-y-2">
               {hkList.length === 0 ? (
                 <EmptyState icon="🔄" title="אין הוראות קבע להצגה" hint="הוראות נקלטות לבד ממיילי הספק. אפשר גם להוסיף אחת ידנית." />

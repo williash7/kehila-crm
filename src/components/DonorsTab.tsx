@@ -11,6 +11,8 @@ import { findGregorianBirthday, findHebrewBirthday, findYahrzeitEntries } from '
 import { computeOverdueContacts, computeLastContactByName, formatLastContact } from '../lib/contactFocus';
 import { withCity } from '../lib/orgConfig';
 import { avatarGradient, hasDisplayName } from '../lib/donorDisplay';
+import { ExportButton } from './ExportButton';
+import { CONTACT_COLUMNS } from '../lib/exportRows';
 
 const DONOR_SORT_KEY = 'kehila:list-sort:contacts';
 type DonorSortState = { field: string; direction: 'asc' | 'desc' };
@@ -142,6 +144,34 @@ export function DonorsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
     if (minDays === 365 && (hBday || yahrzeitEntries.length > 0)) return 364;
     return minDays;
   };
+
+  // ── מה שיירד לקובץ ──
+  //
+  // הרשימה מועשרת בשדות שהמסך מציג בצורה חזותית בלבד — מעגל הקרבה כאייקון,
+  // הוראת קבע כסמל, קשר אחרון כטקסט מקוצר. **קובץ שמכיל רק את מה שכתוב
+  // בשורה יאבד בדיוק את המידע שבגללו נכנסים לכרטיס.**
+  const CIRCLE_LABEL: Record<string, string> = {
+    close: 'קרוב', approach: 'בהתקרבות', third: 'מעגל שלישי', far: 'רחוק',
+  };
+  const exportRows = React.useMemo(() => list.map(d => {
+    const c = (crm as any)[d.name] || {};
+    return {
+      name: d.name,
+      phone: c.phone || '',
+      address: c.address || '',
+      circleLabel: CIRCLE_LABEL[c.circle] || '',
+      total: d.total || 0,
+      donationCount: (d.donations || []).filter((x: any) => (x.amount || 0) > 0).length,
+      lastDate: d.lastDate || '',
+      lastContact: formatLastContact(lastContactByName.get(d.name), new Date()),
+      hasHk: hkNames.has(d.name),
+      target: !!c.target,
+      notes: c.notes || '',
+    };
+  }), [list, crm, hkNames, lastContactByName]);
+
+  const contactFilterHint = [filter !== 'all' ? filter : '', detailFilter !== 'all' ? detailFilter : '', search]
+    .filter(Boolean).join('_');
 
   list.sort((a, b) => {
     let cmp = 0;
@@ -300,20 +330,29 @@ export function DonorsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
             </select>
           </div>
 
-          <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
-            {filterTabs.map(f => (
-              <button
-                key={f.id}
-                onClick={() => setFilter(f.id)}
-                className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-medium border-[1.5px] transition-colors ${
-                  filter === f.id
-                    ? 'bg-[#0D1B2A] border-[#0D1B2A] text-[#C9A84C]'
-                    : 'bg-white border-[#EDE6D6] text-gray-500 hover:border-[#C9A84C]'
-                }`}
-              >
-                {f.label}
-              </button>
-            ))}
+          <div className="flex items-center gap-2">
+            <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar flex-1 min-w-0">
+              {filterTabs.map(f => (
+                <button
+                  key={f.id}
+                  onClick={() => setFilter(f.id)}
+                  className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-medium border-[1.5px] transition-colors ${
+                    filter === f.id
+                      ? 'bg-[#0D1B2A] border-[#0D1B2A] text-[#C9A84C]'
+                      : 'bg-white border-[#EDE6D6] text-gray-500 hover:border-[#C9A84C]'
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+            {/* ההורדה צמודה למסננים, כי הם שקובעים מה יירד. */}
+            <ExportButton
+              rows={exportRows}
+              columns={CONTACT_COLUMNS}
+              fileName="אנשי-קשר"
+              filterHint={contactFilterHint}
+            />
           </div>
         </div>
       </div>
