@@ -20,6 +20,7 @@ const E = require('/tmp/stub/exportRows.js');
 {
   const headers = E.exportHeaders(E.FINANCE_COLUMNS);
   const directionIdx = headers.indexOf('כיוון');
+  const amountIdx = headers.indexOf('סכום');
   const out = E.toExportRows([
     { direction: 'income', amount: 500 },
     { direction: 'expense', amount: 200 },
@@ -27,6 +28,8 @@ const E = require('/tmp/stub/exportRows.js');
   ], E.FINANCE_COLUMNS);
   assert.deepStrictEqual(out.map(row => row[directionIdx]), ['הכנסה', 'הוצאה', 'הוצאה'],
     'כל תנועה יורדת לקובץ בכיוון האמיתי שלה');
+  assert.deepStrictEqual(out.map(row => row[amountIdx]), [500, -200, -100],
+    'הכנסה יורדת כחיובית והוצאה יורדת כשלילית');
 }
 
 // ── הליבה ──

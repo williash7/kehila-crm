@@ -96,7 +96,14 @@ export const FINANCE_COLUMNS: ExportColumn<any>[] = [
       : 'הכנסה'
   ) },
   { header: 'סוג', value: t => asText(t.kindLabel || t.kind) },
-  { header: 'סכום', value: t => asNumber(t.amount) },
+  { header: 'סכום', value: t => {
+    const amount = Math.abs(asNumber(t.amount));
+    const isExpense = t.direction === 'expense'
+      || t.kind === 'expense'
+      || t.kind === 'personal_expense'
+      || t.kind === 'salary';
+    return isExpense ? -amount : amount;
+  } },
   { header: 'מצב', value: t => asText(t.statusLabel || t.status) },
   { header: 'קטגוריה', value: t => asText(t.category) },
   { header: 'שיוך', value: t => asText(t.scopeLabel) },
