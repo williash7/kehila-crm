@@ -67,7 +67,7 @@
  *
  * **מעדכנים אותה בכל שינוי מהותי בקובץ.**
  */
-var CODE_VERSION = '2026-08-26c';
+var CODE_VERSION = '2026-08-27a';
 var EXPORT_SCHEMA_VERSION = 2;
 var EXPORT_MAX_LIMIT = 500;
 var CRM_MERGES_KEY = '__nameMerges__';
@@ -2497,8 +2497,20 @@ function updateDonation_(body) {
 }
 
 /** ערך סגור כדי שטעות או קלט חיצוני לא ייצרו מצבי מזומן לא מוכרים. */
+/**
+ * ── רשימת היעדים המותרים למזומן ────────────────────────────────────────────
+ *
+ * ⚠ הרשימה הזו חייבת להישאר זהה ל-CASH_DESTINATION_OPTIONS ב-
+ * `src/lib/cashDonations.ts`. הן שני צדדים של אותו חוזה, ואין ביניהן
+ * בדיקה אוטומטית.
+ *
+ * מה שקורה כשהן נפרדות שקט ומסוכן: הלקוח שולח ערך שהשרת לא מכיר, השרת
+ * כותב מחרוזת ריקה, השמירה מדווחת „הצליחה”, והבחירה של המשתמש נעלמת.
+ * הוא רואה שוב „עדיין לא סווג” ולא מבין למה. בדיוק זה קרה כשנוסף
+ * `salary` בצד הלקוח בלי לעדכן כאן.
+ */
 function cleanCashDestination_(value) {
-  var allowed = ['org_account', 'personal', 'activity_cashbox', 'unclassified'];
+  var allowed = ['org_account', 'personal', 'activity_cashbox', 'salary', 'unclassified'];
   var clean = String(value || '').trim();
   return allowed.indexOf(clean) >= 0 ? clean : '';
 }

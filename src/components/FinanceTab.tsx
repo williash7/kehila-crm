@@ -19,7 +19,7 @@ import { sumBudget } from '../lib/history';
 import { activityDonations, Activity } from '../lib/activities';
 import { projectDonations, projectPurposeTags, Project } from '../lib/projects';
 import { Donation } from '../types';
-import { cashDestinationLabel } from '../lib/cashDonations';
+import { CASH_DESTINATION_OPTIONS, cashDestinationLabel, cashDestinationNeedsAttention } from '../lib/cashDonations';
 import { parseDdMmYyyy } from '../lib/dateUtils';
 import { GlobalAIImportModal } from './GlobalAIImportModal';
 import { compareListValues, ListSortControl, usePersistentListSort } from './ListSortControl';
@@ -185,7 +185,7 @@ export function FinanceTab() {
         </button>
       )}
 
-      {pane === 'overview' && <Overview summary={summary} data={data} donations={donations} onAdd={begin} onSettings={() => setPane('settings')} transactions={data.transactions} />}
+      {pane === 'overview' && <Overview summary={summary} data={data} donations={donations} onAdd={begin} onSettings={() => setPane('settings')} transactions={data.transactions} onResolved={async () => { await refresh(); }} />}
       {pane === 'transactions' && <Transactions data={data} donations={donations} onAdd={begin} onEdit={setEditing} onCancel={async id => persist(cancelTransaction(data, id))} onDelete={removeRow} deletingId={deletingId} deleteError={deleteError} />}
       {pane === 'cashflow' && <Cashflow data={data} donations={donations} hk={hk} />}
       {pane === 'scopes' && <Scopes scopes={scopes} budgets={existingBudgets} donations={donations} events={eventsData as Activity[]} projects={projects as Project[]} onAdd={() => begin('expense', 'committed')} />}
@@ -215,10 +215,10 @@ export function FinanceTab() {
   );
 }
 
-function Overview({ summary, data, donations, onAdd, onSettings, transactions }: {
+function Overview({ summary, data, donations, onAdd, onSettings, transactions, onResolved }: {
   summary: ReturnType<typeof summarizeFinance>; data: FinanceData; donations: Donation[];
   onAdd: (kind: FinanceKind, status?: FinanceStatus) => void; onSettings: () => void;
-  transactions: FinanceTransaction[];
+  transactions: FinanceTransaction[]; onResolved: () => Promise<void>;
 }) {
   const [detail, setDetail] = useState<'current' | 'committed' | 'safe' | 'personal' | 'gross' | 'cash' | null>(null);
   const flowRows = useMemo(() => buildFinanceFlowRows(data, donations), [data, donations]);
@@ -301,7 +301,7 @@ function Overview({ summary, data, donations, onAdd, onSettings, transactions }:
         {upcoming.map(tx => <div key={tx.id} className="py-2.5 flex items-center justify-between gap-3 text-sm"><span className="min-w-0"><b className="block truncate text-[#0D1B2A]">{tx.title}</b><small className="text-gray-500">{dateLabel(tx.date)} · {STATUS_LABELS[tx.status]}</small></span><b className={tx.kind.includes('income') ? 'text-emerald-700' : 'text-red-600'}>{money(tx.amount)}</b></div>)}
       </div>}
     </section>
-    {detail && <FinanceMetricDetails kind={detail} summary={summary} data={data} donations={donations} reimbursementBalance={reimbursementBalance} heldCashBalance={heldCashBalance} onClose={() => setDetail(null)} />}
+    {detail && <FinanceMetricDetails kind={detail} summary={summary} data={data} donations={donations} reimbursementBalance={reimbursementBalance} heldCashBalance={heldCashBalance} onClose={() => setDetail(null)} onResolved={onResolved} />}
   </div>;
 }
 
@@ -685,10 +685,10 @@ function TransactionEditor({ value, categories, scopeSuggestions, onClose, onSav
   </div>;
 }
 
-function FinanceMetricDetails({ kind, summary, data, donations, reimbursementBalance, heldCashBalance, onClose }: {
+function FinanceMetricDetails({ kind, summary, data, donations, reimbursementBalance, heldCashBalance, onClose, onResolved }: {
   kind: 'current' | 'committed' | 'safe' | 'personal' | 'gross' | 'cash';
   summary: ReturnType<typeof summarizeFinance>; data: FinanceData; donations: Donation[];
-  reimbursementBalance: number; heldCashBalance: number; onClose: () => void;
+  reimbursementBalance: number; heldCashBalance: number; onClose: () => void; onResolved: () => Promise<void>;
 }) {
   const unresolved = useMemo(() => unresolvedCashDonations(data, donations), [data, donations]);
   const rows = buildFinanceFlowRows(data, donations);
@@ -755,21 +755,148 @@ function FinanceMetricDetails({ kind, summary, data, donations, reimbursementBal
         <div className="pt-2"><DetailTotal label="יצא בפועל מאז נקודת הפתיחה" value={summary.actualExpense} negative /></div>
       </div>}
 
-      {/*
-        הרשימה שהופכת את האזהרה לסגירה. בלעדיה האזהרה אומרת „יש בעיה”
-        ולא „הנה היא”, ואשר היה צריך לסרוק את כל התרומות ידנית.
-      */}
-      {kind === 'cash' && <div className="space-y-3">
-        <p className="text-xs bg-amber-50 text-amber-800 rounded-xl p-3">התרומות האלה שולמו במזומן ולא נאמר מה קרה עם הכסף. לכן הן אינן נספרות ב„זמין כרגע”. פתח כל אחת מהן במסך התרומות ובחר: הופקד בעמותה, בקופת הפעילות, או נלקח כמשכורת.</p>
-        {unresolved.length === 0 ? <p className="text-sm text-gray-400 py-5 text-center">אין מזומן שמחכה להחלטה.</p> : <div className="max-h-80 overflow-y-auto divide-y divide-[#F1ECE1]">
-          {unresolved.map((donation, index) => <div key={donation.id || `${donation.name}-${index}`} className="py-2.5 flex items-center justify-between gap-3 text-xs">
-            <span className="min-w-0"><b className="block text-sm text-[#0D1B2A] truncate">{donation.name}</b><small className="text-gray-500">{donation.date} · {cashDestinationLabel(donation.cashDestination)}</small></span>
-            <b className="text-amber-700 shrink-0">{money(Number(donation.amount) || 0)}</b>
-          </div>)}
-        </div>}
-        <DetailTotal label="סה״כ מחכה להחלטה" value={summary.unresolvedCash} />
-      </div>}
+      {kind === 'cash' && <CashDecisions donations={unresolved} total={summary.unresolvedCash} onDone={onResolved} />}
     </div>
+  </div>;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// לטפל בכל המזומן במקום אחד.
+//
+// ── מה היה כאן קודם ────────────────────────────────────────────────────────
+//
+// רשימה בלבד: „הנה 14 התרומות שמחכות, לך תפתח אותן במסך התרומות”. אשר
+// ענה על זה במשפט אחד — „צריך אופציה בלחיצה מה לעשות עם כל המזומן” —
+// והוא צדק. רשימה שמצביעה על עבודה ולא מאפשרת לעשות אותה היא רק דרך
+// מנומסת להגיד „תסתדר”.
+//
+// ── שתי הדרכים, ולמה שתיהן ─────────────────────────────────────────────────
+//
+// **בזו אחר זו:** לכל שורה שלושה כפתורים. זה הנתיב הנכון כשלכל תרומה
+// גורל אחר — אחת הופקדה, אחת נלקחה כמשכורת.
+//
+// **בבת אחת:** מסמנים כמה, בוחרים יעד, וזהו. זה הנתיב הנכון למקרה
+// השכיח באמת — עשרים תרומות מזומן מאותו אירוע שכולן הופקדו יחד.
+//
+// ── ולמה התוצאה מפורטת כל כך ───────────────────────────────────────────────
+//
+// כל שורה היא בקשת רשת נפרדת, וחלק מהן יכולות להיכשל בזמן שאחרות
+// מצליחות. „חלק מהעדכונים נכשלו” אינו משפט שאפשר לפעול לפיו — לכן מה
+// שנכשל מוצג **בשמו**, והרשימה נשארת פתוחה כדי לנסות שוב רק עליו.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const DECISION_OPTIONS = CASH_DESTINATION_OPTIONS.filter(option => !cashDestinationNeedsAttention(option.value));
+
+function CashDecisions({ donations, total, onDone }: {
+  donations: Donation[]; total: number; onDone: () => void;
+}) {
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState('');
+  const [failed, setFailed] = useState<{ name: string; error: string }[]>([]);
+  const [savedCount, setSavedCount] = useState(0);
+
+  const withIds = donations.filter(donation => !!donation.id);
+  const missingId = donations.length - withIds.length;
+  const allSelected = withIds.length > 0 && withIds.every(donation => selected.has(donation.id!));
+
+  const toggle = (id: string) => setSelected(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+
+  const apply = async (destination: string, targets: Donation[]) => {
+    if (!targets.length || busy) return;
+    setBusy(true); setFailed([]); setSavedCount(0);
+    const problems: { name: string; error: string }[] = [];
+    let saved = 0;
+    for (let i = 0; i < targets.length; i++) {
+      const donation = targets[i];
+      setProgress(`${i + 1} מתוך ${targets.length}`);
+      try {
+        const res = await apiPost('updateDonation', { id: donation.id, cashDestination: destination });
+        if (res?.error || res?.success === false) {
+          problems.push({ name: donation.name || 'ללא שם', error: explainApiError(res?.error) || 'העדכון נכשל' });
+        } else {
+          saved++;
+        }
+      } catch {
+        problems.push({ name: donation.name || 'ללא שם', error: 'אין חיבור לשרת' });
+      }
+    }
+    setProgress(''); setBusy(false); setFailed(problems); setSavedCount(saved);
+    setSelected(new Set());
+    if (saved) await onDone();
+  };
+
+  if (donations.length === 0) return <div className="space-y-3">
+    <p className="text-sm bg-emerald-50 text-emerald-800 rounded-xl p-4 text-center font-bold">כל המזומן מסווג. אין מה שמחכה להחלטה.</p>
+    {savedCount > 0 && <p className="text-xs text-gray-500 text-center">{savedCount} תרומות עודכנו.</p>}
+  </div>;
+
+  return <div className="space-y-3">
+    <p className="text-xs bg-amber-50 text-amber-800 rounded-xl p-3">התרומות האלה שולמו במזומן ולא נאמר מה קרה עם הכסף, ולכן הן אינן נספרות ב„זמין כרגע”. אפשר להחליט על כל אחת בנפרד, או לסמן כמה ולהחליט על כולן בבת אחת.</p>
+
+    {savedCount > 0 && failed.length === 0 && <p className="bg-emerald-50 text-emerald-800 rounded-xl p-3 text-xs font-bold">✓ {savedCount} תרומות עודכנו.</p>}
+    {failed.length > 0 && <div className="bg-red-50 text-red-700 rounded-xl p-3 text-xs">
+      <b className="block mb-1">{savedCount} עודכנו, {failed.length} נכשלו:</b>
+      {failed.map((problem, index) => <div key={index}>· {problem.name} — {problem.error}</div>)}
+      <span className="block mt-1">הן עדיין ברשימה. אפשר לנסות שוב.</span>
+    </div>}
+    {missingId > 0 && <p className="bg-amber-50 text-amber-800 rounded-xl p-3 text-xs">{missingId} תרומות ללא מזהה אינן ניתנות לעדכון מכאן. אפשר לפתוח אותן ידנית במסך התרומות.</p>}
+
+    {/* ── פעולה מרוכזת ── */}
+    <div className="border border-[#EDE6D6] rounded-2xl p-3 space-y-2.5">
+      <div className="flex items-center justify-between gap-2">
+        <button
+          onClick={() => setSelected(allSelected ? new Set() : new Set(withIds.map(donation => donation.id!)))}
+          disabled={busy || withIds.length === 0}
+          className="text-xs font-bold text-[#9B7A2F] disabled:opacity-40"
+        >{allSelected ? 'נקה בחירה' : `סמן הכל (${withIds.length})`}</button>
+        <small className="text-gray-500">{selected.size ? `${selected.size} מסומנות` : 'לא סומן כלום'}</small>
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        {DECISION_OPTIONS.map(option => <button
+          key={option.value}
+          disabled={busy || selected.size === 0}
+          onClick={() => apply(option.value, withIds.filter(donation => selected.has(donation.id!)))}
+          className="border border-[#EDE6D6] rounded-xl px-2 py-2.5 text-[11px] font-bold text-[#0D1B2A] leading-tight hover:bg-[#FAF6EE] disabled:opacity-40"
+        >{option.label}</button>)}
+      </div>
+      {busy && <p className="text-xs text-center text-gray-500">שומר… {progress}</p>}
+    </div>
+
+    {/* ── שורה־שורה ── */}
+    <div className="max-h-72 overflow-y-auto divide-y divide-[#F1ECE1]">
+      {donations.map((donation, index) => {
+        const id = donation.id;
+        return <div key={id || `${donation.name}-${index}`} className="py-2.5 space-y-2">
+          <div className="flex items-center gap-2.5">
+            {id && <input
+              type="checkbox"
+              checked={selected.has(id)}
+              onChange={() => toggle(id)}
+              disabled={busy}
+              className="w-4 h-4 shrink-0 accent-[#C9A84C]"
+              aria-label={`בחר ${donation.name}`}
+            />}
+            <span className="min-w-0 flex-1"><b className="block text-sm text-[#0D1B2A] truncate">{donation.name}</b><small className="text-gray-500">{donation.date} · {cashDestinationLabel(donation.cashDestination)}</small></span>
+            <b className="text-amber-700 shrink-0 text-sm">{money(Number(donation.amount) || 0)}</b>
+          </div>
+          {id && <div className="grid grid-cols-3 gap-1.5 pr-6">
+            {DECISION_OPTIONS.map(option => <button
+              key={option.value}
+              disabled={busy}
+              onClick={() => apply(option.value, [donation])}
+              className="border border-[#EDE6D6] rounded-lg px-1.5 py-1.5 text-[10px] font-bold text-gray-600 leading-tight hover:bg-[#FAF6EE] hover:text-[#0D1B2A] disabled:opacity-40"
+            >{option.label}</button>)}
+          </div>}
+        </div>;
+      })}
+    </div>
+
+    <DetailTotal label="סה״כ מחכה להחלטה" value={total} />
   </div>;
 }
 
