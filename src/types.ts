@@ -1,4 +1,4 @@
-export type CashDestination = 'org_account' | 'personal' | 'activity_cashbox' | 'unclassified';
+export type CashDestination = 'org_account' | 'personal' | 'activity_cashbox' | 'salary' | 'unclassified';
 
 export interface Donation {
   id?: string;

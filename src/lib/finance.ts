@@ -1,7 +1,9 @@
 import { Donation } from '../types';
-import { normalizeCashDestination } from './cashDonations';
+import { cashDestinationNeedsAttention, normalizeCashDestination } from './cashDonations';
 import { MonthClosureSnapshot } from './monthClose';
 import { ActivityScenarioInput, ActivityScenarioResult } from './activityScenario';
+import { HkEntry } from './standingOrders';
+import { projectStandingOrderCharges } from './standingOrderForecast';
 
 export type FinanceStatus = 'actual' | 'committed' | 'expected' | 'cancelled';
 export type FinanceKind =
@@ -90,6 +92,24 @@ export interface FinanceSummary {
   donationIncome: number;
   firstRiskDate: string;
   firstOptimisticRiskDate: string;
+  /** כמה נכנס בסך הכל, בלי שום קיזוז. „כמה כסף יש” לפני שמדברים על מה שצריך לצאת. */
+  grossIncome: number;
+  /** מזומן שכבר בפנים וזמין: הופקד בעמותה או יושב בקופת הפעילות. */
+  availableCash: number;
+  /** מזומן שנשמר בצד או לא סווג. קיים במציאות, לא נספר ביתרה. */
+  unresolvedCash: number;
+  /** כמה מזומן נספר עד היום ההוצאה משכורת. */
+  salaryFromCash: number;
+  /** כמה תרומות מזומן עדיין מחכות להחלטה. המספר שמפעיל את האזהרה. */
+  unresolvedCashCount: number;
+  /**
+   * כמה חסר כדי לכסות את מה שמוגן.
+   *
+   * `safeToUse` נקטע ב-0 בכוונה — „בטוח לשימוש: מינוס 3,000” אינו משפט
+   * שאפשר לפעול לפיו. אבל הקטיעה הזו גם מסתירה בדיוק את המצב שבו חשוב
+   * לדעת: יותר כסף צריך לצאת ממה שיש. לכן החוסר נשמר כאן במפורש.
+   */
+  shortfall: number;
 }
 
 export interface FinanceProjectSummary {
@@ -333,9 +353,20 @@ export function transactionEffects(tx: FinanceTransaction, projection = false): 
   }
 }
 
+/**
+ * האם התרומה בכלל משתתפת בחשבון.
+ *
+ * מוגדר פעם אחת כדי ש„מה נספר” ו„איך זה נספר” לא יוכלו להיפרד: כל מקום
+ * שסופר תרומות משתמש בתנאי הזה, ולא בהעתק שלו שישכח להתעדכן.
+ */
+export function donationCounts(donation: Donation, data: FinanceData): boolean {
+  const amount = Math.max(0, number(donation.amount));
+  return !!amount && data.includeDonations && donationAfterOpening(donation, data.openingDate);
+}
+
 export function donationEffects(donation: Donation, data: FinanceData): Effects {
   const amount = Math.max(0, number(donation.amount));
-  if (!amount || !data.includeDonations || !donationAfterOpening(donation, data.openingDate)) {
+  if (!donationCounts(donation, data)) {
     return { income: 0, expense: 0, cash: 0, personal: 0 };
   }
   if (!donationIsCash(donation)) return { income: amount, expense: 0, cash: amount, personal: 0 };
@@ -344,6 +375,11 @@ export function donationEffects(donation: Donation, data: FinanceData): Effects 
   if (destination === 'org_account' || destination === 'activity_cashbox') {
     return { income: amount, expense: 0, cash: amount, personal: 0 };
   }
+  // „נלקח כמשכורת”: התרומה נכנסה, והיא יצאה מיד כמשכורת. שתי התנועות
+  // אמיתיות ושתיהן צריכות להיספר — אחרת ההוצאות יוצאות נמוכות מדי.
+  // הבנק אינו זז כי הכסף מעולם לא עבר דרכו, והחוב האישי מתאפס כי
+  // המזומן שהיה אצלו הוא בדיוק מה ששילם לו.
+  if (destination === 'salary') return { income: amount, expense: amount, cash: 0, personal: 0 };
   if (destination === 'personal') return { income: amount, expense: 0, cash: 0, personal: -amount };
 
   // רק תרומות ישנות שאין להן סיווג מפורש משתמשות בברירת המחדל הכללית.
@@ -452,7 +488,26 @@ export function summarizeFinanceFlowMonths(rows: FinanceFlowRow[]): MonthlyFinan
   return [...byMonth.values()].sort((a, b) => b.month.localeCompare(a.month));
 }
 
-export function summarizeFinance(dataInput: unknown, donations: Donation[] = []): FinanceSummary {
+/**
+ * תרומות המזומן שעדיין אין להן סוף סיפור.
+ *
+ * מספר באזהרה לבדו („4 תרומות מחכות להחלטה”) הוא מבוי סתום: הוא אומר
+ * שיש בעיה ולא איפה היא. הרשימה הזו היא מה שהופך את האזהרה למשהו שאפשר
+ * לסגור — שם, תאריך, סכום, לך תפתח אותן.
+ */
+export function unresolvedCashDonations(dataInput: unknown, donations: Donation[] = []): Donation[] {
+  const data = normalizeFinanceData(dataInput);
+  return donations.filter(donation =>
+    donationCounts(donation, data)
+    && donationIsCash(donation)
+    && cashDestinationNeedsAttention(donation.cashDestination));
+}
+
+export function summarizeFinance(
+  dataInput: unknown,
+  donations: Donation[] = [],
+  standingOrders: HkEntry[] = [],
+): FinanceSummary {
   const data = normalizeFinanceData(dataInput);
   let currentBalance = data.openingBalance;
   // נשמר פנימית כנטו לצורך הגנת התזרים: החזרים שמגיעים לי פחות מזומן
@@ -461,13 +516,35 @@ export function summarizeFinance(dataInput: unknown, donations: Donation[] = [])
   let actualIncome = 0;
   let actualExpense = 0;
   let donationIncome = 0;
+  let availableCash = 0;
+  let unresolvedCash = 0;
+  let unresolvedCashCount = 0;
+  let salaryFromCash = 0;
+  // נצבר בנפרד ולא מחושב בסוף מתוך actualIncome, כי מזומן „לא מסווג”
+  // אינו נכנס ל-actualIncome בכלל בעוד ש„נשמר בצד” כן — וכל נוסחה
+  // שמנסה להשלים את ההפרש בדיעבד סופרת אחד מהם פעמיים.
+  let grossIncome = 0;
 
   donations.forEach(donation => {
     const e = donationEffects(donation, data);
+    if (donationCounts(donation, data)) grossIncome += Math.max(0, number(donation.amount));
     currentBalance += e.cash;
     personalBalance += e.personal;
     actualIncome += e.income;
+    actualExpense += e.expense;
     donationIncome += e.income;
+    if (!donationIsCash(donation) || !donationCounts(donation, data)) return;
+    const amount = Math.max(0, number(donation.amount));
+    const destination = normalizeCashDestination(donation.cashDestination);
+    if (destination === 'org_account' || destination === 'activity_cashbox') availableCash += amount;
+    else if (destination === 'salary') salaryFromCash += amount;
+    else {
+      // גם „נשמר בצד” וגם „לא סווג” הם מזומן שקיים במציאות ואין לו סוף
+      // סיפור. הוא נספר כאן כדי שאפשר יהיה להראות אותו — לא כדי להוסיף
+      // אותו ליתרה.
+      unresolvedCash += amount;
+      unresolvedCashCount++;
+    }
   });
 
   data.transactions.forEach(tx => {
@@ -479,13 +556,14 @@ export function summarizeFinance(dataInput: unknown, donations: Donation[] = [])
     personalBalance += e.personal;
     actualIncome += e.income;
     actualExpense += e.expense;
+    grossIncome += e.income;
   });
 
   const horizon = forecastUntil(data);
-  const future = data.transactions
+  const futureTransactions = data.transactions
     .filter(tx => (tx.status === 'committed' || tx.status === 'expected') && tx.date <= horizon)
     .sort((a, b) => a.date.localeCompare(b.date));
-  const committedRent = future
+  const committedRent = futureTransactions
     .filter(tx => tx.status === 'committed' && tx.kind === 'expense' && /שכיר(ות|ה)/.test(`${tx.category} ${tx.title}`))
     .reduce((sum, tx) => sum + tx.amount, 0);
   const rentProtection = data.nextRentDate && data.nextRentDate <= horizon
@@ -503,8 +581,22 @@ export function summarizeFinance(dataInput: unknown, donations: Donation[] = [])
   let firstRiskDate = '';
   let firstOptimisticRiskDate = '';
 
+  // הוראות הקבע נכנסות לרצף העתידי כאילו הן תנועות „צפויות” רגילות.
+  // המיזוג נעשה **לפני** הלולאה ולא אחריה, כי תאריך הכניסה של הו״ק
+  // ביחס לתאריך הצ׳ק היוצא הוא כל העניין: „ב-1 בחודש נכנס, ב-10 יוצא”
+  // ו„ב-10 יוצא, ב-1 בחודש הבא נכנס” הם שני סיפורים שונים לגמרי, ורק
+  // סדר כרונולוגי נכון מבדיל ביניהם.
+  const future: { date: string; status: FinanceStatus; effects: Effects }[] = [
+    ...futureTransactions.map(tx => ({ date: tx.date, status: tx.status, effects: transactionEffects(tx, true) })),
+    ...projectStandingOrderCharges(standingOrders, todayIso(), horizon).map(charge => ({
+      date: charge.date,
+      status: 'expected' as FinanceStatus,
+      effects: { income: charge.amount, expense: 0, cash: charge.amount, personal: 0 },
+    })),
+  ].sort((a, b) => a.date.localeCompare(b.date));
+
   future.forEach(tx => {
-    const e = transactionEffects(tx, true);
+    const e = tx.effects;
     if (tx.status === 'committed') {
       guaranteedBalance += e.cash;
       optimisticBalance += e.cash;
@@ -535,6 +627,15 @@ export function summarizeFinance(dataInput: unknown, donations: Donation[] = [])
     donationIncome,
     firstRiskDate,
     firstOptimisticRiskDate,
+    // „כמה כסף יש בלי לקזז”. במכוון זה כל מה שנכנס — כולל מזומן שנשמר
+    // בצד וכולל מה שנלקח כמשכורת — כי זו שאלה על גודל ההכנסות, לא על
+    // מה פנוי. „מה פנוי” הוא זמין כרגע, והוא מספר אחר.
+    grossIncome,
+    availableCash,
+    unresolvedCash,
+    salaryFromCash,
+    unresolvedCashCount,
+    shortfall: Math.max(0, protectedAmount - guaranteedBalance),
   };
 }
 
@@ -628,6 +729,25 @@ export function cancelTransaction(dataInput: unknown, id: string): FinanceData {
   const found = data.transactions.find(tx => tx.id === id);
   if (!found || found.status === 'cancelled') return data;
   return saveTransaction(data, { ...found, status: 'cancelled' });
+}
+
+/**
+ * מחיקה אמיתית של תנועה כספית.
+ *
+ * ── למה זה קיים לצד „ביטול” ────────────────────────────────────────────────
+ *
+ * ביטול משאיר את השורה ומסמן אותה. זה נכון להוצאה שבאמת בוטלה — היא
+ * קרתה בעולם, ההחלטה השתנתה, ויש ערך בלדעת את זה. אבל זו תשובה גרועה
+ * לשורה שנרשמה **בטעות**: סכום שהוקלד פעמיים, תנועה שנפתחה ונזנחה.
+ * במקרים האלה „מבוטל” הוא רעש קבוע ברשימה שאי אפשר להיפטר ממנו.
+ *
+ * אשר ביקש את זה במפורש: „לתת את האפשרות למחוק כל דבר, לא רק מה שהוזן
+ * ידנית”. שתי הפעולות נשארות זו לצד זו כי הן אומרות שני דברים שונים.
+ */
+export function deleteTransaction(dataInput: unknown, id: string): FinanceData {
+  const data = normalizeFinanceData(dataInput);
+  if (!id) return data;
+  return { ...data, transactions: data.transactions.filter(tx => tx.id !== id) };
 }
 
 function addMonths(iso: string, count: number): string {

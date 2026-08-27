@@ -2,15 +2,19 @@ import React, { useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle, ArrowDownLeft, ArrowUpRight, CalendarClock, CheckCircle2,
   Download, FileUp, Landmark, Pencil, Plus, Printer, RefreshCw, Save, Settings,
-  ShieldCheck, SlidersHorizontal, Undo2, WalletCards, X, Bot, Clock,
+  ShieldCheck, SlidersHorizontal, Trash2, Undo2, WalletCards, X, Bot, Clock,
 } from 'lucide-react';
 import { useAppStore } from '../store/AppContext';
+import { apiPost, explainApiError } from '../lib/api';
 import {
   FinanceData, FinanceKind, FinanceScopeType, FinanceStatus, FinanceTransaction,
-  FinanceFlowRow, ParsedFinanceRow, buildFinanceFlowRows, cancelTransaction, emptyFinanceData,
+  FinanceFlowRow, ParsedFinanceRow, buildFinanceFlowRows, cancelTransaction, deleteTransaction, emptyFinanceData,
   financeCsv, importFinanceRows, normalizeFinanceData, parseFinanceFile, saveTransaction,
   summarizeFinance, summarizeFinanceFlowMonths, summarizeScopes, todayIso, transactionEffects,
+  unresolvedCashDonations,
 } from '../lib/finance';
+import { addMonthsKeepingDay, projectStandingOrderCharges, standingOrderIncomeByMonth } from '../lib/standingOrderForecast';
+import { HkEntry } from '../lib/standingOrders';
 import { sumBudget } from '../lib/history';
 import { activityDonations, Activity } from '../lib/activities';
 import { projectDonations, projectPurposeTags, Project } from '../lib/projects';
@@ -50,9 +54,9 @@ const dateLabel = (iso: string) => iso ? new Date(`${iso}T12:00:00`).toLocaleDat
 const INPUT = 'w-full bg-white border border-[#EDE6D6] rounded-xl px-3 py-2 text-sm outline-none focus:border-[#C9A84C]';
 
 export function FinanceTab() {
-  const { financeData, updateFinanceData, donations, eventsData, holidayExtras, projects } = useAppStore();
+  const { financeData, updateFinanceData, donations, eventsData, holidayExtras, projects, hk, refresh } = useAppStore();
   const data = normalizeFinanceData(financeData || emptyFinanceData());
-  const summary = useMemo(() => summarizeFinance(data, donations), [data, donations]);
+  const summary = useMemo(() => summarizeFinance(data, donations, hk), [data, donations, hk]);
   const scopes = useMemo(() => summarizeScopes(data), [data]);
   const [pane, setPane] = useState<Pane>('overview');
   const [editing, setEditing] = useState<Partial<FinanceTransaction> | null>(null);
@@ -72,6 +76,39 @@ export function FinanceTab() {
     // „ממתין בתור” נחשב הצלחה לצורך המשך הזרימה: הפעולה **התקבלה**,
     // והמסך לא צריך להתנהג כאילו לא קרה כלום ולעודד לחיצה נוספת.
     return outcome.status !== 'failed';
+  };
+
+  // ── מחיקה מתוך מרכז הכספים ────────────────────────────────────────────────
+  //
+  // שני מסלולים, כי שני סוגי שורות. תנועה כספית חיה בקובץ הכספים ונמחקת
+  // מקומית; תרומה חיה ביומן בגיליון ונמחקת בשרת. אשר לא אמור לדעת מה
+  // ההבדל — שני הכפתורים נראים אותו דבר ומתנהגים אותו דבר.
+  //
+  // חיובי הוראת קבע מוגנים בשרת ולא נמחקים: הם נוצרים מחדש בסריקה הבאה,
+  // ומחיקה שלהם רק נראית כאילו עבדה. השגיאה מהשרת מוצגת כמו שהיא במקום
+  // להיבלע — הודעה מדויקת שמסבירה מה כן לעשות עדיפה על „המחיקה נכשלה”.
+  const [deletingId, setDeletingId] = useState('');
+  const [deleteError, setDeleteError] = useState('');
+
+  const removeRow = async (row: FinanceFlowRow) => {
+    const what = row.source === 'donation' ? 'התרומה הזו מהיומן' : 'התנועה הזו';
+    if (!window.confirm(`למחוק את ${what}? הפעולה אינה הפיכה.\n\n${row.title} · ${money(row.amount)}`)) return;
+    setDeletingId(row.id); setDeleteError('');
+    try {
+      if (row.source === 'donation') {
+        const res = await apiPost('deleteDonation', { id: row.sourceId });
+        if (res?.error || res?.success === false) {
+          setDeleteError(explainApiError(res?.error) || 'המחיקה נכשלה');
+          return;
+        }
+        await refresh();
+      } else {
+        const ok = await persist(deleteTransaction(data, row.sourceId));
+        if (!ok) setDeleteError('המחיקה לא נשמרה. נסה שוב כשיש חיבור.');
+      }
+    } finally {
+      setDeletingId('');
+    }
   };
 
   const begin = (kind: FinanceKind, status: FinanceStatus = 'actual') => setEditing({
@@ -149,8 +186,8 @@ export function FinanceTab() {
       )}
 
       {pane === 'overview' && <Overview summary={summary} data={data} donations={donations} onAdd={begin} onSettings={() => setPane('settings')} transactions={data.transactions} />}
-      {pane === 'transactions' && <Transactions data={data} donations={donations} onAdd={begin} onEdit={setEditing} onCancel={async id => persist(cancelTransaction(data, id))} />}
-      {pane === 'cashflow' && <Cashflow data={data} donations={donations} />}
+      {pane === 'transactions' && <Transactions data={data} donations={donations} onAdd={begin} onEdit={setEditing} onCancel={async id => persist(cancelTransaction(data, id))} onDelete={removeRow} deletingId={deletingId} deleteError={deleteError} />}
+      {pane === 'cashflow' && <Cashflow data={data} donations={donations} hk={hk} />}
       {pane === 'scopes' && <Scopes scopes={scopes} budgets={existingBudgets} donations={donations} events={eventsData as Activity[]} projects={projects as Project[]} onAdd={() => begin('expense', 'committed')} />}
       {pane === 'planning' && <FinancePlanningTools data={data} summary={summary} donations={donations} persist={persist} />}
       {pane === 'import' && <ImportAndReports data={data} donations={donations} persist={persist} onAI={() => setAiImportOpen(true)} />}
@@ -183,7 +220,7 @@ function Overview({ summary, data, donations, onAdd, onSettings, transactions }:
   onAdd: (kind: FinanceKind, status?: FinanceStatus) => void; onSettings: () => void;
   transactions: FinanceTransaction[];
 }) {
-  const [detail, setDetail] = useState<'current' | 'committed' | 'safe' | 'personal' | null>(null);
+  const [detail, setDetail] = useState<'current' | 'committed' | 'safe' | 'personal' | 'gross' | 'cash' | null>(null);
   const flowRows = useMemo(() => buildFinanceFlowRows(data, donations), [data, donations]);
   const reimbursementRows = flowRows.filter(row => row.financeKind === 'personal_expense' || row.financeKind === 'settlement_to_me');
   const reimbursementBalance = Math.max(0, Math.max(0, data.openingPersonalBalance) + reimbursementRows.reduce((sum, row) => sum + row.personalBalanceEffect, 0));
@@ -192,12 +229,42 @@ function Overview({ summary, data, donations, onAdd, onSettings, transactions }:
     .sort((a, b) => a.date.localeCompare(b.date)).slice(0, 6);
   const rentCovered = summary.currentBalance >= data.nextRentAmount + data.safetyReserve + Math.max(0, summary.personalBalance);
   return <div className="space-y-4">
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
+    {/*
+      חמישה מספרים ולא ארבעה. „כל מה שנכנס” נוסף כי בלעדיו אי אפשר היה
+      לענות על שאלה פשוטה — כמה כסף עבר דרך הפעילות — בלי שהתשובה תעורבב
+      מיד עם מה שצריך לצאת. השניים הם שאלות שונות וראויים לשני מספרים.
+    */}
+    <div className="grid grid-cols-2 lg:grid-cols-5 gap-2.5">
+      <Metric title="כל מה שנכנס" value={money(summary.grossIncome)} hint="סך ההכנסות, בלי לקזז כלום" icon={<ArrowUpRight size={18} />} tone="green" onClick={() => setDetail('gross')} />
       <Metric title="זמין כרגע" value={money(summary.currentBalance)} hint="לחץ לפירוט מה כלול בסכום" icon={<Landmark size={18} />} tone={summary.currentBalance >= 0 ? 'blue' : 'red'} onClick={() => setDetail('current')} />
       <Metric title="מחויב לצאת" value={money(summary.committedExpense)} hint="לחץ לרשימת כל ההתחייבויות" icon={<CalendarClock size={18} />} tone="amber" onClick={() => setDetail('committed')} />
-      <Metric title="בטוח לשימוש" value={money(summary.safeToUse)} hint="לחץ לראות את החישוב המלא" icon={<ShieldCheck size={18} />} tone={summary.safeToUse > 0 ? 'green' : 'red'} onClick={() => setDetail('safe')} />
+      <Metric
+        title="בטוח לשימוש"
+        value={summary.shortfall > 0 ? `חסרים ${money(summary.shortfall)}` : money(summary.safeToUse)}
+        hint={summary.shortfall > 0 ? 'צריך לצאת יותר ממה שיש. לחץ לפירוט' : 'לחץ לראות את החישוב המלא'}
+        icon={<ShieldCheck size={18} />}
+        tone={summary.shortfall > 0 ? 'red' : summary.safeToUse > 0 ? 'green' : 'red'}
+        onClick={() => setDetail('safe')}
+      />
       <Metric title="החזרים שמגיעים לי" value={reimbursementBalance === 0 ? 'אין יתרה' : money(reimbursementBalance)} hint="רק הוצאות ששילמתי מכיסי, פחות החזרים" icon={<WalletCards size={18} />} tone={reimbursementBalance > 0 ? 'purple' : 'green'} onClick={() => setDetail('personal')} />
     </div>
+
+    {/*
+      אזהרת המזומן.
+      מופיעה רק כשיש מה לתקן, ובמכוון מונה גם „נשמר בצד” וגם „לא סווג”:
+      שניהם אומרים „הכסף קיים ואף אחד לא יודע מה קרה איתו”, וההבדל
+      ביניהם לא משנה למי שצריך לסגור את החשבון.
+    */}
+    {summary.unresolvedCashCount > 0 && <button
+      onClick={() => setDetail('cash')}
+      className="w-full text-right bg-amber-50 border border-amber-200 rounded-2xl p-3.5 flex items-center gap-3 hover:bg-amber-100 transition-colors"
+    >
+      <AlertTriangle size={20} className="text-amber-600 shrink-0" />
+      <span className="min-w-0">
+        <b className="block text-amber-900 text-sm">{summary.unresolvedCashCount} תרומות מזומן מחכות להחלטה · {money(summary.unresolvedCash)}</b>
+        <small className="text-amber-800">הכסף הזה לא נספר בזמין כרגע. לחץ כדי לראות בדיוק אילו תרומות ומה לעשות</small>
+      </span>
+    </button>}
 
     <div className="grid lg:grid-cols-2 gap-3">
       <section className="bg-white border border-[#EDE6D6] rounded-2xl p-4">
@@ -238,9 +305,10 @@ function Overview({ summary, data, donations, onAdd, onSettings, transactions }:
   </div>;
 }
 
-function Transactions({ data, donations, onAdd, onEdit, onCancel }: {
+function Transactions({ data, donations, onAdd, onEdit, onCancel, onDelete, deletingId, deleteError }: {
   data: FinanceData; donations: Donation[]; onAdd: (kind: FinanceKind, status?: FinanceStatus) => void;
   onEdit: (tx: FinanceTransaction) => void; onCancel: (id: string) => void;
+  onDelete: (row: FinanceFlowRow) => void; deletingId: string; deleteError: string;
 }) {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<FinanceStatus | 'all'>('all');
@@ -316,6 +384,7 @@ function Transactions({ data, donations, onAdd, onEdit, onCancel }: {
         />
       </span>
     </div>
+    {deleteError && <p className="mx-4 mb-3 bg-red-50 text-red-700 rounded-xl p-3 text-xs font-bold">{deleteError}</p>}
     {list.length === 0 ? <p className="p-8 text-center text-sm text-gray-400">לא נמצאו תנועות</p> : <div className="divide-y divide-[#F1ECE1]">
       {list.map(row => {
         const tx = row.source === 'finance' ? data.transactions.find(item => item.id === row.sourceId) : undefined;
@@ -334,14 +403,45 @@ function Transactions({ data, donations, onAdd, onEdit, onCancel }: {
           <b className={`text-sm shrink-0 ${row.direction === 'income' ? 'text-emerald-700' : 'text-red-600'}`}>{money(row.amount)}</b>
           {tx && <button onClick={() => onEdit(tx)} className="p-2 text-gray-500" aria-label="ערוך"><Pencil size={15} /></button>}
           {tx && tx.status !== 'cancelled' && <button onClick={() => { if (confirm('לבטל את הרשומה? היא תישמר בהיסטוריה ולא תימחק.')) onCancel(tx.id); }} className="p-2 text-red-400" aria-label="בטל"><Undo2 size={15} /></button>}
+          {/*
+            מחיקה לכל שורה — גם לתרומה שנקראה מהיומן, לא רק לתנועה שהוזנה
+            ידנית. עד עכשיו שורת תרומה שגויה הייתה מחייבת לצאת למסך אחר
+            כדי לגעת בה, ואשר ביקש שזה יהיה כאן.
+          */}
+          <button
+            onClick={() => onDelete(row)}
+            disabled={deletingId === row.id}
+            className="p-2 text-red-500 disabled:opacity-40"
+            aria-label="מחק"
+          ><Trash2 size={15} /></button>
         </div>;
       })}
     </div>}
   </section>;
 }
 
-function Cashflow({ data, donations }: { data: FinanceData; donations: Donation[] }) {
+function Cashflow({ data, donations, hk }: { data: FinanceData; donations: Donation[]; hk: HkEntry[] }) {
   const rows = useMemo(() => buildFinanceFlowRows(data, donations), [data, donations]);
+  // אופק של שנה, ולא `forecastDays`: השאלה כאן היא „איך נראים החודשים
+  // הבאים”, וחלון של 60 יום היה חותך בדיוק את הצ׳ק שבעוד שלושה חודשים —
+  // המקרה שבגללו הסעיף הזה נבנה.
+  const aheadMonths = useMemo(() => {
+    const until = addMonthsKeepingDay(todayIso(), 12, Number(todayIso().slice(8, 10)));
+    const charges = projectStandingOrderCharges(hk, todayIso(), until);
+    const incoming = standingOrderIncomeByMonth(charges);
+    const byMonth = new Map(incoming.map(entry => [entry.month, { ...entry, outgoing: 0, otherIncome: 0 }]));
+    data.transactions.forEach(tx => {
+      if (tx.status !== 'committed' && tx.status !== 'expected') return;
+      if (!tx.date || tx.date <= todayIso() || tx.date > until) return;
+      const month = tx.date.slice(0, 7);
+      const entry = byMonth.get(month) || { month, amount: 0, count: 0, outgoing: 0, otherIncome: 0 };
+      const effects = transactionEffects(tx, true);
+      entry.outgoing += effects.expense;
+      entry.otherIncome += effects.income;
+      byMonth.set(month, entry);
+    });
+    return [...byMonth.values()].sort((a, b) => a.month.localeCompare(b.month));
+  }, [data.transactions, hk]);
   const [dateFrom, setDateFrom] = useState(`${todayIso().slice(0, 4)}-01-01`);
   const [dateTo, setDateTo] = useState('');
   const [direction, setDirection] = useState<'all' | 'income' | 'expense'>('all');
@@ -405,6 +505,33 @@ function Cashflow({ data, donations }: { data: FinanceData; donations: Donation[
       <FlowTotal title="יצא" value={totals.expense} tone="red" />
       <FlowTotal title="הפרש" value={totals.income - totals.expense} tone={totals.income - totals.expense >= 0 ? 'blue' : 'red'} />
     </div>
+
+    {/*
+      החודשים שלפנינו.
+      זה החלק שענה על „כמה כסף נכנס בחודש מהוראות קבע וכמה צריך לצאת
+      באותו חודש”. במכוון הוא **לא** מושפע מהסינונים שמעליו: הסינונים
+      מתארים את העבר, והשאלה הזו היא על העתיד.
+    */}
+    {aheadMonths.length > 0 && <section className="bg-white border border-[#EDE6D6] rounded-2xl overflow-hidden">
+      <div className="p-4 border-b border-[#EDE6D6]">
+        <h2 className="font-bold text-[#0D1B2A]">החודשים הבאים</h2>
+        <p className="text-xs text-gray-500">מה צפוי להיכנס מהוראות קבע ומהכנסות מתוכננות, מול מה שצריך לצאת באותו חודש.</p>
+      </div>
+      <div className="divide-y divide-[#F1ECE1]">
+        <div className="grid grid-cols-4 gap-2 px-4 py-2 text-[10px] font-bold text-gray-400 bg-[#FAF6EE]"><span>חודש</span><span>הוראות קבע</span><span>צריך לצאת</span><span>הפרש</span></div>
+        {aheadMonths.map(month => {
+          const income = month.amount + month.otherIncome;
+          const net = income - month.outgoing;
+          return <div key={month.month} className="grid grid-cols-4 gap-2 px-4 py-3 text-xs text-right">
+            <b>{new Date(`${month.month}-15T12:00:00`).toLocaleDateString('he-IL', { month: 'long', year: 'numeric' })}</b>
+            <span className="text-emerald-700">{money(month.amount)}{month.count ? <small className="text-gray-400"> · {month.count}</small> : null}</span>
+            <span className="text-red-600">{money(month.outgoing)}</span>
+            <b className={net >= 0 ? 'text-[#0D1B2A]' : 'text-red-600'}>{money(net)}</b>
+          </div>;
+        })}
+      </div>
+      <p className="px-4 py-3 text-[11px] text-gray-500 bg-[#FAF6EE] border-t border-[#EDE6D6]">הוראת קבע יכולה להיכשל, ולכן הסכומים כאן נחשבים „צפוי” ולא „מובטח”. הם משפרים את התמונה האופטימית ואינם נכנסים לתחזית הבטוחה.</p>
+    </section>}
 
     <section className="bg-white border border-[#EDE6D6] rounded-2xl overflow-hidden">
       <div className="p-4 border-b border-[#EDE6D6]"><h2 className="font-bold text-[#0D1B2A]">חלוקה לפי חודשים</h2><p className="text-xs text-gray-500">הסכומים משתנים מיד לפי הסינונים שבחרת.</p></div>
@@ -559,10 +686,11 @@ function TransactionEditor({ value, categories, scopeSuggestions, onClose, onSav
 }
 
 function FinanceMetricDetails({ kind, summary, data, donations, reimbursementBalance, heldCashBalance, onClose }: {
-  kind: 'current' | 'committed' | 'safe' | 'personal';
+  kind: 'current' | 'committed' | 'safe' | 'personal' | 'gross' | 'cash';
   summary: ReturnType<typeof summarizeFinance>; data: FinanceData; donations: Donation[];
   reimbursementBalance: number; heldCashBalance: number; onClose: () => void;
 }) {
+  const unresolved = useMemo(() => unresolvedCashDonations(data, donations), [data, donations]);
   const rows = buildFinanceFlowRows(data, donations);
   const end = new Date(`${todayIso()}T12:00:00`); end.setDate(end.getDate() + data.forecastDays);
   const horizon = end.toISOString().slice(0, 10);
@@ -572,7 +700,10 @@ function FinanceMetricDetails({ kind, summary, data, donations, reimbursementBal
     (row.financeKind === 'personal_expense' || row.financeKind === 'settlement_to_me') && row.personalBalanceEffect !== 0
   );
   const rentProtection = Math.max(0, summary.protectedAmount - data.safetyReserve - Math.max(0, summary.personalBalance));
-  const titles = { current: 'מה כלול בזמין כרגע', committed: 'מה מחויב לצאת', safe: 'איך חושב בטוח לשימוש', personal: 'החזרים שמגיעים לי' };
+  const titles = {
+    current: 'מה כלול בזמין כרגע', committed: 'מה מחויב לצאת', safe: 'איך חושב בטוח לשימוש',
+    personal: 'החזרים שמגיעים לי', gross: 'כל מה שנכנס', cash: 'מזומן שמחכה להחלטה',
+  };
   return <div className="fixed inset-0 z-[90] bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4" onMouseDown={event => event.target === event.currentTarget && onClose()}>
     <div className="bg-white w-full sm:max-w-lg max-h-[88vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl p-5" dir="rtl">
       <div className="flex items-center justify-between gap-3 mb-3"><div><h2 className="font-['Frank_Ruhl_Libre'] text-xl font-black text-[#0D1B2A]">{titles[kind]}</h2><p className="text-xs text-gray-500">כל שורה מסבירה מאיפה הגיע המספר.</p></div><button onClick={onClose} className="p-2 bg-gray-100 rounded-full"><X size={18} /></button></div>
@@ -607,6 +738,36 @@ function FinanceMetricDetails({ kind, summary, data, donations, reimbursementBal
         <div className="max-h-72 overflow-y-auto divide-y divide-[#F1ECE1]">{reimbursementRows.map(row => <div key={row.id}><DetailLine label={`${row.title} · ${dateLabel(row.date)}`} value={row.personalBalanceEffect} /></div>)}</div>
         <DetailTotal label="נותר להחזיר לי" value={reimbursementBalance} />
         <div className="bg-amber-50 text-amber-800 rounded-xl p-3 text-xs"><b className="block">מזומן של הפעילות שנמצא אצלך: {money(heldCashBalance)}</b><span>זה מוצג בנפרד ואינו נחשב חוב של בית חב״ד כלפיך.</span></div>
+      </div>}
+
+      {/*
+        „כל מה שנכנס” מפורק כאן לפי איפה הכסף באמת נמצא, כי זו השאלה
+        הבאה מיד אחרי המספר: יפה, נכנס הרבה — אז למה הזמין נמוך?
+      */}
+      {kind === 'gross' && <div className="space-y-1">
+        <p className="text-xs bg-emerald-50 text-emerald-800 rounded-xl p-3 mb-3">זה כל מה שהפעילות קיבלה מאז נקודת הפתיחה — תרומות והכנסות, לפני כל קיזוז. הפירוט מראה איפה הכסף הזה יושב עכשיו.</p>
+        <DetailLine label="סך הכל שנכנס" value={summary.grossIncome} />
+        <div className="border-t border-[#EDE6D6] pt-2 mt-2" />
+        <DetailLine label="מזומן שהופקד בעמותה או בקופת הפעילות" value={summary.availableCash} />
+        <DetailLine label="מזומן שנלקח כמשכורת" value={summary.salaryFromCash} />
+        <DetailLine label="מזומן שעדיין מחכה להחלטה" value={summary.unresolvedCash} />
+        <DetailLine label="כל השאר — העברות, אתר, צ׳קים והוראות קבע" value={Math.max(0, summary.grossIncome - summary.availableCash - summary.salaryFromCash - summary.unresolvedCash)} />
+        <div className="pt-2"><DetailTotal label="יצא בפועל מאז נקודת הפתיחה" value={summary.actualExpense} negative /></div>
+      </div>}
+
+      {/*
+        הרשימה שהופכת את האזהרה לסגירה. בלעדיה האזהרה אומרת „יש בעיה”
+        ולא „הנה היא”, ואשר היה צריך לסרוק את כל התרומות ידנית.
+      */}
+      {kind === 'cash' && <div className="space-y-3">
+        <p className="text-xs bg-amber-50 text-amber-800 rounded-xl p-3">התרומות האלה שולמו במזומן ולא נאמר מה קרה עם הכסף. לכן הן אינן נספרות ב„זמין כרגע”. פתח כל אחת מהן במסך התרומות ובחר: הופקד בעמותה, בקופת הפעילות, או נלקח כמשכורת.</p>
+        {unresolved.length === 0 ? <p className="text-sm text-gray-400 py-5 text-center">אין מזומן שמחכה להחלטה.</p> : <div className="max-h-80 overflow-y-auto divide-y divide-[#F1ECE1]">
+          {unresolved.map((donation, index) => <div key={donation.id || `${donation.name}-${index}`} className="py-2.5 flex items-center justify-between gap-3 text-xs">
+            <span className="min-w-0"><b className="block text-sm text-[#0D1B2A] truncate">{donation.name}</b><small className="text-gray-500">{donation.date} · {cashDestinationLabel(donation.cashDestination)}</small></span>
+            <b className="text-amber-700 shrink-0">{money(Number(donation.amount) || 0)}</b>
+          </div>)}
+        </div>}
+        <DetailTotal label="סה״כ מחכה להחלטה" value={summary.unresolvedCash} />
       </div>}
     </div>
   </div>;

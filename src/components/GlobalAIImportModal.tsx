@@ -249,7 +249,7 @@ export function GlobalAIImportModal({ onClose, saveImmediately = false, onImport
     parts.push('· אל תמציא נתונים שלא כתובים אצלי. שדה שאין לו מקור — פשוט אל תכלול אותו.');
     if (on('donations')) {
       parts.push('· "אפיק גבייה" (method) הוא אחד מ: מזומן, ביט/פייבוקס, העברה בנקאית, קישור ישיר, הוראת קבע, צ\'ק.');
-      parts.push('· בתרומת מזומן בלבד אפשר להוסיף cashDestination: org_account אם הופקד בחשבון העמותה, personal אם הכסף נמצא אצלי, activity_cashbox אם הוא בקופת הפעילות, או unclassified אם לא ידוע. אמצעי התשלום לבדו אינו אומר שהכסף נמצא אצלי; אל תנחש.');
+      parts.push('· בתרומת מזומן בלבד אפשר להוסיף cashDestination: org_account אם הופקד בחשבון העמותה, activity_cashbox אם הוא בקופת הפעילות, salary אם הכסף נלקח כמשכורת, personal אם הוא נשמר בצד, או unclassified אם לא ידוע. אמצעי התשלום לבדו אינו אומר שהכסף נמצא אצלי; אל תנחש.');
     }
     if (on('standingOrders')) parts.push('· בהוראת קבע: amount הוא הסכום **החודשי**, payments מספר החיובים. אם כתוב "ללא הגבלה" — כתוב payments: "ללא הגבלה".');
     if (on('events')) parts.push(`· בפעילות: activityKind הוא recurring או special; type אחד מתוך ${EVENT_TYPES.join('/')}; freq רלוונטי רק ל-recurring ואחד מתוך ${EVENT_FREQS.join('/')}. date בפורמט yyyy-MM-dd, time בפורמט HH:mm. אפשר location ו-entryPrice.`);
