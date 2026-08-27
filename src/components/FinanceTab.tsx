@@ -483,7 +483,7 @@ function Transactions({ data, donations, hk, onAdd, onEdit, onCancel, onDelete, 
         <ExportButton
           rows={list.map(row => ({
             date: row.date,
-            kind: row.direction === 'out' ? 'expense' : 'income',
+            kind: row.direction === 'expense' ? 'expense' : 'income',
             kindLabel: row.title,
             amount: row.amount,
             statusLabel: row.statusLabel || row.status,

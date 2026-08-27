@@ -90,7 +90,11 @@ export const STANDING_ORDER_COLUMNS: ExportColumn<any>[] = [
 // ── תנועות כספיות ───────────────────────────────────────────────────────────
 export const FINANCE_COLUMNS: ExportColumn<any>[] = [
   { header: 'תאריך', value: t => asText(t.date) },
-  { header: 'כיוון', value: t => (t.kind === 'expense' || t.kind === 'salary' ? 'הוצאה' : 'הכנסה') },
+  { header: 'כיוון', value: t => (
+    t.direction === 'expense' || t.kind === 'expense' || t.kind === 'personal_expense' || t.kind === 'salary'
+      ? 'הוצאה'
+      : 'הכנסה'
+  ) },
   { header: 'סוג', value: t => asText(t.kindLabel || t.kind) },
   { header: 'סכום', value: t => asNumber(t.amount) },
   { header: 'מצב', value: t => asText(t.statusLabel || t.status) },

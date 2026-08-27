@@ -16,6 +16,19 @@ const root = path.join(__dirname, '..');
 const read = f => fs.readFileSync(path.join(root, f), 'utf8');
 const E = require('/tmp/stub/exportRows.js');
 
+// ── תנועות כספיות: הכנסה אינה הוצאה ──
+{
+  const headers = E.exportHeaders(E.FINANCE_COLUMNS);
+  const directionIdx = headers.indexOf('כיוון');
+  const out = E.toExportRows([
+    { direction: 'income', amount: 500 },
+    { direction: 'expense', amount: 200 },
+    { kind: 'personal_expense', amount: 100 },
+  ], E.FINANCE_COLUMNS);
+  assert.deepStrictEqual(out.map(row => row[directionIdx]), ['הכנסה', 'הוצאה', 'הוצאה'],
+    'כל תנועה יורדת לקובץ בכיוון האמיתי שלה');
+}
+
 // ── הליבה ──
 {
   const rows = [
@@ -86,6 +99,10 @@ SCREENS.forEach(([file, label]) => {
   const src = read(file);
   assert.match(src, /<ExportButton/, `${label}: יש כפתור הורדה`);
 });
+
+assert.match(read('src/components/FinanceTab.tsx'),
+  /row\.direction === 'expense' \? 'expense' : 'income'/,
+  'מסך התזרים ממפה הוצאה להוצאה לפני ההורדה');
 
 // ── והנקודה הקריטית: מייצאים את המסונן, לא את העמוד ──
 //
