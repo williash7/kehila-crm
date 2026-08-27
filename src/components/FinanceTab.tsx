@@ -10,7 +10,7 @@ import {
   FinanceData, FinanceKind, FinanceScopeType, FinanceStatus, FinanceTransaction,
   FinanceFlowRow, ParsedFinanceRow, buildFinanceFlowRows, cancelTransaction, deleteTransaction, emptyFinanceData,
   financeCsv, importFinanceRows, normalizeFinanceData, parseFinanceFile, saveTransaction,
-  summarizeFinance, summarizeFinanceFlowMonths, summarizeScopes, todayIso, transactionEffects,
+  runningBalances, summarizeFinance, summarizeFinanceFlowMonths, todayIso, transactionEffects,
   unresolvedCashDonations,
 } from '../lib/finance';
 import { addMonthsKeepingDay, projectStandingOrderCharges, standingOrderIncomeByMonth } from '../lib/standingOrderForecast';
@@ -28,7 +28,7 @@ import { ExportButton } from './ExportButton';
 import { DonationQuickEdit } from './DonationQuickEdit';
 import { FINANCE_COLUMNS } from '../lib/exportRows';
 
-type Pane = 'overview' | 'transactions' | 'cashflow' | 'scopes' | 'planning' | 'import' | 'settings';
+type Pane = 'overview' | 'transactions' | 'planning' | 'import' | 'settings';
 type BudgetSource = { id?: string; title?: string; name?: string; budget?: { expenses?: unknown[]; income?: unknown[] } };
 type BudgetReference = { key: string; type: string; name: string; planned: number; actual: number; income: number };
 
@@ -58,7 +58,6 @@ export function FinanceTab() {
   const { financeData, updateFinanceData, donations, eventsData, holidayExtras, projects, hk, refresh } = useAppStore();
   const data = normalizeFinanceData(financeData || emptyFinanceData());
   const summary = useMemo(() => summarizeFinance(data, donations, hk), [data, donations, hk]);
-  const scopes = useMemo(() => summarizeScopes(data), [data]);
   const [pane, setPane] = useState<Pane>('overview');
   const [editing, setEditing] = useState<Partial<FinanceTransaction> | null>(null);
   const [saving, setSaving] = useState(false);
@@ -156,11 +155,19 @@ export function FinanceTab() {
     return rows;
   }, [eventsData, holidayExtras, projects]);
 
+  // ── חמישה חלונות במקום שבעה ───────────────────────────────────────────────
+  //
+  // „תנועות” ו„תזרים” הראו את אותו מידע בשתי צורות, ואשר שאל ישירות מה
+  // ההבדל ביניהם. כשמשתמש שואל את זה — אין הבדל, יש שני שמות. הם מוזגו
+  // לחלון אחד שבו הרשימה המפורטת והסיכום החודשי יושבים יחד.
+  //
+  // „מעקב פעילות” הוסר: הוא השווה הכנסות של פעילות מול הוצאותיה והציג
+  // „חסרים” כשהיא הוציאה יותר. אצל אשר זו השוואה חסרת משמעות — בית חב״ד
+  // חי מתרומות ולא מהכנסות הפעילות — ולכן המספר האדום הזה רק הלחיץ בלי
+  // ללמד דבר.
   const tabs: { id: Pane; label: string }[] = [
     { id: 'overview', label: 'תמונה עכשיו' },
     { id: 'transactions', label: 'תנועות' },
-    { id: 'cashflow', label: 'תזרים' },
-    { id: 'scopes', label: 'מעקב פעילות' },
     { id: 'planning', label: 'בדיקה ותכנון' },
     { id: 'import', label: 'ייבוא ודוחות' },
     { id: 'settings', label: 'הגדרות' },
@@ -172,9 +179,14 @@ export function FinanceTab() {
         <div>
           <div className="flex items-center gap-2">
             <WalletCards className="text-[#9B7A2F]" size={24} />
-            <h1 className="font-['Frank_Ruhl_Libre'] text-2xl font-black text-[#0D1B2A]">מרכז כספי</h1>
+            <h1 className="font-['Frank_Ruhl_Libre'] text-2xl font-black text-[#0D1B2A]">תזרים המזומנים</h1>
           </div>
-          <p className="text-xs text-gray-500 mt-1">ניהול פנימי לשליחות · אינו מחליף הנהלת חשבונות</p>
+          {/*
+            „ניהול פנימי לשליחות” אמר מי המשתמש, לא מה המסך עושה. מי
+            שנכנס לכאן שואל שאלה אחת — כמה כסף יש ומה מותר לי להוציא —
+            והתיאור צריך לענות עליה ולא להציג את עצמו.
+          */}
+          <p className="text-xs text-gray-500 mt-1">כמה כסף נכנס, כמה יצא, כמה יש עכשיו ומה מותר להוציא · אינו מחליף הנהלת חשבונות</p>
         </div>
         <div className="text-[11px] min-h-5">
           {saving && <span className="text-gray-500 flex items-center gap-1"><RefreshCw size={12} className="animate-spin" /> שומר…</span>}
@@ -200,9 +212,7 @@ export function FinanceTab() {
       )}
 
       {pane === 'overview' && <Overview summary={summary} data={data} donations={donations} onAdd={begin} onSettings={() => setPane('settings')} transactions={data.transactions} onResolved={async () => { await refresh(); }} />}
-      {pane === 'transactions' && <Transactions data={data} donations={donations} onAdd={begin} onEdit={setEditing} onCancel={async id => persist(cancelTransaction(data, id))} onDelete={removeRow} deletingId={deletingId} deleteError={deleteError} onEditDonation={openDonationEditor} />}
-      {pane === 'cashflow' && <Cashflow data={data} donations={donations} hk={hk} onEditDonation={openDonationEditor} />}
-      {pane === 'scopes' && <Scopes scopes={scopes} budgets={existingBudgets} donations={donations} events={eventsData as Activity[]} projects={projects as Project[]} onAdd={() => begin('expense', 'committed')} />}
+      {pane === 'transactions' && <Transactions data={data} donations={donations} hk={hk} onAdd={begin} onEdit={setEditing} onCancel={async id => persist(cancelTransaction(data, id))} onDelete={removeRow} deletingId={deletingId} deleteError={deleteError} onEditDonation={openDonationEditor} />}
       {pane === 'planning' && <FinancePlanningTools data={data} summary={summary} donations={donations} persist={persist} />}
       {pane === 'import' && <ImportAndReports data={data} donations={donations} persist={persist} onAI={() => setAiImportOpen(true)} />}
       {pane === 'settings' && <FinanceSettings data={data} persist={persist} />}
@@ -223,10 +233,25 @@ export function FinanceTab() {
           ]}
           onClose={() => setEditing(null)}
           onSave={async (value, repeats) => {
+            // ── למה סוגרים גם כשהשליחה לשרת לא הצליחה ───────────────────
+            //
+            // `updateFinanceData` כותב למצב המקומי **מיד**, לפני שהוא
+            // פונה לשרת. כלומר ברגע הזה התנועה כבר קיימת באפליקציה גם
+            // אם הרשת נפלה — היא ממתינה בתור ותישלח כשיהיה חיבור.
+            //
+            // חלון שנשאר פתוח אומר „לא נשמר”, וזה פשוט לא נכון. וגרוע
+            // מזה: הוא מזמין לחיצה נוספת, וזו הייתה הכפילות. מצב
+            // הסנכרון מוצג ממילא במחוון השמירה שבראש המסך — שם מקומו,
+            // ולא בחלון שמחזיק את אשר בן ערובה.
             try {
-              const ok = await persist(saveTransaction(data, value, repeats));
-              if (ok) setEditing(null);
-            } catch (error: unknown) { alert(error instanceof Error ? error.message : 'לא ניתן לשמור'); }
+              await persist(saveTransaction(data, value, repeats));
+            } catch (error: unknown) {
+              // כאן זו שגיאת תוכן ולא שגיאת רשת (חסר שם או סכום),
+              // ולכן החלון כן נשאר פתוח — יש מה לתקן בו.
+              alert(error instanceof Error ? error.message : 'לא ניתן לשמור');
+              return;
+            }
+            setEditing(null);
           }}
         />
       )}
@@ -248,7 +273,62 @@ function Overview({ summary, data, donations, onAdd, onSettings, transactions, o
   const upcoming = transactions.filter(tx => tx.status === 'committed' || tx.status === 'expected')
     .sort((a, b) => a.date.localeCompare(b.date)).slice(0, 6);
   const rentCovered = summary.currentBalance >= data.nextRentAmount + data.safetyReserve + Math.max(0, summary.personalBalance);
+
+  // ── החודש הנוכחי בלבד ─────────────────────────────────────────────────────
+  //
+  // אשר ביקש שני דברים בדשבורד: כמה יש ומה בטוח לשימוש, ו„החודש הנוכחי
+  // בלבד”. הבחירה השנייה חשובה — כל שאר המספרים במסך מסתכלים על טווח
+  // ארוך, וזה בדיוק מה שהקשה עליו לענות על „איך החודש הזה הולך”.
+  //
+  // נספר רק מה שקרה בפועל: התחייבות לחודש הבא אינה חלק ממה שקרה החודש.
+  const thisMonth = todayIso().slice(0, 7);
+  const monthFlow = useMemo(() => flowRows.reduce((totals, row) => {
+    if (row.status !== 'actual' || !row.includedAfterOpening) return totals;
+    if ((row.date || '').slice(0, 7) !== thisMonth) return totals;
+    if (row.direction === 'income') totals.income += row.amount;
+    else totals.expense += row.amount;
+    return totals;
+  }, { income: 0, expense: 0 }), [flowRows, thisMonth]);
+  const monthName = new Date(`${thisMonth}-15T12:00:00`).toLocaleDateString('he-IL', { month: 'long' });
+
   return <div className="space-y-4">
+    {/*
+      הדשבורד: שתי השאלות שאשר בחר, בגדול, לפני כל השאר.
+      „כמה יש עכשיו” ו„מה מותר להוציא” הם מה שהוא בא לבדוק; כל היתר
+      הוא פירוט שנחוץ רק אחרי שענית עליהם.
+    */}
+    <div className="grid sm:grid-cols-2 gap-3">
+      <div className={`rounded-2xl p-5 ${summary.currentBalance >= 0 ? 'bg-[#0D1B2A]' : 'bg-red-900'}`}>
+        <small className="text-white/60 font-bold">כמה יש עכשיו</small>
+        <b className="block font-['Frank_Ruhl_Libre'] text-3xl sm:text-4xl text-[#E8C97A] mt-1">{money(summary.currentBalance)}</b>
+        <span className="block text-[11px] text-white/50 mt-1.5">בחשבון ובקופת הפעילות. מזומן שנשמר בצד אינו נכלל.</span>
+      </div>
+      <div className={`rounded-2xl p-5 border ${summary.shortfall > 0 ? 'bg-red-50 border-red-200' : 'bg-emerald-50 border-emerald-200'}`}>
+        <small className={`font-bold ${summary.shortfall > 0 ? 'text-red-700' : 'text-emerald-800'}`}>מה בטוח להוציא</small>
+        <b className={`block font-['Frank_Ruhl_Libre'] text-3xl sm:text-4xl mt-1 ${summary.shortfall > 0 ? 'text-red-700' : 'text-emerald-800'}`}>
+          {summary.shortfall > 0 ? `חסרים ${money(summary.shortfall)}` : money(summary.safeToUse)}
+        </b>
+        <span className={`block text-[11px] mt-1.5 ${summary.shortfall > 0 ? 'text-red-600' : 'text-emerald-700'}`}>
+          {summary.shortfall > 0
+            ? 'צריך לצאת יותר ממה שיש. כדאי לא להתחייב על חדש.'
+            : 'אחרי שכירות, רזרבה, התחייבויות וכסף שמגיע לך.'}
+        </span>
+      </div>
+    </div>
+
+    {/* ── החודש הזה ── */}
+    <div className="bg-white border border-[#EDE6D6] rounded-2xl p-4">
+      <div className="flex items-baseline justify-between gap-2 mb-3">
+        <h2 className="font-bold text-[#0D1B2A]">{monthName}</h2>
+        <small className="text-gray-400">רק מה שקרה בפועל החודש</small>
+      </div>
+      <div className="grid grid-cols-3 gap-2 text-center">
+        <div className="bg-emerald-50 rounded-xl p-3"><small className="text-emerald-800 font-bold">נכנס</small><b className="block text-lg text-emerald-800 mt-0.5">{money(monthFlow.income)}</b></div>
+        <div className="bg-red-50 rounded-xl p-3"><small className="text-red-700 font-bold">יצא</small><b className="block text-lg text-red-700 mt-0.5">{money(monthFlow.expense)}</b></div>
+        <div className={`rounded-xl p-3 ${monthFlow.income - monthFlow.expense >= 0 ? 'bg-[#FAF6EE]' : 'bg-amber-50'}`}><small className="text-gray-600 font-bold">הפרש</small><b className={`block text-lg mt-0.5 ${monthFlow.income - monthFlow.expense >= 0 ? 'text-[#0D1B2A]' : 'text-amber-700'}`}>{money(monthFlow.income - monthFlow.expense)}</b></div>
+      </div>
+    </div>
+
     {/*
       חמישה מספרים ולא ארבעה. „כל מה שנכנס” נוסף כי בלעדיו אי אפשר היה
       לענות על שאלה פשוטה — כמה כסף עבר דרך הפעילות — בלי שהתשובה תעורבב
@@ -325,11 +405,11 @@ function Overview({ summary, data, donations, onAdd, onSettings, transactions, o
   </div>;
 }
 
-function Transactions({ data, donations, onAdd, onEdit, onCancel, onDelete, deletingId, deleteError, onEditDonation }: {
+function Transactions({ data, donations, hk, onAdd, onEdit, onCancel, onDelete, deletingId, deleteError, onEditDonation }: {
   data: FinanceData; donations: Donation[]; onAdd: (kind: FinanceKind, status?: FinanceStatus) => void;
   onEdit: (tx: FinanceTransaction) => void; onCancel: (id: string) => void;
   onDelete: (row: FinanceFlowRow) => void; deletingId: string; deleteError: string;
-  onEditDonation: (row: FinanceFlowRow) => void;
+  onEditDonation: (row: FinanceFlowRow) => void; hk: HkEntry[];
 }) {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<FinanceStatus | 'all'>('all');
@@ -340,6 +420,37 @@ function Transactions({ data, donations, onAdd, onEdit, onCancel, onDelete, dele
   const [showFilters, setShowFilters] = useState(false);
   const [sort, setSort] = usePersistentListSort('kehila:list-sort:finance-transactions');
   const flowRows = useMemo(() => buildFinanceFlowRows(data, donations), [data, donations]);
+
+  // ── היתרה הרצה מחושבת על הכול, לא על המסונן ───────────────────────────────
+  //
+  // „כמה היה בחשבון ב-14 באוגוסט” אינו אמור להשתנות בגלל שסיננתי להכנסות
+  // בלבד. חישוב על המסונן היה מציג יתרה שרק מטפסת — מספר שנראה סמכותי
+  // ואינו נכון. לכן: מחשבים על הכל, שולפים לפי מזהה.
+  const balances = useMemo(
+    () => runningBalances(flowRows, data.openingBalance),
+    [flowRows, data.openingBalance],
+  );
+
+  // הסיכום החודשי והצפי מהוראות הקבע — מה שהיה קודם בחלון „תזרים” נפרד.
+  const months = useMemo(() => summarizeFinanceFlowMonths(flowRows), [flowRows]);
+  const aheadMonths = useMemo(() => {
+    const until = addMonthsKeepingDay(todayIso(), 12, Number(todayIso().slice(8, 10)));
+    const charges = projectStandingOrderCharges(hk, todayIso(), until);
+    const incoming = standingOrderIncomeByMonth(charges);
+    const byMonth = new Map(incoming.map(entry => [entry.month, { ...entry, outgoing: 0, otherIncome: 0 }]));
+    data.transactions.forEach(tx => {
+      if (tx.status !== 'committed' && tx.status !== 'expected') return;
+      if (!tx.date || tx.date <= todayIso() || tx.date > until) return;
+      const month = tx.date.slice(0, 7);
+      const entry = byMonth.get(month) || { month, amount: 0, count: 0, outgoing: 0, otherIncome: 0 };
+      const effects = transactionEffects(tx, true);
+      entry.outgoing += effects.expense;
+      entry.otherIncome += effects.income;
+      byMonth.set(month, entry);
+    });
+    return [...byMonth.values()].sort((a, b) => a.month.localeCompare(b.month));
+  }, [data.transactions, hk]);
+
   const list = flowRows.filter(row => {
     if (status !== 'all' && row.status !== status) return false;
     if (dateFrom && (!row.date || row.date < dateFrom)) return false;
@@ -359,7 +470,8 @@ function Transactions({ data, donations, onAdd, onEdit, onCancel, onDelete, dele
     if (row.status === 'committed' && row.direction === 'expense') sum.committed += row.amount;
     return sum;
   }, { income: 0, expense: 0, committed: 0 });
-  return <section className="bg-white border border-[#EDE6D6] rounded-2xl overflow-hidden">
+  return <div className="space-y-4">
+  <section className="bg-white border border-[#EDE6D6] rounded-2xl overflow-hidden">
     <div className="p-4 border-b border-[#EDE6D6] flex flex-wrap items-center gap-2">
       <button onClick={() => onAdd('expense')} className="bg-[#0D1B2A] text-white px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1"><Plus size={14} /> תנועה</button>
       <input value={search} onChange={e => setSearch(e.target.value)} placeholder="חיפוש" className="flex-1 min-w-36 bg-gray-50 border border-[#EDE6D6] rounded-xl px-3 py-2 text-sm outline-none" />
@@ -421,7 +533,21 @@ function Transactions({ data, donations, onAdd, onEdit, onCancel, onDelete, dele
         return <div key={row.id} className={`p-3 sm:p-4 flex items-center gap-3 ${row.status === 'cancelled' ? 'opacity-45' : ''}`}>
           <span className={`w-9 h-9 rounded-xl shrink-0 flex items-center justify-center ${row.direction === 'income' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>{row.direction === 'income' ? <ArrowUpRight size={17} /> : <ArrowDownLeft size={17} />}</span>
           <span className="min-w-0 flex-1"><b className="block text-sm text-[#0D1B2A] truncate">{row.title}</b><small className="text-gray-500 block truncate">{dateLabel(row.date)} · {row.category} · {row.source === 'donation' ? donationState : STATUS_LABELS[row.status]}{row.method ? ` · ${row.method}` : ''}{tx?.history.length ? ` · ${tx.history.length} שינויים` : ''}</small></span>
-          <b className={`text-sm shrink-0 ${row.direction === 'income' ? 'text-emerald-700' : 'text-red-600'}`}>{money(row.amount)}</b>
+          {/*
+            הסכום, ומתחתיו כמה נשאר בחשבון באותו רגע.
+
+            זה מה שאשר ביקש: „כשיורד סכום — כמה נשאר; כשנכנס — כמה יש
+            עכשיו.” רשימת סכומים אומרת מה קרה; היתרה אומרת איפה עמדת
+            אחרי שזה קרה, וזו השאלה שבאמת שואלים לפני שמתחייבים.
+
+            מופיע רק על שורות שבאמת הזיזו את החשבון. להתחייבות עתידית
+            אין יתרה, כי היא עוד לא קרתה — ומספר במקום הזה היה נראה
+            כאילו כן.
+          */}
+          <span className="shrink-0 text-left">
+            <b className={`block text-sm ${row.direction === 'income' ? 'text-emerald-700' : 'text-red-600'}`}>{row.direction === 'income' ? '+' : '−'}{money(row.amount)}</b>
+            {balances.has(row.id) && <small className="block text-[10px] text-gray-400 mt-0.5">נשאר {money(balances.get(row.id) || 0)}</small>}
+          </span>
           {/*
             עריכה לכל שורה. תנועה כספית נפתחת בעורך התנועות; תרומה
             נפתחת באותו עורך תרומות שמשמש את שאר המסכים — כדי שאשר
@@ -445,179 +571,52 @@ function Transactions({ data, donations, onAdd, onEdit, onCancel, onDelete, dele
         </div>;
       })}
     </div>}
-  </section>;
-}
+  </section>
 
-function Cashflow({ data, donations, hk, onEditDonation }: {
-  data: FinanceData; donations: Donation[]; hk: HkEntry[]; onEditDonation: (row: FinanceFlowRow) => void;
-}) {
-  const rows = useMemo(() => buildFinanceFlowRows(data, donations), [data, donations]);
-  // אופק של שנה, ולא `forecastDays`: השאלה כאן היא „איך נראים החודשים
-  // הבאים”, וחלון של 60 יום היה חותך בדיוק את הצ׳ק שבעוד שלושה חודשים —
-  // המקרה שבגללו הסעיף הזה נבנה.
-  const aheadMonths = useMemo(() => {
-    const until = addMonthsKeepingDay(todayIso(), 12, Number(todayIso().slice(8, 10)));
-    const charges = projectStandingOrderCharges(hk, todayIso(), until);
-    const incoming = standingOrderIncomeByMonth(charges);
-    const byMonth = new Map(incoming.map(entry => [entry.month, { ...entry, outgoing: 0, otherIncome: 0 }]));
-    data.transactions.forEach(tx => {
-      if (tx.status !== 'committed' && tx.status !== 'expected') return;
-      if (!tx.date || tx.date <= todayIso() || tx.date > until) return;
-      const month = tx.date.slice(0, 7);
-      const entry = byMonth.get(month) || { month, amount: 0, count: 0, outgoing: 0, otherIncome: 0 };
-      const effects = transactionEffects(tx, true);
-      entry.outgoing += effects.expense;
-      entry.otherIncome += effects.income;
-      byMonth.set(month, entry);
-    });
-    return [...byMonth.values()].sort((a, b) => a.month.localeCompare(b.month));
-  }, [data.transactions, hk]);
-  const [dateFrom, setDateFrom] = useState(`${todayIso().slice(0, 4)}-01-01`);
-  const [dateTo, setDateTo] = useState('');
-  const [direction, setDirection] = useState<'all' | 'income' | 'expense'>('all');
-  const [status, setStatus] = useState<FinanceStatus | 'all'>('actual');
-  const [source, setSource] = useState<'all' | 'donation' | 'finance'>('all');
-  const [purpose, setPurpose] = useState('');
-  const [method, setMethod] = useState('');
-  const [search, setSearch] = useState('');
-  const [amountFrom, setAmountFrom] = useState('');
-  const [amountTo, setAmountTo] = useState('');
-  const [showFilters, setShowFilters] = useState(false);
-  const [sort, setSort] = usePersistentListSort('kehila:list-sort:finance-cashflow');
-  const purposes = useMemo(() => Array.from(new Set<string>(rows.map(row => row.purpose || row.category).filter((value): value is string => !!value))).sort((a, b) => a.localeCompare(b, 'he')), [rows]);
-  const methods = useMemo(() => Array.from(new Set<string>(rows.map(row => row.method).filter((value): value is string => !!value))).sort((a, b) => a.localeCompare(b, 'he')), [rows]);
-  const filtered = rows.filter(row => {
-    if (dateFrom && (!row.date || row.date < dateFrom)) return false;
-    if (dateTo && (!row.date || row.date > dateTo)) return false;
-    if (direction !== 'all' && row.direction !== direction) return false;
-    if (status !== 'all' && row.status !== status) return false;
-    if (source !== 'all' && row.source !== source) return false;
-    if (purpose && (row.purpose || row.category) !== purpose) return false;
-    if (method && row.method !== method) return false;
-    if (amountFrom && row.amount < Number(amountFrom)) return false;
-    if (amountTo && row.amount > Number(amountTo)) return false;
-    const haystack = `${row.title} ${row.purpose} ${row.category} ${row.method} ${row.notes}`.toLowerCase();
-    return haystack.includes(search.trim().toLowerCase());
-  }).sort((a, b) => compareListValues(
-    { name: a.title, amount: a.amount, date: a.date },
-    { name: b.title, amount: b.amount, date: b.date },
-    sort, parseDdMmYyyy,
-  ));
-  const months = summarizeFinanceFlowMonths(filtered);
-  const totals = months.reduce((sum, month) => ({
-    income: sum.income + month.income,
-    expense: sum.expense + month.expense,
-  }), { income: 0, expense: 0 });
-  const reset = () => {
-    setDateFrom(''); setDateTo(''); setDirection('all'); setStatus('actual');
-    setSource('all'); setPurpose(''); setMethod(''); setSearch(''); setAmountFrom(''); setAmountTo('');
-  };
-  const activeFilters = [!!dateFrom, !!dateTo, direction !== 'all', status !== 'all', source !== 'all', !!purpose, !!method, !!search, !!amountFrom, !!amountTo].filter(Boolean).length;
-  return <div className="space-y-4">
-    <section className="bg-white border border-[#EDE6D6] rounded-2xl p-4 space-y-3">
-      <div className="flex items-start justify-between gap-3"><div><h2 className="font-bold text-[#0D1B2A]">תזרים הפעילות</h2><p className="text-xs text-gray-500 mt-1">כל התרומות וכל ההכנסות וההוצאות במקום אחד. כאן אפשר לראות גם היסטוריה שלפני נקודת הפתיחה, בלי לשנות את היתרה הנוכחית.</p></div><button onClick={() => setShowFilters(value => !value)} className={`text-xs font-bold shrink-0 px-3 py-2 rounded-xl border flex items-center gap-1 ${showFilters || activeFilters ? 'bg-[#0D1B2A] text-[#C9A84C] border-[#0D1B2A]' : 'text-gray-600 border-[#EDE6D6]'}`}><SlidersHorizontal size={14} /> מיון וסינון{activeFilters ? ` (${activeFilters})` : ''}</button></div>
-      {showFilters && <div className="space-y-3 pt-2 border-t border-[#EDE6D6]"><div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
-        <Field label="מתאריך"><input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className={INPUT} /></Field>
-        <Field label="עד תאריך"><input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className={INPUT} /></Field>
-        <Field label="כניסה / יציאה"><select value={direction} onChange={e => setDirection(e.target.value as typeof direction)} className={INPUT}><option value="all">הכול</option><option value="income">נכנס</option><option value="expense">יצא</option></select></Field>
-        <Field label="מצב"><select value={status} onChange={e => setStatus(e.target.value as FinanceStatus | 'all')} className={INPUT}><option value="all">כל המצבים</option>{Object.entries(STATUS_LABELS).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></Field>
-        <Field label="מקור"><select value={source} onChange={e => setSource(e.target.value as typeof source)} className={INPUT}><option value="all">הכול</option><option value="donation">תרומות</option><option value="finance">תנועות כספיות</option></select></Field>
-        <Field label="ייעוד / קטגוריה"><select value={purpose} onChange={e => setPurpose(e.target.value)} className={INPUT}><option value="">הכול</option>{purposes.map(value => <option key={value} value={value}>{value}</option>)}</select></Field>
-        <Field label="אמצעי תשלום"><select value={method} onChange={e => setMethod(e.target.value)} className={INPUT}><option value="">הכול</option>{methods.map(value => <option key={value} value={value}>{value}</option>)}</select></Field>
-        <Field label="חיפוש"><input value={search} onChange={e => setSearch(e.target.value)} placeholder="שם, תיאור או הערה" className={INPUT} /></Field>
-        <Field label="מסכום"><MoneyFilter value={amountFrom} onChange={setAmountFrom} /></Field>
-        <Field label="עד סכום"><MoneyFilter value={amountTo} onChange={setAmountTo} /></Field>
-      </div><div className="flex flex-col sm:flex-row gap-2 sm:items-end"><div className="flex-1"><ListSortControl value={sort} onChange={setSort} /></div><button onClick={reset} className="text-xs text-[#9B7A2F] font-bold px-3 py-2">נקה סינונים</button></div></div>}
-    </section>
+  {/*
+    הסיכום החודשי והצפי — מה שישב קודם בחלון „תזרים” נפרד.
 
-    <div className="grid grid-cols-3 gap-2.5">
-      <FlowTotal title="נכנס" value={totals.income} tone="green" />
-      <FlowTotal title="יצא" value={totals.expense} tone="red" />
-      <FlowTotal title="הפרש" value={totals.income - totals.expense} tone={totals.income - totals.expense >= 0 ? 'blue' : 'red'} />
+    אשר שאל מה ההבדל בין „תנועות” ל„תזרים”, וכשמשתמש שואל את זה אין
+    הבדל — יש שני שמות לאותו דבר. הרשימה המפורטת והסיכום החודשי הם שתי
+    רמות זום על אותו מידע, ולכן מקומן באותו מסך.
+  */}
+  <section className="bg-white border border-[#EDE6D6] rounded-2xl overflow-hidden">
+    <div className="p-4 border-b border-[#EDE6D6]"><h2 className="font-bold text-[#0D1B2A]">סיכום לפי חודשים</h2><p className="text-xs text-gray-500">כל התנועות, בלי קשר לסינון שלמעלה.</p></div>
+    {months.length === 0 ? <p className="p-8 text-center text-sm text-gray-400">אין עדיין תנועות</p> : <div className="divide-y divide-[#F1ECE1] max-h-72 overflow-y-auto">
+      <div className="grid grid-cols-4 gap-2 px-4 py-2 text-[10px] font-bold text-gray-400 bg-[#FAF6EE] sticky top-0"><span>חודש</span><span>נכנס</span><span>יצא</span><span>הפרש</span></div>
+      {months.map(month => <button
+        key={month.month}
+        onClick={() => { setDateFrom(`${month.month}-01`); const end = new Date(Number(month.month.slice(0, 4)), Number(month.month.slice(5, 7)), 0).getDate(); setDateTo(`${month.month}-${end}`); }}
+        className="w-full grid grid-cols-4 gap-2 px-4 py-3 text-xs text-right hover:bg-[#FAF6EE]"
+      >
+        <b>{new Date(`${month.month}-15T12:00:00`).toLocaleDateString('he-IL', { month: 'long', year: 'numeric' })}</b>
+        <span className="text-emerald-700">{money(month.income)}</span>
+        <span className="text-red-600">{money(month.expense)}</span>
+        <b className={month.net >= 0 ? 'text-[#0D1B2A]' : 'text-red-600'}>{money(month.net)}</b>
+      </button>)}
+    </div>}
+  </section>
+
+  {aheadMonths.length > 0 && <section className="bg-white border border-[#EDE6D6] rounded-2xl overflow-hidden">
+    <div className="p-4 border-b border-[#EDE6D6]">
+      <h2 className="font-bold text-[#0D1B2A]">החודשים הבאים</h2>
+      <p className="text-xs text-gray-500">מה צפוי להיכנס מהוראות קבע ומהכנסות מתוכננות, מול מה שצריך לצאת באותו חודש.</p>
     </div>
-
-    {/*
-      החודשים שלפנינו.
-      זה החלק שענה על „כמה כסף נכנס בחודש מהוראות קבע וכמה צריך לצאת
-      באותו חודש”. במכוון הוא **לא** מושפע מהסינונים שמעליו: הסינונים
-      מתארים את העבר, והשאלה הזו היא על העתיד.
-    */}
-    {aheadMonths.length > 0 && <section className="bg-white border border-[#EDE6D6] rounded-2xl overflow-hidden">
-      <div className="p-4 border-b border-[#EDE6D6]">
-        <h2 className="font-bold text-[#0D1B2A]">החודשים הבאים</h2>
-        <p className="text-xs text-gray-500">מה צפוי להיכנס מהוראות קבע ומהכנסות מתוכננות, מול מה שצריך לצאת באותו חודש.</p>
-      </div>
-      <div className="divide-y divide-[#F1ECE1]">
-        <div className="grid grid-cols-4 gap-2 px-4 py-2 text-[10px] font-bold text-gray-400 bg-[#FAF6EE]"><span>חודש</span><span>הוראות קבע</span><span>צריך לצאת</span><span>הפרש</span></div>
-        {aheadMonths.map(month => {
-          const income = month.amount + month.otherIncome;
-          const net = income - month.outgoing;
-          return <div key={month.month} className="grid grid-cols-4 gap-2 px-4 py-3 text-xs text-right">
-            <b>{new Date(`${month.month}-15T12:00:00`).toLocaleDateString('he-IL', { month: 'long', year: 'numeric' })}</b>
-            <span className="text-emerald-700">{money(month.amount)}{month.count ? <small className="text-gray-400"> · {month.count}</small> : null}</span>
-            <span className="text-red-600">{money(month.outgoing)}</span>
-            <b className={net >= 0 ? 'text-[#0D1B2A]' : 'text-red-600'}>{money(net)}</b>
-          </div>;
-        })}
-      </div>
-      <p className="px-4 py-3 text-[11px] text-gray-500 bg-[#FAF6EE] border-t border-[#EDE6D6]">הוראת קבע יכולה להיכשל, ולכן הסכומים כאן נחשבים „צפוי” ולא „מובטח”. הם משפרים את התמונה האופטימית ואינם נכנסים לתחזית הבטוחה.</p>
-    </section>}
-
-    <section className="bg-white border border-[#EDE6D6] rounded-2xl overflow-hidden">
-      <div className="p-4 border-b border-[#EDE6D6]"><h2 className="font-bold text-[#0D1B2A]">חלוקה לפי חודשים</h2><p className="text-xs text-gray-500">הסכומים משתנים מיד לפי הסינונים שבחרת.</p></div>
-      {months.length === 0 ? <p className="p-8 text-center text-sm text-gray-400">אין תנועות שמתאימות לסינון</p> : <div className="divide-y divide-[#F1ECE1]">
-        <div className="grid grid-cols-4 gap-2 px-4 py-2 text-[10px] font-bold text-gray-400 bg-[#FAF6EE]"><span>חודש</span><span>נכנס</span><span>יצא</span><span>הפרש</span></div>
-        {months.map(month => <button key={month.month} onClick={() => { setDateFrom(`${month.month}-01`); const end = new Date(Number(month.month.slice(0, 4)), Number(month.month.slice(5, 7)), 0).getDate(); setDateTo(`${month.month}-${end}`); }} className="w-full grid grid-cols-4 gap-2 px-4 py-3 text-xs text-right hover:bg-[#FAF6EE]"><b>{new Date(`${month.month}-15T12:00:00`).toLocaleDateString('he-IL', { month: 'long', year: 'numeric' })}</b><span className="text-emerald-700">{money(month.income)}</span><span className="text-red-600">{money(month.expense)}</span><b className={month.net >= 0 ? 'text-[#0D1B2A]' : 'text-red-600'}>{money(month.net)}</b></button>)}
-      </div>}
-    </section>
-
-    <section className="bg-white border border-[#EDE6D6] rounded-2xl overflow-hidden">
-      <div className="p-4 border-b border-[#EDE6D6]"><h2 className="font-bold text-[#0D1B2A]">פירוט ({filtered.length})</h2></div>
-      {filtered.length === 0 ? <p className="p-8 text-center text-sm text-gray-400">אין פירוט לתצוגה</p> : <div className="divide-y divide-[#F1ECE1] max-h-[560px] overflow-y-auto">
-        {filtered.map(row => <div key={row.id}><FlowRow row={row} onEdit={row.source === 'donation' ? () => onEditDonation(row) : undefined} /></div>)}
-      </div>}
-    </section>
-  </div>;
-}
-
-function Scopes({ scopes, budgets, donations, events, projects, onAdd }: {
-  scopes: ReturnType<typeof summarizeScopes>; budgets: BudgetReference[]; donations: Donation[];
-  events: Activity[]; projects: Project[]; onAdd: () => void;
-}) {
-  const tracked = useMemo(() => {
-    const map = new Map(scopes.map(row => [row.key, { ...row, donationIncome: 0 }]));
-    events.forEach(event => {
-      const linkedProjects = projects.filter(project => (project.activityIds || []).includes(event.id));
-      const donationIncome = activityDonations(event, donations, linkedProjects.flatMap(projectPurposeTags))
-        .reduce((sum, donation) => sum + (Number(donation.amount) || 0), 0);
-      if (!donationIncome) return;
-      const key = `event:${event.name}`;
-      const row = map.get(key) || { key, type: 'event' as const, name: event.name, actualIncome: 0, actualExpense: 0, futureIncome: 0, futureExpense: 0, actualBalance: 0, projectedBalance: 0, donationIncome: 0 };
-      map.set(key, { ...row, donationIncome });
-    });
-    projects.forEach(project => {
-      const donationIncome = projectDonations(project, donations).reduce((sum, donation) => sum + (Number(donation.amount) || 0), 0);
-      if (!donationIncome) return;
-      const key = `project:${project.name}`;
-      const row = map.get(key) || { key, type: 'project' as const, name: project.name, actualIncome: 0, actualExpense: 0, futureIncome: 0, futureExpense: 0, actualBalance: 0, projectedBalance: 0, donationIncome: 0 };
-      map.set(key, { ...row, donationIncome });
-    });
-    return [...map.values()].map(row => {
-      const fundingReceived = row.actualIncome + row.donationIncome;
-      const fundingExpected = row.futureIncome;
-      const spent = row.actualExpense;
-      const committed = row.futureExpense;
-      return { ...row, fundingReceived, fundingExpected, spent, committed, remaining: fundingReceived + fundingExpected - spent - committed };
-    }).sort((a, b) => Math.abs(b.spent + b.committed) - Math.abs(a.spent + a.committed));
-  }, [scopes, donations, events, projects]);
-  return <div className="space-y-4">
-    <section className="bg-white border border-[#EDE6D6] rounded-2xl p-4">
-      <div className="flex justify-between items-center mb-3"><div><h2 className="font-bold text-[#0D1B2A]">מעקב תקציב ומימון</h2><p className="text-xs text-gray-500">לא מודדים רווח. רואים מה תוכנן, מה כבר יצא, אילו תרומות נכנסו ומה עוד צריך לממן.</p></div><button onClick={onAdd} className="text-xs text-[#9B7A2F] font-bold flex items-center gap-1"><Plus size={13} /> הוצאה מתוכננת</button></div>
-      {tracked.length === 0 ? <p className="text-sm text-gray-400 py-5 text-center">כדי להתחיל, שייך הוצאה לפעילות, לחג או לקמפיין. תרומות עם ייעוד מתאים יופיעו כאן אוטומטית.</p> : <div className="grid md:grid-cols-2 gap-2">
-        {tracked.map(row => <div key={row.key} className="border border-[#EDE6D6] rounded-xl p-3"><div className="flex justify-between gap-2"><span><small className="text-gray-400">{SCOPE_LABELS[row.type]}</small><b className="block text-sm text-[#0D1B2A]">{row.name}</b></span><span className="text-left"><small className="block text-gray-400">מצב מימון</small><b className={row.remaining >= 0 ? 'text-emerald-700' : 'text-red-600'}>{row.remaining >= 0 ? `${money(row.remaining)} מיועדים להמשך` : `חסרים ${money(Math.abs(row.remaining))}`}</b></span></div><div className="mt-3 grid grid-cols-2 gap-1.5 text-[11px]"><span className="bg-emerald-50 text-emerald-800 rounded-lg p-2">התקבל {money(row.fundingReceived)}</span><span className="bg-red-50 text-red-700 rounded-lg p-2">יצא {money(row.spent)}</span><span className="bg-blue-50 text-blue-800 rounded-lg p-2">עוד צפוי להיכנס {money(row.fundingExpected)}</span><span className="bg-amber-50 text-amber-800 rounded-lg p-2">עוד צפוי לצאת {money(row.committed)}</span></div>{row.donationIncome > 0 && <p className="text-[10px] text-gray-400 mt-2">מתוך שהתקבל: {money(row.donationIncome)} נקראו אוטומטית מייעודי התרומות.</p>}</div>)}
-      </div>}
-    </section>
-    {budgets.length > 0 && <section className="bg-[#FAF6EE] border border-[#EDE6D6] rounded-2xl p-4"><h2 className="font-bold text-[#0D1B2A]">התכנון שנרשם בתוך הפעילויות</h2><p className="text-xs text-gray-500 mb-3">זהו תקציב המעקב של הפעילות. הוא מוצג להשוואה ואינו נרשם שוב כתנועה בחשבון.</p><div className="grid md:grid-cols-2 gap-2">{budgets.map(row => <div key={row.key} className="bg-white rounded-xl p-3 border border-[#EDE6D6]"><small className="text-gray-400">{row.type}</small><b className="block text-sm">{row.name}</b><p className="text-xs text-gray-500 mt-1">תוכנן להוציא {money(row.planned)} · יצא בפועל {money(row.actual)} · הכנסה שתועדה בפעילות {money(row.income)}</p></div>)}</div></section>}
+    <div className="divide-y divide-[#F1ECE1]">
+      <div className="grid grid-cols-4 gap-2 px-4 py-2 text-[10px] font-bold text-gray-400 bg-[#FAF6EE]"><span>חודש</span><span>הוראות קבע</span><span>צריך לצאת</span><span>הפרש</span></div>
+      {aheadMonths.map(month => {
+        const income = month.amount + month.otherIncome;
+        const net = income - month.outgoing;
+        return <div key={month.month} className="grid grid-cols-4 gap-2 px-4 py-3 text-xs text-right">
+          <b>{new Date(`${month.month}-15T12:00:00`).toLocaleDateString('he-IL', { month: 'long', year: 'numeric' })}</b>
+          <span className="text-emerald-700">{money(month.amount)}{month.count ? <small className="text-gray-400"> · {month.count}</small> : null}</span>
+          <span className="text-red-600">{money(month.outgoing)}</span>
+          <b className={net >= 0 ? 'text-[#0D1B2A]' : 'text-red-600'}>{money(net)}</b>
+        </div>;
+      })}
+    </div>
+    <p className="px-4 py-3 text-[11px] text-gray-500 bg-[#FAF6EE] border-t border-[#EDE6D6]">הוראת קבע יכולה להיכשל, ולכן הסכומים כאן נחשבים „צפוי” ולא „מובטח”. הם משפרים את התמונה האופטימית ואינם נכנסים לתחזית הבטוחה.</p>
+  </section>}
   </div>;
 }
 
@@ -689,28 +688,46 @@ function FinanceSettings({ data, persist }: { data: FinanceData; persist: (data:
 
 function TransactionEditor({ value, categories, scopeSuggestions, onClose, onSave }: {
   value: Partial<FinanceTransaction>; categories: string[]; scopeSuggestions: string[];
-  onClose: () => void; onSave: (value: Partial<FinanceTransaction>, repeats: number) => void;
+  onClose: () => void; onSave: (value: Partial<FinanceTransaction>, repeats: number) => void | Promise<void>;
 }) {
-  const [draft, setDraft] = useState(value);
+  // מזהה יציב מרגע הפתיחה — גם לרשומה חדשה. זה מה שהופך שמירה חוזרת
+  // לעדכון ולא להזנה נוספת. `useState` עם פונקציה: נוצר פעם אחת, ולא
+  // מחדש בכל רינדור.
+  const [draft, setDraft] = useState<Partial<FinanceTransaction>>(() => ({
+    ...value,
+    id: value.id || `tx_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+  }));
   const [advanced, setAdvanced] = useState(false);
   const [repeats, setRepeats] = useState(1);
+  const [busy, setBusy] = useState(false);
+  // „חדשה” נקבע לפי מה שהגיע מבחוץ ולא לפי `draft.id`, שקיים עכשיו תמיד.
+  const isNew = !value.id;
   const patch = <K extends keyof FinanceTransaction>(key: K, val: FinanceTransaction[K]) => setDraft(prev => ({ ...prev, [key]: val }));
   const addSplit = () => patch('allocations', [...(draft.allocations || []), { id: `split_${Date.now()}`, label: '', amount: 0 }]);
   const valid = !!String(draft.title || '').trim() && Number(draft.amount) > 0 && !!draft.date;
   return <div className="fixed inset-0 z-[80] bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
     <div className="bg-white w-full sm:max-w-xl max-h-[92vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl p-5 space-y-4" dir="rtl">
-      <div className="flex justify-between items-center"><div><h2 className="font-['Frank_Ruhl_Libre'] text-xl font-black text-[#0D1B2A]">{draft.id ? 'עריכת תנועה' : 'תנועה חדשה'}</h2><p className="text-xs text-gray-500">כל שינוי נשמר בהיסטוריה; ביטול אינו מוחק.</p></div><button onClick={onClose} className="p-2"><X size={20} /></button></div>
+      <div className="flex justify-between items-center"><div><h2 className="font-['Frank_Ruhl_Libre'] text-xl font-black text-[#0D1B2A]">{isNew ? 'תנועה חדשה' : 'עריכת תנועה'}</h2><p className="text-xs text-gray-500">כל שינוי נשמר בהיסטוריה; ביטול אינו מוחק.</p></div><button onClick={onClose} className="p-2"><X size={20} /></button></div>
       <Field label="מה קרה"><select value={draft.kind || 'expense'} onChange={e => patch('kind', e.target.value)} className={INPUT}>{Object.entries(KIND_LABELS).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></Field>
       <div className="grid grid-cols-2 gap-2"><Field label="סכום"><MoneyInput value={Number(draft.amount || 0)} onChange={v => patch('amount', v)} /></Field><Field label="תאריך / מועד"><input type="date" value={draft.date || ''} onChange={e => patch('date', e.target.value)} className={INPUT} /></Field></div>
       <Field label="תיאור"><input value={draft.title || ''} onChange={e => patch('title', e.target.value)} placeholder="למשל: קניות לפורים" className={INPUT} autoFocus /></Field>
       <div className="grid grid-cols-2 gap-2"><Field label="מצב"><select value={draft.status || 'actual'} onChange={e => patch('status', e.target.value)} className={INPUT}>{Object.entries(STATUS_LABELS).filter(([id]) => id !== 'cancelled').map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></Field><Field label="קטגוריה"><input list="finance-categories" value={draft.category || ''} onChange={e => patch('category', e.target.value)} className={INPUT} /><datalist id="finance-categories">{categories.map(c => <option key={c} value={c} />)}</datalist></Field></div>
-      {!draft.id && draft.status !== 'actual' && <Field label="חזרה חודשית"><select value={repeats} onChange={e => setRepeats(Number(e.target.value))} className={INPUT}><option value="1">פעם אחת</option><option value="3">3 חודשים</option><option value="6">6 חודשים</option><option value="12">12 חודשים</option><option value="24">24 חודשים</option></select></Field>}
+      {isNew && draft.status !== 'actual' && <Field label="חזרה חודשית"><select value={repeats} onChange={e => setRepeats(Number(e.target.value))} className={INPUT}><option value="1">פעם אחת</option><option value="3">3 חודשים</option><option value="6">6 חודשים</option><option value="12">12 חודשים</option><option value="24">24 חודשים</option></select></Field>}
       <button onClick={() => setAdvanced(!advanced)} className="text-xs text-[#9B7A2F] font-bold flex items-center gap-1"><SlidersHorizontal size={13} /> {advanced ? 'פחות פרטים' : 'שיוך, חלוקה והערות'}</button>
       {advanced && <div className="bg-[#FAF6EE] rounded-2xl p-3 space-y-3"><div className="grid grid-cols-2 gap-2"><Field label="סוג שיוך"><select value={draft.scopeType || 'general'} onChange={e => patch('scopeType', e.target.value)} className={INPUT}>{Object.entries(SCOPE_LABELS).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></Field><Field label="שם הפעילות / היעד"><input list="finance-scopes" value={draft.scopeName || ''} onChange={e => patch('scopeName', e.target.value)} className={INPUT} /><datalist id="finance-scopes">{scopeSuggestions.map(x => <option key={x} value={x} />)}</datalist></Field></div><Field label="אמצעי"><input value={draft.method || ''} onChange={e => patch('method', e.target.value)} placeholder="בנק, מזומן, צ׳ק…" className={INPUT} /></Field><Field label="הערות"><textarea value={draft.notes || ''} onChange={e => patch('notes', e.target.value)} className={`${INPUT} min-h-16`} /></Field><div><div className="flex justify-between items-center"><label className="text-xs font-bold text-gray-600">חלוקה בין כמה יעדים</label><button onClick={addSplit} className="text-xs text-[#9B7A2F] font-bold">+ חלק</button></div>{(draft.allocations || []).map((a, i) => <div key={a.id} className="grid grid-cols-[1fr_100px_28px] gap-1.5 mt-1.5"><input value={a.label} onChange={e => patch('allocations', (draft.allocations || []).map((x, j) => j === i ? { ...x, label: e.target.value } : x))} placeholder="שם יעד" className={INPUT} /><MoneyInput value={a.amount} onChange={v => patch('allocations', (draft.allocations || []).map((x, j) => j === i ? { ...x, amount: v } : x))} /><button onClick={() => patch('allocations', (draft.allocations || []).filter((_, j) => j !== i))} className="text-red-400"><X size={15} /></button></div>)}</div></div>}
       {draft.kind === 'cash_income' && <p className="text-xs bg-amber-50 text-amber-800 rounded-xl p-3">ההכנסה תיספר לפעילות, ובמקביל ההתחשבנות תראה שהכסף נמצא אצלך.</p>}
       {draft.kind === 'personal_expense' && <p className="text-xs bg-blue-50 text-blue-800 rounded-xl p-3">ההוצאה תיספר, ובמקביל ההתחשבנות תראה שהפעילות חייבת לך.</p>}
       {!!draft.history?.length && <details className="border border-[#EDE6D6] rounded-xl p-3 text-xs"><summary className="font-bold text-gray-600 cursor-pointer">היסטוריית שינויים ({draft.history.length})</summary><div className="mt-2 divide-y divide-[#EDE6D6]">{[...draft.history].reverse().map((revision, index) => <div key={`${revision.at}_${index}`} className="py-2"><b>{new Date(revision.at).toLocaleString('he-IL')}</b><div className="text-gray-500">{revision.snapshot.title} · {money(revision.snapshot.amount)} · {STATUS_LABELS[revision.snapshot.status]}</div></div>)}</div></details>}
-      <button disabled={!valid} onClick={() => onSave(draft, repeats)} className="w-full bg-[#0D1B2A] text-white disabled:opacity-40 py-3 rounded-xl font-bold">שמור</button>
+      {/*
+        נעילה בזמן השמירה. בלעדיה כל לחיצה נוספת הייתה קריאה נוספת —
+        וזה מה שהפך 150 ש״ח אחת לשתיים. המזהה היציב שלמעלה מגן גם אם
+        בכל זאת נשלחו שתיים; הנעילה מונעת מהן להישלח מלכתחילה.
+      */}
+      <button
+        disabled={!valid || busy}
+        onClick={async () => { setBusy(true); try { await onSave(draft, repeats); } finally { setBusy(false); } }}
+        className="w-full bg-[#0D1B2A] text-white disabled:opacity-40 py-3 rounded-xl font-bold"
+      >{busy ? 'שומר…' : 'שמור'}</button>
     </div>
   </div>;
 }

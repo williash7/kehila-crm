@@ -143,11 +143,34 @@ const aiUi = fs.readFileSync('src/components/GlobalAIImportModal.tsx', 'utf8');
 const financeUi = fs.readFileSync('src/components/FinanceTab.tsx', 'utf8');
 assert.ok(/הכנסות והוצאות שוטפות/.test(aiUi) && /schema\.finance/.test(aiUi));
 assert.ok(/קלוט הכנסות והוצאות עם AI/.test(financeUi) && /initialTopics=\{\['finance'\]\}/.test(financeUi));
-assert.ok(/תזרים הפעילות/.test(financeUi) && /חלוקה לפי חודשים/.test(financeUi), 'חייב להיות דוח תזרים חודשי עם סינונים');
+// ── הסיכום החודשי עבר, ולא נעלם ──
+//
+// „תנועות” ו„תזרים” היו שני חלונות שהציגו את אותו מידע, ואשר שאל מה
+// ההבדל ביניהם. הם מוזגו לחלון אחד. הבדיקה עודכנה לשמות החדשים ולא
+// הוחלשה: היא עדיין דורשת סיכום חודשי, ומוסיפה דרישה ליתרה הרצה —
+// שהיא מה שהופך רשימה לתזרים.
+assert.ok(/סיכום לפי חודשים/.test(financeUi), 'חייב להיות סיכום חודשי');
+assert.ok(/החודשים הבאים/.test(financeUi), 'ולצידו הצפי קדימה, כולל הוראות קבע');
+assert.ok(!/pane === 'cashflow'/.test(financeUi), 'חלון „תזרים” הנפרד מוזג ואינו קיים עוד');
+assert.ok(/runningBalances\(flowRows, data\.openingBalance\)/.test(financeUi),
+  'היתרה הרצה מחושבת על כל השורות ולא על המסונן — אחרת סינון להכנסות בלבד היה מציג יתרה שרק מטפסת');
+assert.ok(/נשאר \{money\(balances\.get/.test(financeUi), 'וכל שורה מציגה כמה נשאר באותו רגע');
 assert.ok(/מה כלול בזמין כרגע/.test(financeUi) && /מה מחויב לצאת/.test(financeUi), 'ארבע המשבצות חייבות לפתוח פירוט');
 assert.ok(/נקראת אוטומטית מיומן התרומות/.test(financeUi), 'תרומות חייבות להופיע בתוך רשימת התנועות');
-assert.ok(/לא מודדים רווח/.test(financeUi) && /מעקב תקציב ומימון/.test(financeUi), 'מעקב פעילות אינו מסך רווח');
-assert.ok(/kehila:list-sort:finance-transactions/.test(financeUi) && /kehila:list-sort:finance-cashflow/.test(financeUi), 'תנועות ותזרים שומרים כל אחד את המיון האחרון');
+// ── „מעקב פעילות” הוסר ──
+//
+// המסך הזה השווה הכנסות של פעילות מול הוצאותיה והציג „חסרים” כשהיא
+// הוציאה יותר. הוא נבנה עם אזהרה מפורשת שאין מודדים בו רווח, ובכל זאת
+// זה מה שהוא שידר. אשר: „זה מראה מלחיץ, ולא כל כך משנה לי — אנחנו לא
+// חיים מהכנסות של הפעילות אלא מתרומות.”
+//
+// כשמדד גורם לאדם לחשוב שהוא נכשל במשהו שהוא מעולם לא ניסה להצליח בו,
+// הבעיה אינה בניסוח אלא בעצם הצגתו.
+assert.ok(!/pane === 'scopes'/.test(financeUi), 'חלון „מעקב פעילות” הוסר מהניווט');
+assert.ok(!/'scopes', label/.test(financeUi), 'ואינו מופיע ברשימת הלשוניות');
+// רשימה אחת נשארה, ולכן מיון אחד שנשמר. „finance-cashflow” היה שייך
+// לחלון שמוזג.
+assert.ok(/kehila:list-sort:finance-transactions/.test(financeUi), 'רשימת התנועות שומרת את המיון האחרון');
 assert.ok(/מיון וסינון/.test(financeUi) && /מסכום/.test(financeUi) && /עד סכום/.test(financeUi), 'בכספים חייבים להיות מיון וסינון לפי תאריך וסכום');
 assert.ok(/ListSortControl value=\{sort\}/.test(financeUi), 'בכספים חייבים להציע תאריך, סכום וא׳–ב׳ עם סדר עולה או יורד');
 

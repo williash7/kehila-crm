@@ -162,4 +162,69 @@ console.log('ח. מחיקת תנועה:');
   console.log('   ✓ מחיקה מדויקת, ובלי תאונות על קלט ריק');
 }
 
+console.log('ט. שמירה חוזרת אינה הזנה נוספת:');
+{
+  // ── הבאג ──
+  //
+  // אשר: „הכנסתי 150 ש״ח לבדיקה — הוא נכנס פעמיים.”
+  //
+  // הטופס יצר רשומה חדשה בכל לחיצה, כי בלי מזהה אין דרך לדעת שזו אותה
+  // הזנה. החלון גם לא נסגר אחרי שמירה, וזה הזמין את הלחיצה השנייה.
+  const draft = {
+    id: 'tx_thelma_1', kind: 'income', amount: 150, title: 'בדיקה',
+    status: 'actual', date: '2026-08-27', category: '',
+  };
+
+  const once = F.saveTransaction(base, draft, 1);
+  assert.strictEqual(once.transactions.length, 1, 'שמירה אחת יוצרת רשומה אחת');
+  assert.strictEqual(once.transactions[0].id, 'tx_thelma_1', 'והמזהה שהגיע מהטופס נשמר');
+
+  const twice = F.saveTransaction(once, draft, 1);
+  assert.strictEqual(twice.transactions.length, 1, 'לחיצה שנייה על אותו טופס מעדכנת ואינה מוסיפה');
+  assert.strictEqual(twice.transactions[0].amount, 150, 'והסכום נשאר 150 ולא 300');
+
+  const edited = F.saveTransaction(once, { ...draft, amount: 200 }, 1);
+  assert.strictEqual(edited.transactions.length, 1, 'גם עריכה אינה מייצרת רשומה נוספת');
+  assert.strictEqual(edited.transactions[0].amount, 200, 'הסכום החדש נכנס');
+
+  // רשומה בלי מזהה עדיין מקבלת מזהה חדש — אחרת שתי הזנות שונות היו
+  // דורסות זו את זו.
+  const anonymous = F.saveTransaction(once, { ...draft, id: undefined, title: 'הזנה אחרת' }, 1);
+  assert.strictEqual(anonymous.transactions.length, 2, 'הזנה חדשה בלי מזהה היא רשומה נוספת');
+
+  // חזרה חודשית: רק הראשונה לוקחת את המזהה שהגיע, השאר עצמאיות.
+  const series = F.saveTransaction(base, { ...draft, status: 'committed' }, 3);
+  assert.strictEqual(series.transactions.length, 3, 'שלוש חזרות הן שלוש רשומות');
+  assert.strictEqual(new Set(series.transactions.map(t => t.id)).size, 3, 'ולכל אחת מזהה משלה');
+  assert.strictEqual(series.transactions[0].id, 'tx_thelma_1', 'הראשונה שומרת על המזהה מהטופס');
+  console.log('   ✓ 150 נשארים 150 גם בלחיצה שנייה');
+}
+
+console.log('י. יתרה רצה — „כמה היה בחשבון באותו רגע”:');
+{
+  const withRows = F.normalizeFinanceData({ ...base, openingBalance: 1000 });
+  const rows = F.buildFinanceFlowRows(withRows, [
+    { id: 'd1', name: 'תרומה', amount: 500, date: '05/08/2026', method: 'העברה בנקאית' },
+    { id: 'd2', name: 'תרומה ב', amount: 300, date: '20/08/2026', method: 'העברה בנקאית' },
+  ]);
+  const balances = F.runningBalances(rows, withRows.openingBalance);
+
+  const byDate = rows
+    .filter(r => balances.has(r.id))
+    .sort((a, b) => a.date.localeCompare(b.date));
+  assert.strictEqual(balances.get(byDate[0].id), 1500, 'אחרי הראשונה: 1000 + 500');
+  assert.strictEqual(balances.get(byDate[1].id), 1800, 'ואחרי השנייה: 1500 + 300');
+
+  // ── הנקודה הקריטית ──
+  //
+  // יתרה רצה שמחושבת על רשימה מסוננת היא שקר: סינון ל„הכנסות בלבד”
+  // היה מייצר יתרה שרק מטפסת. לכן היא מחושבת על הכל, והמסך שולף לפי
+  // מזהה — „מה היה ב-20 באוגוסט” אינו משתנה בגלל סינון.
+  const filtered = rows.filter(r => r.id === byDate[1].id);
+  const wrong = F.runningBalances(filtered, withRows.openingBalance);
+  assert.strictEqual(wrong.get(byDate[1].id), 1300, 'חישוב על המסונן היה נותן 1300 — ולכן לא מחשבים על המסונן');
+  assert.strictEqual(balances.get(byDate[1].id), 1800, 'החישוב הנכון נשאר 1800');
+  console.log('   ✓ היתרה שייכת לרגע ולא למיקום ברשימה');
+}
+
 console.log('\nכל הבדיקות עברו');

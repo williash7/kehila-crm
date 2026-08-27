@@ -59,10 +59,28 @@ function MonthCloseTool({ data, summary, persist, computedOrgBalance, heldCash, 
   data: FinanceData; summary: FinanceSummary; persist: (next: FinanceData) => Promise<boolean>;
   computedOrgBalance: number; heldCash: number; charityCash: number;
 }) {
-  const checks = data.transactions.filter(tx => tx.status === 'committed' && /צ.?ק/.test(String(tx.method || '')));
+  const [month, setMonth] = React.useState(monthNow());
+
+  // ── „מחויב לצאת בחודש זה” — בחודש זה ─────────────────────────────────────
+  //
+  // אשר: „מופיע גם מה שמחויב לצאת בחודשים הבאים.”
+  //
+  // הוא צדק, ומקור הטעות היה שימוש חוזר בנתון הלא נכון: `committedExpense`
+  // שב-`summary` נמדד לפי **אופק התחזית** (עשרות ימים קדימה), והצ׳קים
+  // נסרקו בלי שום גבול תאריך. שני המספרים נכונים לשאלה „מה צפוי לצאת
+  // בתקופה הקרובה”, והם התשובה הלא נכונה לשאלה „מה קרה בחודש שאני סוגר”.
+  //
+  // סגירת חודש היא מסמך על חודש אחד. כל מה שמעבר לו — גם אם הוא ודאי
+  // לחלוטין — שייך לחודש שלו, ונוכחותו כאן גורמת לאשר לחשוב שהוא בפיגור
+  // בזמן שהוא לא.
+  const inSelectedMonth = (tx: { date?: string }) => String(tx.date || '').slice(0, 7) === month;
+
+  const monthCommitments = data.transactions.filter(tx => tx.status === 'committed' && inSelectedMonth(tx));
+  const checks = monthCommitments.filter(tx => /צ.?ק/.test(String(tx.method || '')));
   const checksOut = checks.reduce((sum, tx) => sum + transactionEffects(tx, true).expense, 0);
   const checksIn = checks.reduce((sum, tx) => sum + transactionEffects(tx, true).income, 0);
-  const [month, setMonth] = React.useState(monthNow());
+  const monthCommittedExpense = monthCommitments
+    .reduce((sum, tx) => sum + transactionEffects(tx, true).expense, 0);
   const [official, setOfficial] = React.useState('');
   const [mine, setMine] = React.useState('');
   const [box, setBox] = React.useState('');
@@ -80,7 +98,7 @@ function MonthCloseTool({ data, summary, persist, computedOrgBalance, heldCash, 
     ],
     reimbursementDue: Math.max(0, summary.personalBalance),
     heldActivityCash: heldCash,
-    commitmentsDue: Math.max(0, summary.committedExpense - checksOut),
+    commitmentsDue: Math.max(0, monthCommittedExpense - checksOut),
     deferredChecksOut: checksOut,
     deferredChecksIn: checksIn,
     notes,
@@ -116,7 +134,7 @@ function MonthCloseTool({ data, summary, persist, computedOrgBalance, heldCash, 
           <span>פער בחשבון<b className="block text-sm">{result.orgDifference == null ? '—' : money(result.orgDifference)}</b></span>
           <span>פער במזומן<b className="block text-sm">{result.totalCashDifference == null ? '—' : money(result.totalCashDifference)}</b></span>
           <span>הפעילות חייבת לי<b className="block text-sm">{money(Math.max(0, result.personalPosition))}</b></span>
-          <span>מחויב לצאת<b className="block text-sm">{money(result.protectedOutgoing)}</b></span>
+          <span>מחויב לצאת בחודש זה<b className="block text-sm">{money(result.protectedOutgoing)}</b></span>
         </div>
       </div>
 
