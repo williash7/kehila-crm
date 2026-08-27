@@ -147,9 +147,39 @@ assert.match(openTargetSrc, /if \(!id \|\| itemListeners\.size === 0\) return fa
   'בקשה בלי מאזין מחזירה false ולא נופלת לחלל');
 
 // ── הצד המבקש ──
-assert.match(profile, /requestOpenItem\('donation', e\.data\.id\)/, 'לחיצה על תרומה מבקשת לפתוח אותה');
+//
+// ⚠ הדרישה הזו התפתחה. בשלב הראשון הלחיצה **ניווטה** למסך התרומות
+// והדגישה שם את התרומה. זה ענה על „זה מעביר אותי לעריכת התרומה”, אבל
+// אשר חידד אחר כך את הכלל הרחב יותר:
+//
+//   „בכל מקום שמידע מופיע ניתן לערוך אותו ישירות מהחלון בו הוא מופיע.”
+//
+// ניווט מוציא אותו מהכרטיס שבו הוא עומד ומאלץ אותו לחזור. לכן הלחיצה
+// פותחת עכשיו את העורך המשותף **מעל** הכרטיס. הבדיקה עודכנה לכוונה
+// החדשה ולא הוחלשה: היא עדיין מוודאת שלחיצה על תרומה מובילה לעריכה
+// של אותה תרומה, ושתרומה בלי מזהה לא מתחזה לכפתור.
+assert.match(profile, /onClick=\{\(\) => setEditingDonation\(e\.data\)\}/,
+  'לחיצה על תרומה בכרטיס פותחת את העורך על אותה תרומה');
+assert.match(profile, /<DonationQuickEdit/, 'והעורך הוא הרכיב המשותף, לא טופס נפרד');
 assert.match(profile, /e\.data\.id \? \(/,
   'תרומה בלי מזהה נשארת טקסט — עדיף בלי כפתור מאשר כפתור שלא עושה כלום');
+
+// ── אותו עורך בכל מקום שבו התרומה מופיעה ──
+//
+// זה מה שמונע ארבעה טפסים שמתחילים זהים ונפרדים בשקט — אחד ישכח
+// `cashDestination`, אחר ישלח `method` בלי ניקוי, ואז אותה תרומה
+// מתנהגת אחרת לפי המסך שממנו נגעת בה.
+['src/components/FinanceTab.tsx', 'src/components/ProjectsTab.tsx', 'src/components/ProfileModal.tsx']
+  .forEach(file => assert.match(read(file), /<DonationQuickEdit/,
+    `${file} משתמש בעורך התרומות המשותף`));
+
+const quickEdit = read('src/components/DonationQuickEdit.tsx');
+assert.match(quickEdit, /cashDestination: isCash \? cashDestination \|\| 'unclassified' : ''/,
+  'תרומה שהוסבה מהמזומן מנקה את יעד המזומן, אחרת יעד ישן ממשיך להשפיע על היתרה');
+assert.match(quickEdit, /indexOf\('hk:'\) === 0/,
+  'חיוב הוראת קבע מקבל אזהרה — מנוע ההוראות מחשב אותו מחדש');
+assert.match(quickEdit, /await onSaved\(\)/,
+  'אחרי שמירה מרעננים, אחרת שאר המסכים ימשיכו להראות את הערך הישן');
 
 // ── הצד המאזין ──
 assert.match(app, /onOpenItemRequest\(req =>/, 'App מקשיב');

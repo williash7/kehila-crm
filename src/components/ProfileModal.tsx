@@ -27,6 +27,8 @@ import { withCity } from '../lib/orgConfig';
 import { avatarGradient } from '../lib/donorDisplay';
 import { updateDonorFieldQueued, updatePersonalDateQueued } from '../lib/api';
 import { requestOpenItem } from '../lib/openTarget';
+import { DonationQuickEdit } from './DonationQuickEdit';
+import { Donation } from '../types';
 
 export function ProfileModal({ name, onClose, backLabel, siblings, onSelectSibling }: {
   name: string;
@@ -37,7 +39,8 @@ export function ProfileModal({ name, onClose, backLabel, siblings, onSelectSibli
   siblings?: SiblingItem[];
   onSelectSibling?: (name: string) => void;
 }) {
-  const { donors, crm, donations, updateCrm, settings, holidayExtras, updateHolidayExtras } = useAppStore();
+  const { donors, crm, donations, updateCrm, settings, holidayExtras, updateHolidayExtras, refresh } = useAppStore();
+  const [editingDonation, setEditingDonation] = useState<Donation | null>(null);
   const [editingPhone, setEditingPhone] = useState(false);
   const [phoneInput, setPhoneInput] = useState('');
   const [isEditingFields, setIsEditingFields] = useState(false);
@@ -754,13 +757,20 @@ export function ProfileModal({ name, onClose, backLabel, siblings, onSelectSibli
                               אפשר לגעת בזה — צריך היה לצאת, להיכנס לתרומות,
                               ולחפש אותה מחדש.
 
+                              בשלב הראשון זה נפתר בניווט: הלחיצה העבירה
+                              למסך התרומות והדגישה שם את התרומה הנכונה.
+                              זה עבד, אבל זה עדיין הוציא את אשר מהכרטיס
+                              שבו הוא עמד ואילץ אותו לחזור. עכשיו העורך
+                              נפתח **כאן**, מעל הכרטיס, ואחרי שמירה
+                              הכרטיס פשוט מתעדכן.
+
                               תרומה בלי מזהה (רשומה ותיקה מהגיליון) נשארת
                               טקסט רגיל: עדיף שלא ייראה כפתור מאשר שייראה
                               כפתור שלא עושה כלום.
                             */}
                             {e.data.id ? (
                               <button
-                                onClick={() => requestOpenItem('donation', e.data.id)}
+                                onClick={() => setEditingDonation(e.data)}
                                 className="text-right group flex-1 min-w-0"
                                 title="פתח את התרומה לעריכה"
                               >
@@ -820,6 +830,14 @@ export function ProfileModal({ name, onClose, backLabel, siblings, onSelectSibli
 
         </div>
         </div>
+
+        {editingDonation && (
+          <DonationQuickEdit
+            donation={editingDonation}
+            onSaved={async () => { await refresh(); }}
+            onClose={() => setEditingDonation(null)}
+          />
+        )}
 
         {/* WhatsApp Phone Modal */}
         {editingPhone && (

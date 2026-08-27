@@ -25,6 +25,7 @@ import { GlobalAIImportModal } from './GlobalAIImportModal';
 import { compareListValues, ListSortControl, usePersistentListSort } from './ListSortControl';
 import { FinancePlanningTools } from './FinancePlanningTools';
 import { ExportButton } from './ExportButton';
+import { DonationQuickEdit } from './DonationQuickEdit';
 import { FINANCE_COLUMNS } from '../lib/exportRows';
 
 type Pane = 'overview' | 'transactions' | 'cashflow' | 'scopes' | 'planning' | 'import' | 'settings';
@@ -89,6 +90,19 @@ export function FinanceTab() {
   // להיבלע — הודעה מדויקת שמסבירה מה כן לעשות עדיפה על „המחיקה נכשלה”.
   const [deletingId, setDeletingId] = useState('');
   const [deleteError, setDeleteError] = useState('');
+
+  // ── עריכת תרומה מתוך מרכז הכספים ──────────────────────────────────────────
+  //
+  // שורות התזרים הן תצוגה שטוחה ולא התרומה עצמה, ולכן מאתרים את התרומה
+  // המקורית לפי `sourceId`. אם היא לא נמצאה — לא פותחים טופס על אובייקט
+  // מומצא, כי טופס כזה היה נשמר ויוצר תרומה חדשה במקום לערוך את הקיימת.
+  const [editingDonation, setEditingDonation] = useState<Donation | null>(null);
+
+  const openDonationEditor = (row: FinanceFlowRow) => {
+    const found = donations.find(donation => donation.id === row.sourceId);
+    if (found) setEditingDonation(found);
+    else setDeleteError('התרומה לא נמצאה ביומן. נסה לרענן.');
+  };
 
   const removeRow = async (row: FinanceFlowRow) => {
     const what = row.source === 'donation' ? 'התרומה הזו מהיומן' : 'התנועה הזו';
@@ -186,12 +200,18 @@ export function FinanceTab() {
       )}
 
       {pane === 'overview' && <Overview summary={summary} data={data} donations={donations} onAdd={begin} onSettings={() => setPane('settings')} transactions={data.transactions} onResolved={async () => { await refresh(); }} />}
-      {pane === 'transactions' && <Transactions data={data} donations={donations} onAdd={begin} onEdit={setEditing} onCancel={async id => persist(cancelTransaction(data, id))} onDelete={removeRow} deletingId={deletingId} deleteError={deleteError} />}
-      {pane === 'cashflow' && <Cashflow data={data} donations={donations} hk={hk} />}
+      {pane === 'transactions' && <Transactions data={data} donations={donations} onAdd={begin} onEdit={setEditing} onCancel={async id => persist(cancelTransaction(data, id))} onDelete={removeRow} deletingId={deletingId} deleteError={deleteError} onEditDonation={openDonationEditor} />}
+      {pane === 'cashflow' && <Cashflow data={data} donations={donations} hk={hk} onEditDonation={openDonationEditor} />}
       {pane === 'scopes' && <Scopes scopes={scopes} budgets={existingBudgets} donations={donations} events={eventsData as Activity[]} projects={projects as Project[]} onAdd={() => begin('expense', 'committed')} />}
       {pane === 'planning' && <FinancePlanningTools data={data} summary={summary} donations={donations} persist={persist} />}
       {pane === 'import' && <ImportAndReports data={data} donations={donations} persist={persist} onAI={() => setAiImportOpen(true)} />}
       {pane === 'settings' && <FinanceSettings data={data} persist={persist} />}
+
+      {editingDonation && <DonationQuickEdit
+        donation={editingDonation}
+        onSaved={async () => { await refresh(); }}
+        onClose={() => setEditingDonation(null)}
+      />}
 
       {editing && (
         <TransactionEditor
@@ -305,10 +325,11 @@ function Overview({ summary, data, donations, onAdd, onSettings, transactions, o
   </div>;
 }
 
-function Transactions({ data, donations, onAdd, onEdit, onCancel, onDelete, deletingId, deleteError }: {
+function Transactions({ data, donations, onAdd, onEdit, onCancel, onDelete, deletingId, deleteError, onEditDonation }: {
   data: FinanceData; donations: Donation[]; onAdd: (kind: FinanceKind, status?: FinanceStatus) => void;
   onEdit: (tx: FinanceTransaction) => void; onCancel: (id: string) => void;
   onDelete: (row: FinanceFlowRow) => void; deletingId: string; deleteError: string;
+  onEditDonation: (row: FinanceFlowRow) => void;
 }) {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<FinanceStatus | 'all'>('all');
@@ -401,7 +422,14 @@ function Transactions({ data, donations, onAdd, onEdit, onCancel, onDelete, dele
           <span className={`w-9 h-9 rounded-xl shrink-0 flex items-center justify-center ${row.direction === 'income' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>{row.direction === 'income' ? <ArrowUpRight size={17} /> : <ArrowDownLeft size={17} />}</span>
           <span className="min-w-0 flex-1"><b className="block text-sm text-[#0D1B2A] truncate">{row.title}</b><small className="text-gray-500 block truncate">{dateLabel(row.date)} · {row.category} · {row.source === 'donation' ? donationState : STATUS_LABELS[row.status]}{row.method ? ` · ${row.method}` : ''}{tx?.history.length ? ` · ${tx.history.length} שינויים` : ''}</small></span>
           <b className={`text-sm shrink-0 ${row.direction === 'income' ? 'text-emerald-700' : 'text-red-600'}`}>{money(row.amount)}</b>
-          {tx && <button onClick={() => onEdit(tx)} className="p-2 text-gray-500" aria-label="ערוך"><Pencil size={15} /></button>}
+          {/*
+            עריכה לכל שורה. תנועה כספית נפתחת בעורך התנועות; תרומה
+            נפתחת באותו עורך תרומות שמשמש את שאר המסכים — כדי שאשר
+            יראה את אותו טופס בדיוק מאיפה שלא ייגע בה.
+          */}
+          {tx
+            ? <button onClick={() => onEdit(tx)} className="p-2 text-gray-500" aria-label="ערוך"><Pencil size={15} /></button>
+            : <button onClick={() => onEditDonation(row)} className="p-2 text-gray-500" aria-label="ערוך תרומה"><Pencil size={15} /></button>}
           {tx && tx.status !== 'cancelled' && <button onClick={() => { if (confirm('לבטל את הרשומה? היא תישמר בהיסטוריה ולא תימחק.')) onCancel(tx.id); }} className="p-2 text-red-400" aria-label="בטל"><Undo2 size={15} /></button>}
           {/*
             מחיקה לכל שורה — גם לתרומה שנקראה מהיומן, לא רק לתנועה שהוזנה
@@ -420,7 +448,9 @@ function Transactions({ data, donations, onAdd, onEdit, onCancel, onDelete, dele
   </section>;
 }
 
-function Cashflow({ data, donations, hk }: { data: FinanceData; donations: Donation[]; hk: HkEntry[] }) {
+function Cashflow({ data, donations, hk, onEditDonation }: {
+  data: FinanceData; donations: Donation[]; hk: HkEntry[]; onEditDonation: (row: FinanceFlowRow) => void;
+}) {
   const rows = useMemo(() => buildFinanceFlowRows(data, donations), [data, donations]);
   // אופק של שנה, ולא `forecastDays`: השאלה כאן היא „איך נראים החודשים
   // הבאים”, וחלון של 60 יום היה חותך בדיוק את הצ׳ק שבעוד שלושה חודשים —
@@ -544,7 +574,7 @@ function Cashflow({ data, donations, hk }: { data: FinanceData; donations: Donat
     <section className="bg-white border border-[#EDE6D6] rounded-2xl overflow-hidden">
       <div className="p-4 border-b border-[#EDE6D6]"><h2 className="font-bold text-[#0D1B2A]">פירוט ({filtered.length})</h2></div>
       {filtered.length === 0 ? <p className="p-8 text-center text-sm text-gray-400">אין פירוט לתצוגה</p> : <div className="divide-y divide-[#F1ECE1] max-h-[560px] overflow-y-auto">
-        {filtered.map(row => <div key={row.id}><FlowRow row={row} /></div>)}
+        {filtered.map(row => <div key={row.id}><FlowRow row={row} onEdit={row.source === 'donation' ? () => onEditDonation(row) : undefined} /></div>)}
       </div>}
     </section>
   </div>;
@@ -910,10 +940,10 @@ function FlowTotal({ title, value, tone }: { title: string; value: number; tone:
   const colors: Record<string, string> = { green: 'bg-emerald-50 text-emerald-800', red: 'bg-red-50 text-red-700', blue: 'bg-blue-50 text-blue-800' };
   return <div className={`rounded-2xl p-3 ${colors[tone] || colors.blue}`}><small className="font-bold opacity-75">{title}</small><b className="block text-lg sm:text-xl mt-1">{money(value)}</b></div>;
 }
-function FlowRow({ row }: { row: FinanceFlowRow }) {
+function FlowRow({ row, onEdit }: { row: FinanceFlowRow; onEdit?: () => void }) {
   const statusText = row.source === 'donation' ? 'תרומה' : STATUS_LABELS[row.status];
   const cashLocation = row.source === 'donation' && row.method.includes('מזומן') ? ` · ${cashDestinationLabel(row.cashDestination)}` : '';
-  return <div className="p-3 flex items-center gap-3 text-xs"><span className={`w-8 h-8 rounded-lg shrink-0 flex items-center justify-center ${row.direction === 'income' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>{row.direction === 'income' ? <ArrowUpRight size={15} /> : <ArrowDownLeft size={15} />}</span><span className="min-w-0 flex-1"><b className="block text-sm text-[#0D1B2A] truncate">{row.title}</b><small className="text-gray-500 block truncate">{dateLabel(row.date)} · {statusText} · {row.purpose || row.category}{row.method ? ` · ${row.method}` : ''}{cashLocation}</small></span><b className={row.direction === 'income' ? 'text-emerald-700 shrink-0' : 'text-red-600 shrink-0'}>{row.direction === 'income' ? '+' : '−'}{money(row.amount)}</b></div>;
+  return <div className="p-3 flex items-center gap-3 text-xs"><span className={`w-8 h-8 rounded-lg shrink-0 flex items-center justify-center ${row.direction === 'income' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>{row.direction === 'income' ? <ArrowUpRight size={15} /> : <ArrowDownLeft size={15} />}</span><span className="min-w-0 flex-1"><b className="block text-sm text-[#0D1B2A] truncate">{row.title}</b><small className="text-gray-500 block truncate">{dateLabel(row.date)} · {statusText} · {row.purpose || row.category}{row.method ? ` · ${row.method}` : ''}{cashLocation}</small></span><b className={row.direction === 'income' ? 'text-emerald-700 shrink-0' : 'text-red-600 shrink-0'}>{row.direction === 'income' ? '+' : '−'}{money(row.amount)}</b>{onEdit && <button onClick={onEdit} className="p-1.5 text-gray-400 hover:text-[#0D1B2A] shrink-0" aria-label="ערוך תרומה"><Pencil size={14} /></button>}</div>;
 }
 
 function Metric({ title, value, hint, icon, tone, onClick }: { title: string; value: string; hint: string; icon: React.ReactNode; tone: string; onClick?: () => void }) {

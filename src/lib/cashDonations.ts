@@ -43,6 +43,18 @@ export function cashDestinationNeedsAttention(value: unknown): boolean {
   return !normalized || CASH_DESTINATIONS_NEEDING_ATTENTION.includes(normalized);
 }
 
+/**
+ * אפיקי הגבייה שמוצעים בעריכה.
+ *
+ * יושב כאן ולא בתוך רכיב מסך כי יותר ממסך אחד עורך תרומות. רשימה
+ * שמשוכפלת בין מסכים מתחילה זהה ונפרדת בשקט — ואז אותה תרומה מציעה
+ * אפשרויות שונות תלוי מאיפה נכנסת אליה.
+ */
+export const EDIT_PAYMENT_METHODS = [
+  '🔗 קישור ישיר', '💵 מזומן', '🏦 העברה בנקאית',
+  '📱 ביט/פייבוקס', '🔄 הוראת קבע', '🌐 אתר תרומות',
+];
+
 export function cleanPaymentMethod(value: unknown): string {
   return String(value || '').replace(/^[^\p{L}\p{N}]+\s*/u, '').trim();
 }

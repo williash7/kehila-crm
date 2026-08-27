@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { EmptyState } from './EmptyState';
 import { useAppStore } from '../store/AppContext';
-import { Plus, X, Target, Wallet, Users, Trash2, Search, CheckCircle2, MessageSquare, ClipboardList, Check} from 'lucide-react';
+import { Plus, X, Target, Wallet, Users, Trash2, Search, CheckCircle2, MessageSquare, ClipboardList, Check, Pencil } from 'lucide-react';
 import { FullScreenView } from './FullScreenView';
 import { AddHkDialog } from './AddHkDialog';
 import { BudgetEditor, emptyBudget } from './BudgetEditor';
@@ -18,6 +18,8 @@ import { stampCreated } from '../lib/tasks';
 import { TaskDetailsPanel } from './TaskDetailsPanel';
 import { AIPlanningAssistant } from './AIPlanningAssistant';
 import { PurposeTagsEditor } from './PurposeTagsEditor';
+import { DonationQuickEdit } from './DonationQuickEdit';
+import { Donation } from '../types';
 import { OpenTargetProps } from '../lib/openTarget';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -210,6 +212,8 @@ function ProjectDetail({ project, donations, hk, donorNames, crm, activities, pa
 }) {
   const prog = useMemo(() => projectProgress(project, donations, hk), [project, donations, hk]);
   const linked = useMemo(() => projectDonations(project, donations), [project, donations]);
+  const { refresh } = useAppStore();
+  const [editingDonation, setEditingDonation] = useState<Donation | null>(null);
 
   // מי שכבר תרם מסומן "נתן" אוטומטית — אין טעם לבקש מהמשתמש לעדכן
   // מה שהמערכת כבר יודעת מיומן התרומות.
@@ -783,12 +787,26 @@ function ProjectDetail({ project, donations, hk, donorNames, crm, activities, pa
               {linked.length > 0 && (
                 <div>
                   <h4 className="text-xs font-bold text-gray-500 mb-1.5">התרומות שנכנסו · {linked.length}</h4>
+                  {/*
+                    כל שורה כאן ניתנת לפתיחה לעריכה. עד עכשיו היא הייתה
+                    טקסט מת: מי שראה סכום שגוי בקמפיין היה צריך לזכור
+                    לצאת למסך התרומות, לחפש את התרומה ולתקן שם. אותה
+                    שורה בגיליון — אז אותה עריכה, מכאן.
+                  */}
                   <div className="bg-white rounded-xl border border-[#EDE6D6] divide-y divide-[#EDE6D6]">
                     {linked.slice(0, 30).map((d, i) => (
-                      <div key={i} className="px-3 py-2 flex justify-between text-sm">
-                        <span className="text-[#0D1B2A] truncate">{d.name}</span>
+                      <button
+                        key={d.id || i}
+                        onClick={() => d.id && setEditingDonation(d)}
+                        disabled={!d.id}
+                        className="w-full px-3 py-2 flex justify-between items-center gap-2 text-sm text-right hover:bg-[#FAF6EE] disabled:hover:bg-transparent"
+                      >
+                        <span className="text-[#0D1B2A] truncate flex items-center gap-1.5">
+                          {d.id && <Pencil size={12} className="text-gray-300 shrink-0" />}
+                          {d.name}
+                        </span>
                         <span className="text-emerald-700 font-bold shrink-0">₪{Number(d.amount).toLocaleString()}</span>
-                      </div>
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -821,6 +839,14 @@ function ProjectDetail({ project, donations, hk, donorNames, crm, activities, pa
             presetCampaign={project.purposeTag || project.name}
             onCreated={id => setSol(hkForRow, { hkIds: [...explicitHkIds(sols[hkForRow]), id] })}
             onClose={() => setHkForRow(null)}
+          />
+        )}
+
+        {editingDonation && (
+          <DonationQuickEdit
+            donation={editingDonation}
+            onSaved={async () => { await refresh(); }}
+            onClose={() => setEditingDonation(null)}
           />
         )}
       </>
