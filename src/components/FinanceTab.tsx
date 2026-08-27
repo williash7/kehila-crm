@@ -211,7 +211,7 @@ export function FinanceTab() {
         </button>
       )}
 
-      {pane === 'overview' && <Overview summary={summary} data={data} donations={donations} onAdd={begin} onSettings={() => setPane('settings')} transactions={data.transactions} onResolved={async () => { await refresh(); }} />}
+      {pane === 'overview' && <Overview summary={summary} data={data} donations={donations} onAdd={begin} onSettings={() => setPane('settings')} onResolved={async () => { await refresh(); }} />}
       {pane === 'transactions' && <Transactions data={data} donations={donations} hk={hk} onAdd={begin} onEdit={setEditing} onCancel={async id => persist(cancelTransaction(data, id))} onDelete={removeRow} deletingId={deletingId} deleteError={deleteError} onEditDonation={openDonationEditor} />}
       {pane === 'planning' && <FinancePlanningTools data={data} summary={summary} donations={donations} persist={persist} />}
       {pane === 'import' && <ImportAndReports data={data} donations={donations} persist={persist} onAI={() => setAiImportOpen(true)} />}
@@ -260,18 +260,16 @@ export function FinanceTab() {
   );
 }
 
-function Overview({ summary, data, donations, onAdd, onSettings, transactions, onResolved }: {
+function Overview({ summary, data, donations, onAdd, onSettings, onResolved }: {
   summary: ReturnType<typeof summarizeFinance>; data: FinanceData; donations: Donation[];
   onAdd: (kind: FinanceKind, status?: FinanceStatus) => void; onSettings: () => void;
-  transactions: FinanceTransaction[]; onResolved: () => Promise<void>;
+  onResolved: () => Promise<void>;
 }) {
   const [detail, setDetail] = useState<'current' | 'committed' | 'safe' | 'personal' | 'gross' | 'cash' | null>(null);
   const flowRows = useMemo(() => buildFinanceFlowRows(data, donations), [data, donations]);
   const reimbursementRows = flowRows.filter(row => row.financeKind === 'personal_expense' || row.financeKind === 'settlement_to_me');
   const reimbursementBalance = Math.max(0, Math.max(0, data.openingPersonalBalance) + reimbursementRows.reduce((sum, row) => sum + row.personalBalanceEffect, 0));
   const heldCashBalance = Math.max(0, reimbursementBalance - summary.personalBalance);
-  const upcoming = transactions.filter(tx => tx.status === 'committed' || tx.status === 'expected')
-    .sort((a, b) => a.date.localeCompare(b.date)).slice(0, 6);
   const rentCovered = summary.currentBalance >= data.nextRentAmount + data.safetyReserve + Math.max(0, summary.personalBalance);
 
   // ── החודש הנוכחי בלבד ─────────────────────────────────────────────────────
@@ -291,62 +289,36 @@ function Overview({ summary, data, donations, onAdd, onSettings, transactions, o
   }, { income: 0, expense: 0 }), [flowRows, thisMonth]);
   const monthName = new Date(`${thisMonth}-15T12:00:00`).toLocaleDateString('he-IL', { month: 'long' });
 
-  return <div className="space-y-4">
+  return <div className="space-y-3">
     {/*
-      הדשבורד: שתי השאלות שאשר בחר, בגדול, לפני כל השאר.
-      „כמה יש עכשיו” ו„מה מותר להוציא” הם מה שהוא בא לבדוק; כל היתר
-      הוא פירוט שנחוץ רק אחרי שענית עליהם.
+      ── מה נמחק מכאן, ולמה ─────────────────────────────────────────────────
+      אשר: „כרגע העמסת עוד יותר על החלון תמונה עכשיו.” הוא צדק, והטעות
+      הייתה מדויקת: הוספתי דשבורד עם „כמה יש עכשיו” ו„מה בטוח להוציא”
+      **מעל** שורת ריבועים שכבר הציגה בדיוק את אותם שני מספרים בשמות
+      „זמין כרגע” ו„בטוח לשימוש”. זו לא הייתה תוספת אלא כפילות.
+
+      לכן: שני המספרים האלה חיים עכשיו רק בגדול, ושורת הריבועים ירדה
+      מחמישה לשלושה. בנוסף ירדו „מה אפשר לעשות עכשיו” — שלוש שורות
+      תחזית שמופיעות ממילא בפירוט של „מה בטוח להוציא” — ו„הקרוב
+      בתזרים”, שעבר לחלון התנועות תחת „החודשים הבאים”.
+
+      שום מידע לא אבד; הוא במרחק לחיצה אחת במקום להיערם על המסך.
     */}
     <div className="grid sm:grid-cols-2 gap-3">
-      <div className={`rounded-2xl p-5 ${summary.currentBalance >= 0 ? 'bg-[#0D1B2A]' : 'bg-red-900'}`}>
+      <button onClick={() => setDetail('current')} className={`text-right rounded-2xl p-5 ${summary.currentBalance >= 0 ? 'bg-[#0D1B2A]' : 'bg-red-900'}`}>
         <small className="text-white/60 font-bold">כמה יש עכשיו</small>
         <b className="block font-['Frank_Ruhl_Libre'] text-3xl sm:text-4xl text-[#E8C97A] mt-1">{money(summary.currentBalance)}</b>
-        <span className="block text-[11px] text-white/50 mt-1.5">בחשבון ובקופת הפעילות. מזומן שנשמר בצד אינו נכלל.</span>
-      </div>
-      <div className={`rounded-2xl p-5 border ${summary.shortfall > 0 ? 'bg-red-50 border-red-200' : 'bg-emerald-50 border-emerald-200'}`}>
+        <span className="block text-[11px] text-white/50 mt-1.5">בחשבון ובקופת הפעילות · לחץ לפירוט</span>
+      </button>
+      <button onClick={() => setDetail('safe')} className={`text-right rounded-2xl p-5 border ${summary.shortfall > 0 ? 'bg-red-50 border-red-200' : 'bg-emerald-50 border-emerald-200'}`}>
         <small className={`font-bold ${summary.shortfall > 0 ? 'text-red-700' : 'text-emerald-800'}`}>מה בטוח להוציא</small>
         <b className={`block font-['Frank_Ruhl_Libre'] text-3xl sm:text-4xl mt-1 ${summary.shortfall > 0 ? 'text-red-700' : 'text-emerald-800'}`}>
           {summary.shortfall > 0 ? `חסרים ${money(summary.shortfall)}` : money(summary.safeToUse)}
         </b>
         <span className={`block text-[11px] mt-1.5 ${summary.shortfall > 0 ? 'text-red-600' : 'text-emerald-700'}`}>
-          {summary.shortfall > 0
-            ? 'צריך לצאת יותר ממה שיש. כדאי לא להתחייב על חדש.'
-            : 'אחרי שכירות, רזרבה, התחייבויות וכסף שמגיע לך.'}
+          {summary.shortfall > 0 ? 'צריך לצאת יותר ממה שיש · לחץ לפירוט' : 'אחרי שכירות, רזרבה וחובות · לחץ לפירוט'}
         </span>
-      </div>
-    </div>
-
-    {/* ── החודש הזה ── */}
-    <div className="bg-white border border-[#EDE6D6] rounded-2xl p-4">
-      <div className="flex items-baseline justify-between gap-2 mb-3">
-        <h2 className="font-bold text-[#0D1B2A]">{monthName}</h2>
-        <small className="text-gray-400">רק מה שקרה בפועל החודש</small>
-      </div>
-      <div className="grid grid-cols-3 gap-2 text-center">
-        <div className="bg-emerald-50 rounded-xl p-3"><small className="text-emerald-800 font-bold">נכנס</small><b className="block text-lg text-emerald-800 mt-0.5">{money(monthFlow.income)}</b></div>
-        <div className="bg-red-50 rounded-xl p-3"><small className="text-red-700 font-bold">יצא</small><b className="block text-lg text-red-700 mt-0.5">{money(monthFlow.expense)}</b></div>
-        <div className={`rounded-xl p-3 ${monthFlow.income - monthFlow.expense >= 0 ? 'bg-[#FAF6EE]' : 'bg-amber-50'}`}><small className="text-gray-600 font-bold">הפרש</small><b className={`block text-lg mt-0.5 ${monthFlow.income - monthFlow.expense >= 0 ? 'text-[#0D1B2A]' : 'text-amber-700'}`}>{money(monthFlow.income - monthFlow.expense)}</b></div>
-      </div>
-    </div>
-
-    {/*
-      חמישה מספרים ולא ארבעה. „כל מה שנכנס” נוסף כי בלעדיו אי אפשר היה
-      לענות על שאלה פשוטה — כמה כסף עבר דרך הפעילות — בלי שהתשובה תעורבב
-      מיד עם מה שצריך לצאת. השניים הם שאלות שונות וראויים לשני מספרים.
-    */}
-    <div className="grid grid-cols-2 lg:grid-cols-5 gap-2.5">
-      <Metric title="כל מה שנכנס" value={money(summary.grossIncome)} hint="סך ההכנסות, בלי לקזז כלום" icon={<ArrowUpRight size={18} />} tone="green" onClick={() => setDetail('gross')} />
-      <Metric title="זמין כרגע" value={money(summary.currentBalance)} hint="לחץ לפירוט מה כלול בסכום" icon={<Landmark size={18} />} tone={summary.currentBalance >= 0 ? 'blue' : 'red'} onClick={() => setDetail('current')} />
-      <Metric title="מחויב לצאת" value={money(summary.committedExpense)} hint="לחץ לרשימת כל ההתחייבויות" icon={<CalendarClock size={18} />} tone="amber" onClick={() => setDetail('committed')} />
-      <Metric
-        title="בטוח לשימוש"
-        value={summary.shortfall > 0 ? `חסרים ${money(summary.shortfall)}` : money(summary.safeToUse)}
-        hint={summary.shortfall > 0 ? 'צריך לצאת יותר ממה שיש. לחץ לפירוט' : 'לחץ לראות את החישוב המלא'}
-        icon={<ShieldCheck size={18} />}
-        tone={summary.shortfall > 0 ? 'red' : summary.safeToUse > 0 ? 'green' : 'red'}
-        onClick={() => setDetail('safe')}
-      />
-      <Metric title="החזרים שמגיעים לי" value={reimbursementBalance === 0 ? 'אין יתרה' : money(reimbursementBalance)} hint="רק הוצאות ששילמתי מכיסי, פחות החזרים" icon={<WalletCards size={18} />} tone={reimbursementBalance > 0 ? 'purple' : 'green'} onClick={() => setDetail('personal')} />
+      </button>
     </div>
 
     {/*
@@ -366,40 +338,51 @@ function Overview({ summary, data, donations, onAdd, onSettings, transactions, o
       </span>
     </button>}
 
-    <div className="grid lg:grid-cols-2 gap-3">
-      <section className="bg-white border border-[#EDE6D6] rounded-2xl p-4">
-        <div className="flex items-center justify-between gap-2 mb-3"><h2 className="font-bold text-[#0D1B2A]">מה אפשר לעשות עכשיו</h2><button onClick={onSettings} className="text-xs text-[#9B7A2F] font-bold flex items-center gap-1"><Settings size={13} /> כללי חישוב</button></div>
-        <div className="space-y-2 text-sm">
-          <Line label={`תחזית בטוחה ל־${data.forecastDays} יום`} value={money(summary.guaranteedBalance)} />
-          <Line label="תחזית אם גם הצפוי ייכנס" value={money(summary.optimisticBalance)} />
-          <Line label="כסף שמוגן לשכירות, רזרבה וחובות" value={money(summary.protectedAmount)} />
-        </div>
-        {data.nextRentAmount > 0 && <div className={`mt-3 rounded-xl p-3 text-xs font-bold ${rentCovered ? 'bg-emerald-50 text-emerald-800' : 'bg-red-50 text-red-700'}`}>
-          {rentCovered ? '✓ לפי המצב הנוכחי יש כיסוי לשכירות הקרובה' : `⚠ חסרים ${money(data.nextRentAmount + data.safetyReserve + Math.max(0, summary.personalBalance) - summary.currentBalance)} לכיסוי השכירות, הרזרבה והחובות`}
-        </div>}
-        {(summary.firstRiskDate || summary.currentBalance < summary.protectedAmount) && <div className="mt-2 bg-red-50 text-red-700 rounded-xl p-3 text-xs font-bold">
-          ⚠ התזרים הבטוח יורד מתחת לסכום המוגן {summary.firstRiskDate ? `ב־${dateLabel(summary.firstRiskDate)}` : 'כבר עכשיו'}
-        </div>}
-      </section>
-
-      <section className="bg-white border border-[#EDE6D6] rounded-2xl p-4">
-        <h2 className="font-bold text-[#0D1B2A] mb-3">הוספה מהירה</h2>
-        <div className="grid grid-cols-2 gap-2">
-          <Quick label="הוצאה" icon={<ArrowDownLeft size={17} />} onClick={() => onAdd('expense')} />
-          <Quick label="הוצאה מכיסי" icon={<WalletCards size={17} />} onClick={() => onAdd('personal_expense')} />
-          <Quick label="מזומן שקיבלתי" icon={<ArrowUpRight size={17} />} onClick={() => onAdd('cash_income')} />
-          <Quick label="הוצאה עתידית" icon={<CalendarClock size={17} />} onClick={() => onAdd('expense', 'committed')} />
-          <Quick label="הכנסה צפויה" icon={<Plus size={17} />} onClick={() => onAdd('income', 'expected')} />
-          <Quick label="משכורת ששולמה" icon={<Landmark size={17} />} onClick={() => onAdd('salary')} />
-        </div>
-      </section>
+    {/* ── החודש הזה ── */}
+    <div className="bg-white border border-[#EDE6D6] rounded-2xl p-4">
+      <div className="flex items-baseline justify-between gap-2 mb-3">
+        <h2 className="font-bold text-[#0D1B2A]">{monthName}</h2>
+        <small className="text-gray-400">רק מה שקרה בפועל החודש</small>
+      </div>
+      <div className="grid grid-cols-3 gap-2 text-center">
+        <div className="bg-emerald-50 rounded-xl p-3"><small className="text-emerald-800 font-bold">נכנס</small><b className="block text-lg text-emerald-800 mt-0.5">{money(monthFlow.income)}</b></div>
+        <div className="bg-red-50 rounded-xl p-3"><small className="text-red-700 font-bold">יצא</small><b className="block text-lg text-red-700 mt-0.5">{money(monthFlow.expense)}</b></div>
+        <div className={`rounded-xl p-3 ${monthFlow.income - monthFlow.expense >= 0 ? 'bg-[#FAF6EE]' : 'bg-amber-50'}`}><small className="text-gray-600 font-bold">הפרש</small><b className={`block text-lg mt-0.5 ${monthFlow.income - monthFlow.expense >= 0 ? 'text-[#0D1B2A]' : 'text-amber-700'}`}>{money(monthFlow.income - monthFlow.expense)}</b></div>
+      </div>
     </div>
 
+    {/* שלושה במקום חמישה: השניים הגדולים כבר למעלה. */}
+    <div className="grid grid-cols-3 gap-2.5">
+      <Metric title="כל מה שנכנס" value={money(summary.grossIncome)} hint="בלי לקזז כלום" icon={<ArrowUpRight size={18} />} tone="green" onClick={() => setDetail('gross')} />
+      <Metric title="מחויב לצאת" value={money(summary.committedExpense)} hint="כל ההתחייבויות" icon={<CalendarClock size={18} />} tone="amber" onClick={() => setDetail('committed')} />
+      <Metric title="מגיע לי בחזרה" value={reimbursementBalance === 0 ? 'אין יתרה' : money(reimbursementBalance)} hint="מה ששילמתי מכיסי" icon={<WalletCards size={18} />} tone={reimbursementBalance > 0 ? 'purple' : 'green'} onClick={() => setDetail('personal')} />
+    </div>
+
+    {/*
+      אזהרות בלבד, בלי המספרים שלצידן. שלוש שורות התחזית שהיו כאן
+      נמצאות בפירוט של „מה בטוח להוציא”, ואין סיבה שיישבו בשני מקומות.
+      אזהרה, לעומת זאת, חייבת להופיע בלי שילחצו עליה.
+    */}
+    {data.nextRentAmount > 0 && !rentCovered && <div className="bg-red-50 text-red-700 rounded-2xl p-3 text-xs font-bold">
+      ⚠ חסרים {money(data.nextRentAmount + data.safetyReserve + Math.max(0, summary.personalBalance) - summary.currentBalance)} לכיסוי השכירות, הרזרבה והחובות
+    </div>}
+    {(summary.firstRiskDate || summary.currentBalance < summary.protectedAmount) && <div className="bg-red-50 text-red-700 rounded-2xl p-3 text-xs font-bold">
+      ⚠ התזרים הבטוח יורד מתחת לסכום המוגן {summary.firstRiskDate ? `ב־${dateLabel(summary.firstRiskDate)}` : 'כבר עכשיו'}
+    </div>}
+
     <section className="bg-white border border-[#EDE6D6] rounded-2xl p-4">
-      <h2 className="font-bold text-[#0D1B2A] mb-3">הקרוב בתזרים</h2>
-      {upcoming.length === 0 ? <p className="text-sm text-gray-400">אין כרגע התחייבויות או צפי. אפשר להוסיף מראש הוצאות קבועות.</p> : <div className="divide-y divide-[#F1ECE1]">
-        {upcoming.map(tx => <div key={tx.id} className="py-2.5 flex items-center justify-between gap-3 text-sm"><span className="min-w-0"><b className="block truncate text-[#0D1B2A]">{tx.title}</b><small className="text-gray-500">{dateLabel(tx.date)} · {STATUS_LABELS[tx.status]}</small></span><b className={tx.kind.includes('income') ? 'text-emerald-700' : 'text-red-600'}>{money(tx.amount)}</b></div>)}
-      </div>}
+      <div className="flex items-center justify-between gap-2 mb-3">
+        <h2 className="font-bold text-[#0D1B2A]">הוספה מהירה</h2>
+        <button onClick={onSettings} className="text-xs text-[#9B7A2F] font-bold flex items-center gap-1"><Settings size={13} /> כללי חישוב</button>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+        <Quick label="הוצאה" icon={<ArrowDownLeft size={17} />} onClick={() => onAdd('expense')} />
+        <Quick label="הוצאה מכיסי" icon={<WalletCards size={17} />} onClick={() => onAdd('personal_expense')} />
+        <Quick label="מזומן שקיבלתי" icon={<ArrowUpRight size={17} />} onClick={() => onAdd('cash_income')} />
+        <Quick label="הוצאה עתידית" icon={<CalendarClock size={17} />} onClick={() => onAdd('expense', 'committed')} />
+        <Quick label="הכנסה צפויה" icon={<Plus size={17} />} onClick={() => onAdd('income', 'expected')} />
+        <Quick label="משכורת ששולמה" icon={<Landmark size={17} />} onClick={() => onAdd('salary')} />
+      </div>
     </section>
     {detail && <FinanceMetricDetails kind={detail} summary={summary} data={data} donations={donations} reimbursementBalance={reimbursementBalance} heldCashBalance={heldCashBalance} onClose={() => setDetail(null)} onResolved={onResolved} />}
   </div>;
@@ -971,7 +954,6 @@ function Metric({ title, value, hint, icon, tone, onClick }: { title: string; va
     : <div className={className}><div className="flex items-center gap-1.5 text-xs font-bold opacity-80">{icon}{title}</div><div className="text-xl sm:text-2xl font-black mt-2">{value}</div><div className="text-[10px] mt-1 opacity-80 leading-tight">{hint}</div></div>;
 }
 function Quick({ label, icon, onClick }: { label: string; icon: React.ReactNode; onClick: () => void }) { return <button onClick={onClick} className="border border-[#EDE6D6] hover:bg-[#FAF6EE] rounded-xl p-3 text-right text-xs font-bold text-[#0D1B2A] flex items-center gap-2">{icon}{label}</button>; }
-function Line({ label, value }: { label: string; value: string }) { return <div className="flex justify-between gap-3"><span className="text-gray-500">{label}</span><b className="text-[#0D1B2A]">{value}</b></div>; }
 function Field({ label, children }: { label: string; children: React.ReactNode }) { return <label className="block space-y-1"><span className="block text-xs font-bold text-gray-600">{label}</span>{children}</label>; }
 function MoneyInput({ value, onChange }: { value: number; onChange: (value: number) => void }) { return <div className="relative"><span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">₪</span><input type="number" inputMode="decimal" value={value || ''} onChange={e => onChange(Number(e.target.value) || 0)} className={`${INPUT} pr-8`} /></div>; }
 function MoneyFilter({ value, onChange }: { value: string; onChange: (value: string) => void }) { return <div className="relative"><span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">₪</span><input type="number" min="0" inputMode="decimal" value={value} onChange={e => onChange(e.target.value)} className={`${INPUT} pr-8`} /></div>; }
