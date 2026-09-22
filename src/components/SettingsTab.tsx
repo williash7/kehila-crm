@@ -184,7 +184,7 @@ export function SettingsTab({ openTarget, onOpenTargetConsumed }: {
         </button>
       </div>
 
-      <div className={`p-4 md:p-6 space-y-5 ${hasLivePreview ? 'max-w-[1050px] md:pl-[328px]' : 'max-w-2xl'}`}>
+      <div className={`p-4 md:p-6 space-y-5 ${hasLivePreview ? 'max-w-[1100px] md:pl-[368px]' : 'max-w-2xl'}`}>
         {group === null ? (
           <div>
             <div className="mb-4">

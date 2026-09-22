@@ -1,5 +1,5 @@
 /* ═══ נוצר אוטומטית על ידי scripts/gen-theme-map.mjs — אין לערוך ביד ═══
-   73 כללים, מתוך סריקה של 142 קבצים.
+   75 כללים, מתוך סריקה של 142 קבצים.
    לעדכון: npm run theme
    ═════════════════════════════════════════════════════════════════════ */
 
@@ -28,6 +28,7 @@
 [data-theme] .bg-\[\#FAF6EE\]\/95 { background-color: color-mix(in srgb, var(--c-cream) 95%, transparent); }
 [data-theme] .bg-\[\#FDF6E3\] { background-color: var(--c-cream); }
 [data-theme] .border-\[\#0D1B2A\] { border-color: var(--c-text); }
+[data-theme] .border-\[\#0D1B2A\]\/10 { border-color: color-mix(in srgb, var(--c-text) 10%, transparent); }
 [data-theme] .border-\[\#C9A84C\] { border-color: var(--c-gold); }
 [data-theme] .border-\[\#C9A84C\]\/30 { border-color: color-mix(in srgb, var(--c-gold) 30%, transparent); }
 [data-theme] .border-\[\#C9A84C\]\/35 { border-color: color-mix(in srgb, var(--c-gold) 35%, transparent); }
@@ -61,6 +62,7 @@
 [data-theme] .hover\:text-\[\#9B7A2F\]:hover { color: var(--c-gold-dark); }
 [data-theme] .hover\:text-\[\#C9A84C\]:hover { color: var(--c-gold); }
 [data-theme] .ring-\[\#C9A84C\] { --tw-ring-color: var(--c-gold); }
+[data-theme] .ring-\[\#C9A84C\]\/40 { --tw-ring-color: color-mix(in srgb, var(--c-gold) 40%, transparent); }
 [data-theme] .ring-\[\#EDE6D6\] { --tw-ring-color: var(--c-border); }
 [data-theme] .text-\[\#0D1B2A\] { color: var(--c-text); }
 [data-theme] .text-\[\#0D1B2A\]\/70 { color: color-mix(in srgb, var(--c-text) 70%, transparent); }
