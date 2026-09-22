@@ -18,6 +18,7 @@ import { ScoreTab } from './components/ScoreTab';
 import { DonationsTab } from './components/DonationsTab';
 import { HistoryTab } from './components/HistoryTab';
 import { FinanceTab } from './components/FinanceTab';
+import { DueFinanceCommitments } from './components/DueFinanceCommitments';
 import { DonationModal } from './components/DonationModal';
 import { AllDatesModal } from './components/AllDatesModal';
 import { ScriptVersionBanner } from './components/ScriptVersionBanner';
@@ -160,7 +161,7 @@ function AppContent() {
           {activeTab === 'donors' && <DonorsTab addTrigger={addTrigger} />}
           {activeTab === 'homevisits' && <HomeVisitsTab addTrigger={addTrigger} />}
           {activeTab === 'donations' && <DonationsTab onAddDonation={() => setIsDonationOpen(true)} openTarget={openTarget} onOpenTargetConsumed={consumeOpenTarget} />}
-          {activeTab === 'finance' && <FinanceTab />}
+          {activeTab === 'finance' && <><DueFinanceCommitments /><FinanceTab /></>}
           {activeTab === 'events' && <EventsTab addTrigger={addTrigger} openTarget={openTarget} onOpenTargetConsumed={consumeOpenTarget} />}
           {activeTab === 'calendar' && <CalendarTab addTrigger={addTrigger} />}
           {/* "תאריכים" הוא מסך מלא בפני עצמו — נפתח כטאב, ונסגר חזרה לדשבורד */}
