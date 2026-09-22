@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAppStore } from '../store/AppContext';
-import { Plus, Users, Calendar, Info, AlertTriangle, CheckCircle, ChevronLeft, Pencil, X, CalendarDays, MessageSquare, ClipboardList } from 'lucide-react';
+import { Plus, Users, Calendar, AlertTriangle, CheckCircle, ChevronLeft, Pencil, X, CalendarDays, MessageSquare, ClipboardList } from 'lucide-react';
 import { ProfileModal } from './ProfileModal';
 import { HolidayModal } from './HolidayModal';
 import { DateConverterModal } from './DateConverterModal';
@@ -22,6 +22,7 @@ import { toCanonicalHebrewString } from '../lib/hebrewDates';
 import { ACTIVITY_KIND_LABEL, activityDonations, activityReadiness, upcomingActivities } from '../lib/activities';
 import { projectProgress, projectPurposeTags } from '../lib/projects';
 import { sumBudgetLines } from '../lib/holidayEvents';
+import { DonationDashboardPeriod, filterDonationsForDashboard } from '../lib/donationFilter';
 
 const FAILURE_WINDOW_DAYS = 30;
 
@@ -36,6 +37,38 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd }: { setTab: (t: s
   const [letterInfo, setLetterInfo] = useState<{name: string, amount: number, date: string, phone: string} | null>(null);
   const [isHkOpen, setIsHkOpen] = useState(false);
   const [hkReminderDismissed, setHkReminderDismissed] = useState(isMonthlyReminderReviewed());
+  const [donationPeriod, setDonationPeriod] = useState<DonationDashboardPeriod>('month');
+  const [specificDonationDate, setSpecificDonationDate] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  });
+
+  const dashboardDonations = React.useMemo(() =>
+    (filterDonationsForDashboard(donations, donationPeriod, specificDonationDate) as typeof donations)
+      .filter(donation => Number(donation.amount) > 0),
+  [donations, donationPeriod, specificDonationDate]);
+
+  const dashboardDonationSummary = React.useMemo(() => {
+    const byMethod: Record<string, number> = {};
+    const donorNames = new Set<string>();
+    let total = 0;
+    dashboardDonations.forEach(donation => {
+      const amount = Number(donation.amount) || 0;
+      total += amount;
+      if (donation.name) donorNames.add(donation.name);
+      const method = String(donation.method || 'לא צוין');
+      byMethod[method] = (byMethod[method] || 0) + amount;
+    });
+    return { total, donorCount: donorNames.size, byMethod };
+  }, [dashboardDonations]);
+
+  const donationPeriodLabel: Record<DonationDashboardPeriod, string> = {
+    today: 'היום',
+    week: 'השבוע',
+    month: 'החודש',
+    year: 'השנה',
+    date: 'בתאריך שנבחר',
+  };
 
   const handleRebbeSave = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -379,22 +412,38 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd }: { setTab: (t: s
   const renderHeroSummary = () => (
     <div className="bg-gradient-to-br from-[#0D1B2A] to-[#1A2E45] rounded-2xl p-5 relative overflow-hidden text-white shadow-lg">
       <div className="absolute -top-3 -left-2 text-[110px] text-[#C9A84C]/5 leading-none pointer-events-none">✡</div>
-      <div className="flex items-center justify-between mb-1">
-        <div className="text-[11px] text-white/60 uppercase tracking-widest flex items-center gap-1.5 cursor-pointer"
-          onClick={() => alert('הסכום משקף את כל התרומות והוראות הקבע שחויבו בפועל. הסכום אינו כולל חיובים שסורבו ע"י חברת האשראי.')}>
-          <span>תרומות החודש</span>
-          <Info size={12} className="text-white/40" />
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+        <div className="text-[11px] text-white/60 uppercase tracking-widest">
+          תרומות {donationPeriodLabel[donationPeriod]}
         </div>
+        <select
+          aria-label="תקופת התרומות בדשבורד"
+          value={donationPeriod}
+          onChange={event => setDonationPeriod(event.target.value as DonationDashboardPeriod)}
+          className="relative z-10 bg-white/10 border border-white/20 text-white text-xs rounded-lg px-2 py-1 outline-none"
+        >
+          <option className="text-gray-900" value="today">היום</option>
+          <option className="text-gray-900" value="week">השבוע</option>
+          <option className="text-gray-900" value="month">החודש</option>
+          <option className="text-gray-900" value="year">השנה</option>
+          <option className="text-gray-900" value="date">תאריך מסוים</option>
+        </select>
       </div>
+      {donationPeriod === 'date' && <input
+        aria-label="בחירת תאריך לתרומות"
+        type="date"
+        value={specificDonationDate}
+        onChange={event => setSpecificDonationDate(event.target.value)}
+        className="relative z-10 mb-3 bg-white/10 border border-white/20 text-white text-xs rounded-lg px-2 py-1.5 [color-scheme:dark]"
+      />}
       <div className="font-['Frank_Ruhl_Libre'] text-4xl font-black text-[#E8C97A] leading-none mb-1">
-        <span className="text-xl font-normal ml-1">₪</span>{effectiveSummary?.thisMonthTotal?.toLocaleString() || 0}
+        <span className="text-xl font-normal ml-1">₪</span>{dashboardDonationSummary.total.toLocaleString()}
       </div>
       <div className="flex items-center justify-between text-xs text-white/45">
-        <div>{effectiveSummary?.donorCount || 0} אנשי קשר תרמו {settings.donationsSinceDate ? `מ-${new Date(settings.donationsSinceDate).toLocaleDateString('he-IL')}` : 'השנה'}</div>
+        <div>{dashboardDonationSummary.donorCount} אנשי קשר תרמו {donationPeriodLabel[donationPeriod]}</div>
       </div>
-      <div className="text-[9px] text-white/30 mt-1 opacity-80">(כולל הו"ק. ללא עסקאות שסורבו)</div>
       <div className="flex flex-wrap gap-2 mt-3">
-        {effectiveSummary?.byMethod && Object.entries(effectiveSummary.byMethod).map(([method, amount], i) => (
+        {Object.entries(dashboardDonationSummary.byMethod).map(([method, amount], i) => (
           <div key={method} onClick={() => setSelectedMethodForDetails(method)}
             className="bg-white/5 border border-white/10 rounded-full px-3 py-1 text-[11px] text-white/65 flex items-center gap-1.5 cursor-pointer hover:bg-white/10 transition-colors">
             <div className={`w-1.5 h-1.5 rounded-full ${i === 0 ? 'bg-amber-500' : i === 1 ? 'bg-blue-500' : i === 2 ? 'bg-emerald-500' : 'bg-purple-500'}`} />
@@ -609,7 +658,7 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd }: { setTab: (t: s
                 </div>
               ))
             ) : (
-              donations.filter(d => d.method === selectedMethodForDetails).slice().reverse().map((d, i) => (
+              dashboardDonations.filter(d => String(d.method || 'לא צוין') === selectedMethodForDetails).slice().reverse().map((d, i) => (
                 <div key={i} className="bg-white rounded-xl p-3 shadow-sm border border-gray-100 flex items-center justify-between cursor-pointer" onClick={() => setSelectedDonor(d.name)}>
                   <div>
                     <div className="font-bold text-[#0D1B2A] text-sm">{d.name}</div>
@@ -628,7 +677,7 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd }: { setTab: (t: s
                 </div>
               ))
             )}
-            {selectedMethodForDetails !== 'failures_modal' && donations.filter(d => d.method === selectedMethodForDetails).length === 0 && (
+            {selectedMethodForDetails !== 'failures_modal' && dashboardDonations.filter(d => String(d.method || 'לא צוין') === selectedMethodForDetails).length === 0 && (
               <div className="text-center py-6 text-gray-500 text-sm">אין תרומות מאפיק זה</div>
             )}
           </div>

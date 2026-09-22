@@ -30,6 +30,51 @@ export interface SinceSummary {
   byMethod: Record<string, number>;
 }
 
+export type DonationDashboardPeriod = 'today' | 'week' | 'month' | 'year' | 'date';
+
+function localIsoDate(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+/** מסנן את כל נתוני כרטיס התרומות לאותו טווח. שבוע בישראל: ראשון–שבת. */
+export function filterDonationsForDashboard<T extends { date?: string }>(
+  donations: T[],
+  period: DonationDashboardPeriod,
+  specificDate = '',
+  now = new Date(),
+): T[] {
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  let from = new Date(today);
+  let to = new Date(today);
+
+  if (period === 'week') {
+    from.setDate(today.getDate() - today.getDay());
+    to.setDate(from.getDate() + 6);
+  } else if (period === 'month') {
+    from = new Date(today.getFullYear(), today.getMonth(), 1);
+    to = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+  } else if (period === 'year') {
+    from = new Date(today.getFullYear(), 0, 1);
+    to = new Date(today.getFullYear(), 11, 31);
+  } else if (period === 'date') {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(specificDate)) return [];
+    const [year, month, day] = specificDate.split('-').map(Number);
+    from = new Date(year, month - 1, day);
+    to = new Date(from);
+    if (localIsoDate(from) !== specificDate) return [];
+  }
+
+  from.setHours(0, 0, 0, 0);
+  to.setHours(23, 59, 59, 999);
+  return donations.filter(donation => {
+    const date = parseDdMmYyyy(donation.date);
+    return !!date && date >= from && date <= to;
+  });
+}
+
 // מחשב תקציר (סה"כ, החודש, מס' תורמים, לפי אפיק) מרשימת התרומות הגולמית,
 // עבור טווח תאריכים נתון. amount<=0 (רשומות "מפגש") לא נספרות בסכום.
 export function computeSummarySince(donations: Donation[], sinceIso: string): SinceSummary {
