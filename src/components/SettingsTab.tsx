@@ -23,6 +23,7 @@ import { AuditLogCard } from './AuditLogCard';
 import { DailyReminderCard } from './DailyReminderCard';
 import type { SettingsTarget, SettingsGroupId } from '../lib/featureCatalog';
 import { useRevealEntity } from '../lib/openTarget';
+import { SettingsLivePreview } from './SettingsLivePreview';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // בפתיחה מוצגות קטגוריות בלבד. לחיצה נכנסת לעמוד ההגדרות הרלוונטי,
@@ -45,6 +46,7 @@ export function SettingsTab({ openTarget, onOpenTargetConsumed }: {
 } = {}) {
   const [group, setGroup] = useState<SettingsGroupId | null>(null);
   const currentGroup = SETTINGS_GROUPS.find(item => item.id === group);
+  const hasLivePreview = group === 'appearance' || group === 'navigation';
 
   const { settings, updateSettings, donors, visibleDonors, eventsData, holidayExtras, donations, crm, refresh, holidays, summary } = useAppStore();
   const org = getOrg();
@@ -182,7 +184,7 @@ export function SettingsTab({ openTarget, onOpenTargetConsumed }: {
         </button>
       </div>
 
-      <div className="p-4 md:p-6 max-w-2xl space-y-5">
+      <div className={`p-4 md:p-6 space-y-5 ${hasLivePreview ? 'max-w-[1050px] md:pl-[328px]' : 'max-w-2xl'}`}>
         {group === null ? (
           <div>
             <div className="mb-4">
@@ -210,6 +212,8 @@ export function SettingsTab({ openTarget, onOpenTargetConsumed }: {
             <div className="text-[10px] text-gray-500">{currentGroup?.hint}</div>
           </div>
         </div>
+
+        {hasLivePreview && <SettingsLivePreview group={group} />}
 
         {group === 'organization' && (<>
         {/* התשובה ל"האם הכול מעודכן?" — ראשונה, כי זו השאלה הראשונה

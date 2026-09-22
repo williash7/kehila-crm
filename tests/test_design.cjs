@@ -241,7 +241,9 @@ axes.forEach(([attr, , key]) => assert.ok(
 const card = fs.readFileSync(root + '/src/components/AppearanceCard.tsx', 'utf8');
 ['THEMES', 'FINISHES', 'SURFACES', 'ICON_STYLES', 'FONTS', 'UI_SIZES', 'DENSITIES'].forEach(n =>
   assert.ok(card.includes(n), `מסך המראה אינו מציג את ${n}`));
-assert.ok(/LivePreview/.test(card), 'צריך תצוגה מקדימה — שם של גימור לא אומר כלום');
+const preview = fs.readFileSync(root + '/src/components/SettingsLivePreview.tsx', 'utf8');
+assert.ok(/SettingsLivePreview/.test(preview), 'צריך תצוגה מקדימה — שם של גימור לא אומר כלום');
+assert.ok(/מתעדכנת מיד עם כל שינוי/.test(preview), 'התצוגה צריכה להיות חיה ולא צילום קבוע');
 
 const combos = axes.reduce((n, [, list]) => n * list.length, 1);
 console.log(`✓ מערכת העיצוב: ${S.THEMES.length} ערכות × ${S.FINISHES.length} גימורים × ` +

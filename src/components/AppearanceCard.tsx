@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Check, ChevronUp, ChevronDown, Eye, EyeOff, RotateCcw, Home, Users, HandCoins } from 'lucide-react';
+import { Check, ChevronUp, ChevronDown, Eye, EyeOff, RotateCcw } from 'lucide-react';
 import { useAppStore } from '../store/AppContext';
 import {
   THEMES, FINISHES, SURFACES, ICON_STYLES, FONTS,
@@ -17,54 +17,6 @@ import { DASH_CARDS, DashCardId, resolveCards, hiddenCards, moveCard, DEFAULT_OR
 // כולן נשמרות **מקומית בלבד**. זה מכוון: מסך גדול בבית ומסך קטן בכיס אינם
 // צריכים אותה צפיפות, ואילו סנכרון היה כופה על שניהם את אותה בחירה.
 // ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * תצוגה מקדימה חיה.
- *
- * הדוגמית הזו אינה איור: היא בנויה מאותן מחלקות שמרכיבות את המסכים
- * האמיתיים — bg-white, rounded-2xl, border, shadow-sm — ולכן כל ציר שמשנה
- * אותן משנה גם אותה. שם של סגנון לא אומר כלום; ההבדל בין "מרחף" ל"מוגדר"
- * הוא דבר שצריך לראות.
- */
-function LivePreview() {
-  return (
-    <div className="rounded-2xl overflow-hidden border border-[#EDE6D6]">
-      <div className="flex" style={{ background: 'var(--c-cream)' }}>
-        {/* פס ניווט מוקטן */}
-        <div className="w-20 shrink-0 nav-bg nav-border border-l p-1.5 space-y-1">
-          {[
-            { Icon: Home, label: 'דשבורד', on: true },
-            { Icon: Users, label: 'קשר', on: false },
-            { Icon: HandCoins, label: 'תרומות', on: false },
-          ].map(({ Icon, label, on }) => (
-            <div
-              key={label}
-              className={`flex items-center gap-1.5 px-1.5 py-1.5 rounded-lg text-[9px] font-medium ${
-                on ? 'nav-active' : 'nav-text'
-              }`}
-            >
-              <Icon size={12} /> {label}
-            </div>
-          ))}
-        </div>
-
-        {/* תוכן */}
-        <div className="flex-1 min-w-0 p-2.5 space-y-2">
-          <div className="bg-white rounded-2xl border border-[#EDE6D6] shadow-sm p-2.5">
-            <div className="font-['Frank_Ruhl_Libre'] text-sm font-bold text-[#0D1B2A]">תרומות החודש</div>
-            <div className="font-['Frank_Ruhl_Libre'] text-xl font-black text-[#C9A84C] leading-tight">₪4,280</div>
-            <div className="text-[9px] text-gray-400">מתוכן ₪2,400 בהוראות קבע</div>
-          </div>
-          <div className="flex gap-1.5">
-            <div className="bg-[#0D1B2A] text-[#E8C97A] text-[10px] font-bold px-2.5 py-1.5 rounded-xl">כפתור</div>
-            <div className="bg-white border border-[#EDE6D6] text-[#0D1B2A] text-[10px] font-bold px-2.5 py-1.5 rounded-xl shadow-sm">משני</div>
-            <div className="bg-[#C9A84C]/15 text-[#9B7A2F] text-[10px] font-bold px-2.5 py-1.5 rounded-full">תווית</div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 type TabId = 'color' | 'finish' | 'size' | 'dashboard';
 
@@ -142,10 +94,6 @@ export function AppearanceCard({ targetSection }: { targetSection?: string } = {
           </button>
         ))}
       </div>
-
-      {/* התצוגה המקדימה נשארת מעל כל לשונית שנוגעת בעיצוב — אין טעם לבחור
-          גימור בלי לראות אותו. */}
-      {tab !== 'dashboard' && <LivePreview />}
 
       {tab === 'color' && (
         <>
