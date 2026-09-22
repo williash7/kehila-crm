@@ -7,6 +7,8 @@ export interface Donation {
   amount: number;
   purpose?: string;
   method?: string;
+  /** סטטוס הגבייה כפי שמגיע מיומן התרומות. ריק = נגבה בפועל. */
+  status?: string;
   /** היכן נמצא הכסף בפועל. רלוונטי רק כשאפיק הגבייה הוא מזומן. */
   cashDestination?: CashDestination;
   notes?: string;
