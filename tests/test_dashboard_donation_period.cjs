@@ -17,4 +17,16 @@ assert.deepStrictEqual(D.filterDonationsForDashboard(donations, 'year', '', now)
 assert.deepStrictEqual(D.filterDonationsForDashboard(donations, 'date', '2026-09-01', now).map(d => d.name), ['החודש']);
 assert.deepStrictEqual(D.filterDonationsForDashboard(donations, 'date', '', now), []);
 
+const recent = D.recentDonationsFirst([
+  { name: 'ישן', date: '01/09/2026' },
+  { name: 'חדש ראשון באותו יום', date: '22/09/2026' },
+  { name: 'חדש אחרון באותו יום', date: '22/09/2026' },
+  { name: 'בלי תאריך', date: '' },
+], 3);
+assert.deepStrictEqual(recent.map(d => d.name), [
+  'חדש אחרון באותו יום',
+  'חדש ראשון באותו יום',
+  'ישן',
+]);
+
 console.log('✓ כרטיס התרומות בדשבורד מסנן את כל הנתונים לפי אותה תקופה');

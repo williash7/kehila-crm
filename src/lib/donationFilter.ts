@@ -75,6 +75,18 @@ export function filterDonationsForDashboard<T extends { date?: string }>(
   });
 }
 
+/** החדשות ביותר ראשונות; באותו יום הרשומה שהגיעה מאוחר יותר למערך קודמת. */
+export function recentDonationsFirst<T extends { date?: string }>(donations: T[], limit = 5): T[] {
+  return donations
+    .map((donation, index) => {
+      const parsed = parseDdMmYyyy(donation.date);
+      return { donation, index, time: parsed ? parsed.getTime() : -Infinity };
+    })
+    .sort((a, b) => b.time - a.time || b.index - a.index)
+    .slice(0, Math.max(0, limit))
+    .map(item => item.donation);
+}
+
 // מחשב תקציר (סה"כ, החודש, מס' תורמים, לפי אפיק) מרשימת התרומות הגולמית,
 // עבור טווח תאריכים נתון. amount<=0 (רשומות "מפגש") לא נספרות בסכום.
 export function computeSummarySince(donations: Donation[], sinceIso: string): SinceSummary {
