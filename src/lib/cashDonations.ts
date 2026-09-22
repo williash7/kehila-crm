@@ -26,15 +26,15 @@ export const CASH_DESTINATION_OPTIONS: { value: CashDestination; label: string; 
   { value: 'org_account', label: 'הופקד בחשבון העמותה', hint: 'זמין בחשבון העמותה' },
   { value: 'activity_cashbox', label: 'בקופת הפעילות', hint: 'זמין לפעילות במזומן' },
   { value: 'salary', label: 'נלקח כמשכורת', hint: 'נספר כהכנסה וכהוצאת משכורת. הבנק לא זז' },
-  { value: 'personal', label: 'נשמר בצד אצלי', hint: 'עדיין לא הוחלט מה קורה איתו' },
+  { value: 'personal', label: 'מזומן פעילות אצל אשר', hint: 'כסף של הפעילות שנמצא אצל אשר. לא נמצא בחשבון ולא נספר ביתרה הזמינה' },
   { value: 'unclassified', label: 'עדיין לא סווג', hint: 'לא ייכלל ביתרה עד לבירור' },
 ];
 
 /**
- * יעדים שמשאירים שאלה פתוחה.
+ * יעדים שמשאירים שאלה פתוחה או דורשים מעקב.
  *
- * שניהם אומרים „המזומן קיים אבל לא ידוע מה קרה איתו”, ולכן שניהם צריכים
- * להופיע באזהרה. ההפרדה ביניהם היא רק בכמה מפורשת הייתה הבחירה.
+ * `personal` הוא מצב ידוע: הכסף נמצא אצל אשר ואינו בחשבון. הוא עדיין
+ * נשאר ברשימת המעקב כדי שלא ייעלם מהעין עד שיופקד או ישמש בפועל.
  */
 export const CASH_DESTINATIONS_NEEDING_ATTENTION: CashDestination[] = ['personal', 'unclassified'];
 
