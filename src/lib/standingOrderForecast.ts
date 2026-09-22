@@ -3,42 +3,10 @@ import { HkEntry, getHkStatus } from './standingOrders';
 // ─────────────────────────────────────────────────────────────────────────────
 // הוראות קבע בתחזית.
 //
-// ── מה היה שבור ────────────────────────────────────────────────────────────
-//
-// אשר ניסח את זה כך:
-//
-//   „להגיד לך שאין לך כסף כי בעוד שלושה חודשים יש צ׳ק — זה לא ממש נכון,
-//    כי יש הו״ק ויהיו עוד הכנסות.”
-//
-// והוא צדק. התחזית ידעה לקרוא כל הוצאה עתידית שהוזנה, אבל את ההכנסה
-// הקבועה והצפויה ביותר שיש לפעילות — הוראות הקבע — היא לא ראתה בכלל.
-// חיוב של הו״ק נכנס למערכת רק **אחרי** שהוא נגבה, כשורת תרומה. לפני כן
-// הוא לא היה קיים בשום מקום שהתזרים מסתכל בו.
-//
-// התוצאה היא תחזית שרואה רק את הצד השלילי: כל מה שיוצא מופיע, כל מה
-// שנכנס באופן קבוע נעלם. זו לא זהירות — זו טעות בכיוון אחד.
-//
-// ── מה כאן ─────────────────────────────────────────────────────────────────
-//
-// חיזוי של מועדי החיוב הבאים לכל הוראה פעילה, עד אופק התחזית. שמרני
-// בכוונה בשלוש נקודות:
-//
-//   1. **רק הוראות פעילות.** הוראה שבוטלה, הסתיימה או חודשה תחת מספר אחר
-//      אינה מייצרת הכנסה עתידית.
-//   2. **רק מה שנספר.** הוראה מוגבלת מפסיקה אחרי `remaining` חיובים — לא
-//      נמשכת עד סוף האופק כאילו היא אינסופית.
-//   3. **רק מהיום והלאה.** חיוב שכבר נגבה יושב כבר כשורת תרומה אמיתית.
-//      אילו חזינו גם אותו, אותו כסף היה נספר פעמיים.
-//
-// ── איך מתייחסים אליו בחישוב ────────────────────────────────────────────────
-//
-// הוראת קבע יכולה להיכשל — ולכן היא עדיין מסומנת כ„צפוי” ולא כאילו הכסף
-// כבר נכנס. עם זאת, לפי כלל העבודה שנבחר למסך הכספים, הוראות קבע פעילות
-// כן נלקחות בחשבון ב„מה בטוח להוציא”. אחרת התחזית סופרת את כל הצ׳קים
-// העתידיים ומתעלמת מההכנסה הקבועה שאמורה לממן אותם.
-//
-// החיזוי עצמו כאן רק מייצר את מועדי וסכומי החיובים. ההחלטה באיזה מסלול
-// הם משתתפים נעשית ב-summarizeFinance.
+// התחזית יודעת לקרוא את הוראות הקבע הפעילות ולהפוך אותן להכנסות צפויות
+// לפי מועדי החיוב. הן עדיין מוצגות כ„צפוי”, אבל במסך הכספים הן משתתפות
+// בחישוב התזרים כדי שלא נספור את כל ההוצאות העתידיות ונעלים את ההכנסה
+// הקבועה שמממנת אותן.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface ProjectedCharge {
@@ -49,14 +17,35 @@ export interface ProjectedCharge {
   amount: number;
 }
 
+/**
+ * תאריכי הו״ק מגיעים מהשרת לעיתים כ-ISO ולעיתים בפורמט הישראלי
+ * dd/mm/yyyy. בעבר התחזית קיבלה רק ISO, ולכן במידע האמיתי מהגיליון
+ * נוצרו אפס חיובים צפויים — בדיוק הסיבה ש„מה בטוח להוציא” התעלם מהו״ק.
+ */
+function normalizeHkDate(value?: string | null): string {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+
+  let match = raw.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+  if (match) {
+    return `${match[1]}-${String(match[2]).padStart(2, '0')}-${String(match[3]).padStart(2, '0')}`;
+  }
+
+  match = raw.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})/);
+  if (match) {
+    const year = match[3].length === 2 ? `20${match[3]}` : match[3];
+    return `${year}-${String(match[2]).padStart(2, '0')}-${String(match[1]).padStart(2, '0')}`;
+  }
+
+  return '';
+}
+
 const isoDay = (iso: string): number => Number(iso.slice(8, 10)) || 0;
 
 /**
  * מוסיף חודשים לתאריך ומשמר את יום החיוב.
- *
- * ה-31 בחודש הוא המקרה שמפיל מימושים תמימים: `setMonth` על 31 בינואר
- * מגלגל ל-3 במרץ. כאן היום נחתך לאורך החודש בפועל, כך שהוראה שנגבית
- * ב-31 תיגבה ב-28 בפברואר ותחזור ל-31 במרץ — ולא תקפוץ קדימה.
+ * ה-31 בחודש נחתך לאורך החודש בפועל, כך שחיוב ב-31 בינואר נהיה
+ * 28/29 בפברואר וחוזר ל-31 במרץ.
  */
 export function addMonthsKeepingDay(iso: string, months: number, day: number): string {
   const base = new Date(`${iso.slice(0, 10)}T12:00:00`);
@@ -69,31 +58,28 @@ export function addMonthsKeepingDay(iso: string, months: number, day: number): s
   return result.toISOString().slice(0, 10);
 }
 
-/**
- * מועדי החיוב הצפויים של הוראה אחת, מהיום ועד האופק.
- *
- * `threshold` אינו משנה את החיזוי — הוא רק מה ש-getHkStatus צריך כדי
- * להבדיל בין „פעילה” ל„מסתיימת בקרוב”. שתיהן ממשיכות לחייב.
- */
+/** מועדי החיוב הצפויים של הוראה אחת, מהיום ועד האופק. */
 export function projectChargesFor(hk: HkEntry, todayIso: string, untilIso: string): ProjectedCharge[] {
   const status = getHkStatus(hk, 0);
   if (status === 'cancelled' || status === 'expired' || status === 'renewed') return [];
   const amount = Math.max(0, Number(hk.amount) || 0);
   if (!amount) return [];
 
-  // בלי מועד חיוב הבא ובלי חיוב אחרון אין על מה לבסס לוח זמנים. הימנעות
-  // מניחוש כאן עדיפה על תחזית שנראית מדויקת ואינה.
-  const anchor = (hk.nextCharge || '').slice(0, 10) || (hk.lastBilled || '').slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(anchor)) return [];
+  const nextCharge = normalizeHkDate(hk.nextCharge);
+  const lastBilled = normalizeHkDate(hk.lastBilled);
+  const anchor = nextCharge || lastBilled;
+  if (!anchor) return [];
   const day = isoDay(anchor);
 
   const limit = hk.unlimited ? Infinity : Math.max(0, Number(hk.remaining) || 0);
   if (limit === 0) return [];
 
   const charges: ProjectedCharge[] = [];
-  // אם העוגן הוא החיוב האחרון שכבר נגבה, הוא לא מתחיל את הרצף — הוא
-  // רק נותן את יום החודש. הלולאה בכל מקרה מדלגת על כל מה שאינו עתידי.
-  for (let step = 0; charges.length < limit && step < 120; step++) {
+  const anchorIsNextCharge = !!nextCharge;
+
+  // אם יש nextCharge, הוא החיוב הראשון העתידי ולכן מתחילים ממנו.
+  // אם יש רק lastBilled, העוגן הוא חיוב שכבר קרה ולכן מתחילים חודש אחריו.
+  for (let step = anchorIsNextCharge ? 0 : 1; charges.length < limit && step < 120; step++) {
     const date = step === 0 ? anchor : addMonthsKeepingDay(anchor, step, day);
     if (!date) break;
     if (date > untilIso) break;
@@ -116,12 +102,7 @@ export interface MonthlyStandingOrderIncome {
   count: number;
 }
 
-/**
- * „כמה כסף נכנס בחודש מהוראות קבע.”
- *
- * זו השאלה שאשר שאל מילה במילה, ולכן היא ראויה לפונקציה משלה ולא
- * לחישוב שנעשה בתוך רכיב תצוגה.
- */
+/** כמה כסף צפוי להיכנס בכל חודש מהוראות קבע. */
 export function standingOrderIncomeByMonth(charges: ProjectedCharge[]): MonthlyStandingOrderIncome[] {
   const byMonth = new Map<string, MonthlyStandingOrderIncome>();
   charges.forEach(charge => {
