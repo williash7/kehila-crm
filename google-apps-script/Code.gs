@@ -836,6 +836,7 @@ function route_(action, body) {
     case 'previewStandingOrderUpdate': return previewStandingOrderUpdate_(body);
     case 'previewRenewalDate': return previewRenewalDate_(body);
     case 'addManualChargeFailure': return addManualChargeFailure_(body);
+    case 'resolveChargeFailure': return resolveChargeFailure_(body);
     case 'updateDonorField':   return updateDonorField_(body);
     case 'deleteContactColumns': return deleteContactColumns_(body);
     case 'updatePersonalDate': return updateDonorField_(body);
@@ -881,6 +882,7 @@ var AUDITED_ACTIONS = {
   renewStandingOrder: 'חידוש הוראת קבע',
   updateStandingOrder: 'עריכת הוראת קבע',
   addManualChargeFailure: 'סימון כשל חיוב ידני',
+  resolveChargeFailure: 'סימון כשל חיוב כטופל',
   updateDonorField: 'עדכון איש קשר',
   updatePersonalDate: 'עדכון תאריך אישי',
   deleteContactColumns: 'מחיקת שדות אנשי קשר',
@@ -1156,7 +1158,9 @@ function chargesByOrder_() {
 
 function getFailures_() {
   var t = table_(SH.FAILURES);
-  var out = t.rows.map(function (r) {
+  var out = t.rows.filter(function (r) {
+    return !fmt_(get_(r, t, 'טופל'));
+  }).map(function (r) {
     return {
       date:   asDate_(get_(r, t, 'תאריך')),
       name:   fmt_(get_(r, t, 'שם')),
@@ -1181,6 +1185,7 @@ function recentFailureCount_(now) {
   var cutoff = now.getTime() - FAILURE_WINDOW_DAYS * 86400000;
   var n = 0;
   t.rows.forEach(function (r) {
+    if (fmt_(get_(r, t, 'טופל'))) return;
     if (!fmt_(get_(r, t, 'שם'))) return;
     var d = toDate_(get_(r, t, 'תאריך'));
     if (!d || d.getTime() >= cutoff) n++;   // בלי תאריך — סופרים, לא מסתירים
@@ -3204,6 +3209,49 @@ function addManualChargeFailure_(body) {
   __tableCache = {};
   markChargeFailed_(orderId, failDate, reason, amount, name);
   return { success: true, duplicate: exists, orderId: orderId, name: name, amount: amount };
+}
+
+/**
+ * מסמן שגיאת חיוב כטופלה במקום למחוק היסטוריה כספית. היא נשארת בלשונית
+ * עם חותמת זמן, אבל אינה חוזרת לרשימות האזהרה באפליקציה.
+ */
+function resolveChargeFailure_(body) {
+  var name = String(body.name || '').trim();
+  var order = String(body.order || '').trim();
+  var dateText = String(body.date || '').trim();
+  var amountText = String(body.amount == null ? '' : body.amount).replace(/[^0-9.\-]/g, '');
+  if (!name && !order) return { success: false, error: 'חסרים פרטי השגיאה' };
+
+  var t = table_(SH.FAILURES);
+  if (!t.sheet) return { success: false, error: 'לשונית כשלי החיוב לא נמצאה' };
+
+  var handledCol = t.col('טופל');
+  if (handledCol < 0) {
+    handledCol = Math.max(t.headers.length, t.sheet.getLastColumn());
+    t.sheet.getRange(1, handledCol + 1).setValue('טופל');
+  }
+
+  var matched = 0;
+  // משתמשים במספרי השורות האמיתיים, כדי שגם שורה ריקה באמצע הלשונית לא
+  // תגרום לסימון השגיאה הלא נכונה.
+  var values = t.sheet.getDataRange().getValues();
+  for (var i = 1; i < values.length; i++) {
+    var row = values[i];
+    var rowName = String(get_(row, t, 'שם') || '').trim();
+    var rowOrder = String(get_(row, t, 'מזהה הוראה') || '').trim();
+    var rowDate = asDate_(get_(row, t, 'תאריך'));
+    var rowAmount = String(get_(row, t, 'סכום') == null ? '' : get_(row, t, 'סכום')).replace(/[^0-9.\-]/g, '');
+    if (name && rowName !== name) continue;
+    if (order && rowOrder !== order) continue;
+    if (dateText && rowDate !== dateText) continue;
+    if (amountText && rowAmount !== amountText) continue;
+    t.sheet.getRange(i + 1, handledCol + 1).setValue(new Date());
+    matched++;
+  }
+  invalidateTable_(SH.FAILURES);
+  return matched
+    ? { success: true, resolved: matched }
+    : { success: false, error: 'השגיאה לא נמצאה בגיליון; רענן ונסה שוב' };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

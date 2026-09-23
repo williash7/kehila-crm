@@ -237,6 +237,10 @@ export const cancelDonationsBulkQueued = (data: any): Promise<WriteOutcome> =>
 export const addManualChargeFailureQueued = (data: any): Promise<WriteOutcome> =>
   submitWrite('addManualChargeFailure', data, apiPost);
 
+/** מסמן כשל חיוב כטופל. הרשומה נשארת בגיליון להיסטוריה אך מוסתרת מהאזהרות. */
+export const resolveChargeFailureQueued = (data: any): Promise<WriteOutcome> =>
+  submitWrite('resolveChargeFailure', data, apiPost);
+
 /** עדכון שדה איש קשר. המסך מעדכן במקביל את עותק ה־CRM המקומי. */
 export const updateDonorFieldQueued = (data: any): Promise<WriteOutcome> =>
   submitWrite('updateDonorField', data, apiPost);

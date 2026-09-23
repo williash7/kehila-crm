@@ -81,3 +81,12 @@ ok(/donationSourceGroup\(row\) !== 'standing'/.test(cardSource), 'חיובי ה�
 const failureDialog = fs.readFileSync(__dirname + '/../src/components/ManualFailureDialog.tsx', 'utf8');
 ok(/addManualChargeFailureQueued/.test(failureDialog), 'מסך הכשל משתמש בפעולה בטוחה לתור ושליחה חוזרת');
 ok(/הוראת הקבע עצמה לא תבוטל/.test(failureDialog), 'המשתמש מקבל הסבר שההוראה עצמה נשארת פעילה');
+
+const donorsTab = fs.readFileSync(__dirname + '/../src/components/DonorsTab.tsx', 'utf8');
+const appContext = fs.readFileSync(__dirname + '/../src/store/AppContext.tsx', 'utf8');
+const gas = fs.readFileSync(__dirname + '/../google-apps-script/Code.gs', 'utf8');
+ok(/setFailureContact\(d\.name\)/.test(donorsTab), 'לחיצה על שגיאה באיש קשר פותחת את פירוט השגיאה');
+ok(/השגיאה כבר לא רלוונטית/.test(donorsTab), 'אפשר להסיר שגיאה שאינה רלוונטית');
+ok(/resolveChargeFailureQueued/.test(appContext), 'סימון השגיאה כטופלה נשלח בבטחה לשרת');
+ok(/function resolveChargeFailure_/.test(gas) && /get_\(r, t, 'טופל'\)/.test(gas),
+  'השרת שומר היסטוריה ומסתיר רק שגיאות שסומנו כטופלו');

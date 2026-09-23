@@ -45,6 +45,7 @@ interface AppState {
   visibleDonors: Record<string, Donor>; // מסונן לפי הגדרות תצוגה + total מחושב לפי donationsSinceDate
   hk: HkEntry[];
   failures: ChargeFailure[];
+  resolveChargeFailure: (failure: ChargeFailure) => Promise<boolean>;
   rebbeDate: Date | null;
   shabbat: any;
   holidays: any[];
@@ -513,6 +514,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       return next;
     });
     logAction('contact_update');
+  };
+
+  const resolveChargeFailure = async (failure: ChargeFailure): Promise<boolean> => {
+    const { resolveChargeFailureQueued } = await import('../lib/api');
+    const outcome = await resolveChargeFailureQueued({
+      name: failure.name,
+      order: failure.order || '',
+      date: failure.date,
+      amount: failure.amount,
+    });
+    if (outcome.status === 'failed') return false;
+    setFailures(prev => prev.filter(item => !(
+      item.name === failure.name &&
+      String(item.order || '') === String(failure.order || '') &&
+      item.date === failure.date &&
+      String(item.amount ?? '') === String(failure.amount ?? '')
+    )));
+    return true;
   };
 
   // ממזג שני שמות (למשל "אברהם אריאל" ו"אברהם אריאל ציגנוב") לאיש קשר אחד.
@@ -1043,7 +1062,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AppContext.Provider value={{
-      summary, effectiveSummary, donations, donors, visibleDonors, hk, failures, rebbeDate,
+      summary, effectiveSummary, donations, donors, visibleDonors, hk, failures, resolveChargeFailure, rebbeDate,
       shabbat, holidays, hebrewDate,
       // refresh נקרא אחרי כל פעולת כתיבה, ולכן הוא שקט: מרענן נתונים
       // בלי להחליף את המסך במסך טעינה. הטעינה הראשונה בלבד מציגה אותו.

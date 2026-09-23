@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { EmptyState } from './EmptyState';
 import { useAppStore } from '../store/AppContext';
-import { Search, RefreshCw, Plus, Users, Map, Navigation, MapPin, X, Link2, PhoneCall, CheckSquare, Square, House, UserCheck } from 'lucide-react';
+import { Search, RefreshCw, Plus, Users, Map, Navigation, MapPin, X, Link2, PhoneCall, CheckSquare, Square, House, UserCheck, AlertTriangle, Trash2 } from 'lucide-react';
 import { Donor } from '../types';
 import { ProfileModal } from './ProfileModal';
 import { DonorsMap } from './DonorsMap';
@@ -31,7 +31,7 @@ function readDonorSort(): DonorSortState {
 
 export function DonorsTab({ addTrigger }: { addTrigger?: { tab: string; count: number } } = {}) {
   const {
-    donors, visibleDonors, hk, failures, crm, donations, refresh, updateCrm, nameMerges,
+    donors, visibleDonors, hk, failures, resolveChargeFailure, crm, donations, refresh, updateCrm, nameMerges,
     mergeContactsMany, homeVisits, addHomeVisitEntries, startHomeVisitRound,
     eventsData, updateEventsData,
   } = useAppStore();
@@ -50,6 +50,8 @@ export function DonorsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
   const [newRoundPurpose, setNewRoundPurpose] = useState('');
   const [attendanceDate, setAttendanceDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [bulkSaving, setBulkSaving] = useState(false);
+  const [failureContact, setFailureContact] = useState<string | null>(null);
+  const [resolvingFailure, setResolvingFailure] = useState<string | null>(null);
 
   // כיוון ברירת מחדל הגיוני לכל סוג מיון (כמו שהיה נהוג עד כה): תרומה
   // ומעגל — מהגבוה/הקרוב ביותר קודם; שם ותאריך — א'-ב'/הקרוב ביותר קודם.
@@ -527,7 +529,7 @@ export function DonorsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
                     <div className="text-sm font-bold text-[#0D1B2A] truncate">{d.name}</div>
                     <div className="text-[11px] text-gray-500 mt-0.5 truncate">
                       {isHk && <span className="text-[#0D1B2A] font-medium mr-1">🔄 הוק</span>}
-                      {isErr && <span className="text-red-500 font-medium mr-1">⚠️ שגיאה</span>}
+                      {isErr && <button type="button" onClick={e => { e.stopPropagation(); setFailureContact(d.name); }} className="text-red-600 font-bold mr-1 underline decoration-dotted">⚠️ שגיאה — לפרטים</button>}
                       {d.lastDate && <span>תרומה: {d.lastDate}</span>}
                       <span className="mr-1">🕐 קשר: {formatLastContact(lastContactByName.get(d.name), new Date())}</span>
                     </div>
@@ -632,7 +634,7 @@ export function DonorsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
                     </div>
                     <div className="px-4 py-3 flex items-center justify-center gap-1">
                       {isHk && <span title="הוראת קבע" className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 text-[10px] flex items-center justify-center font-bold">הק</span>}
-                      {isErr && <span title="שגיאה" className="w-5 h-5 rounded-full bg-red-100 text-red-600 text-[10px] flex items-center justify-center">⚠</span>}
+                      {isErr && <button type="button" onClick={e => { e.stopPropagation(); setFailureContact(d.name); }} title="הצג את פרטי השגיאה" className="w-6 h-6 rounded-full bg-red-100 text-red-600 text-[11px] flex items-center justify-center hover:bg-red-200">⚠</button>}
                     </div>
                   </div>
                 );
@@ -801,6 +803,63 @@ export function DonorsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
           </div>
         </div>
       )}
+
+      {failureContact && (() => {
+        const contactFailures = failures.filter(f => f.name === failureContact);
+        return (
+          <div className="fixed inset-0 bg-black/50 z-[260] flex items-end md:items-center justify-center p-0 md:p-4 backdrop-blur-sm" dir="rtl" onClick={e => e.target === e.currentTarget && setFailureContact(null)}>
+            <div className="bg-[#FAF6EE] rounded-t-3xl md:rounded-3xl w-full max-w-lg max-h-[88vh] flex flex-col shadow-2xl">
+              <div className="bg-[#0D1B2A] px-5 py-4 flex items-center justify-between rounded-t-3xl shrink-0">
+                <div className="flex items-center gap-3">
+                  <AlertTriangle size={21} className="text-red-400" />
+                  <div>
+                    <div className="font-['Frank_Ruhl_Libre'] text-lg font-bold text-[#C9A84C]">שגיאות חיוב</div>
+                    <div className="text-[11px] text-white/50">{failureContact}</div>
+                  </div>
+                </div>
+                <button onClick={() => setFailureContact(null)} className="p-2 bg-white/10 rounded-full text-white/70"><X size={18} /></button>
+              </div>
+
+              <div className="p-5 overflow-y-auto space-y-3">
+                {contactFailures.length === 0 ? (
+                  <div className="bg-white rounded-xl p-6 text-center text-sm text-gray-500">אין כרגע שגיאות פתוחות לאיש קשר זה.</div>
+                ) : contactFailures.map((failure, index) => {
+                  const key = `${failure.order || ''}:${failure.date}:${failure.amount}:${index}`;
+                  return (
+                    <div key={key} className="bg-white border border-red-200 rounded-2xl p-4 shadow-sm">
+                      <div className="flex items-start justify-between gap-3 mb-3">
+                        <div>
+                          <div className="text-[11px] text-gray-400 font-bold mb-1">מה קרה?</div>
+                          <div className="text-sm font-bold text-red-800">{failure.reason || 'הספק דיווח שהחיוב נכשל, ללא סיבה מפורטת'}</div>
+                        </div>
+                        <div className="text-lg font-bold text-red-600 shrink-0">₪{failure.amount || '—'}</div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-xs mb-4">
+                        <div className="bg-[#FAF6EE] rounded-lg p-2"><span className="block text-gray-400 text-[10px]">תאריך</span><b>{failure.date || 'לא ידוע'}</b></div>
+                        <div className="bg-[#FAF6EE] rounded-lg p-2"><span className="block text-gray-400 text-[10px]">מספר הוראה</span><b dir="ltr">{failure.order || 'לא מופיע'}</b></div>
+                      </div>
+                      <button
+                        disabled={resolvingFailure === key}
+                        onClick={async () => {
+                          if (!window.confirm('לסמן שהשגיאה כבר אינה רלוונטית? היא תיעלם מהאזהרות אך תישמר בגיליון כהיסטוריה שטופלה.')) return;
+                          setResolvingFailure(key);
+                          const ok = await resolveChargeFailure(failure);
+                          setResolvingFailure(null);
+                          if (!ok) { alert('לא הצלחנו להסיר את השגיאה. רענן ונסה שוב.'); return; }
+                          if (contactFailures.length === 1) setFailureContact(null);
+                        }}
+                        className="w-full flex items-center justify-center gap-2 bg-red-50 text-red-700 border border-red-200 rounded-xl py-2.5 text-sm font-bold disabled:opacity-50"
+                      >
+                        <Trash2 size={15} /> {resolvingFailure === key ? 'מסיר...' : 'השגיאה כבר לא רלוונטית — הסר מהאזהרות'}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {bulkAction && (
         <div className="fixed inset-0 bg-black/50 z-[250] flex items-end md:items-center justify-center p-0 md:p-4 backdrop-blur-sm" dir="rtl" onClick={e => e.target === e.currentTarget && closeBulkDialog()}>
