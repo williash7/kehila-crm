@@ -14,7 +14,8 @@ assert.deepStrictEqual(D.filterDonationsForDashboard(donations, 'today', '', now
 assert.deepStrictEqual(D.filterDonationsForDashboard(donations, 'week', '', now).map(d => d.name), ['היום', 'השבוע']);
 assert.deepStrictEqual(D.filterDonationsForDashboard(donations, 'month', '', now).map(d => d.name), ['היום', 'השבוע', 'החודש']);
 assert.deepStrictEqual(D.filterDonationsForDashboard(donations, 'year', '', now).map(d => d.name), ['היום', 'השבוע', 'החודש', 'השנה']);
-assert.deepStrictEqual(D.filterDonationsForDashboard(donations, 'date', '2026-09-01', now).map(d => d.name), ['החודש']);
+assert.deepStrictEqual(D.filterDonationsForDashboard(donations, 'date', '2026-09-01', now).map(d => d.name), ['היום', 'השבוע', 'החודש']);
+assert.deepStrictEqual(D.filterDonationsForDashboard(donations, 'date', '2026-09-01', now, '2026-09-20').map(d => d.name), ['השבוע', 'החודש']);
 assert.deepStrictEqual(D.filterDonationsForDashboard(donations, 'date', '', now), []);
 
 const recent = D.recentDonationsFirst([

@@ -43,7 +43,7 @@ export interface TodayFocusResult {
 }
 
 export interface FocusTaskBucket {
-  scope: 'standalone' | 'holiday' | 'event';
+  scope: 'standalone' | 'holiday' | 'event' | 'campaign';
   contextId: string;
   /** תאריך החג/האירוע. משמש רק כשאין למשימה dueDate מפורש. */
   contextDate?: Date | string | null;

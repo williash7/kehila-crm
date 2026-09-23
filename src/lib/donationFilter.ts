@@ -39,13 +39,13 @@ function localIsoDate(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
-/** מסנן את כל נתוני כרטיס התרומות לאותו טווח. שבוע בישראל: ראשון–שבת. */
-export function filterDonationsForDashboard<T extends { date?: string }>(
-  donations: T[],
+/** מחזיר את גבולות הטווח שנבחר בדשבורד. שבוע בישראל: ראשון–שבת. */
+export function dashboardDonationDateRange(
   period: DonationDashboardPeriod,
-  specificDate = '',
+  rangeStart = '',
   now = new Date(),
-): T[] {
+  rangeEnd = '',
+): { from: Date; to: Date } | null {
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   let from = new Date(today);
   let to = new Date(today);
@@ -60,18 +60,38 @@ export function filterDonationsForDashboard<T extends { date?: string }>(
     from = new Date(today.getFullYear(), 0, 1);
     to = new Date(today.getFullYear(), 11, 31);
   } else if (period === 'date') {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(specificDate)) return [];
-    const [year, month, day] = specificDate.split('-').map(Number);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(rangeStart)) return null;
+    const [year, month, day] = rangeStart.split('-').map(Number);
     from = new Date(year, month - 1, day);
-    to = new Date(from);
-    if (localIsoDate(from) !== specificDate) return [];
+    if (localIsoDate(from) !== rangeStart) return null;
+    if (rangeEnd && /^\d{4}-\d{2}-\d{2}$/.test(rangeEnd)) {
+      const [endYear, endMonth, endDay] = rangeEnd.split('-').map(Number);
+      to = new Date(endYear, endMonth - 1, endDay);
+      if (localIsoDate(to) !== rangeEnd) return null;
+    } else {
+      to = new Date(today);
+    }
+    if (from > to) [from, to] = [to, from];
   }
 
   from.setHours(0, 0, 0, 0);
   to.setHours(23, 59, 59, 999);
+  return { from, to };
+}
+
+/** מסנן את כל נתוני כרטיס התרומות לאותו טווח. */
+export function filterDonationsForDashboard<T extends { date?: string }>(
+  donations: T[],
+  period: DonationDashboardPeriod,
+  rangeStart = '',
+  now = new Date(),
+  rangeEnd = '',
+): T[] {
+  const range = dashboardDonationDateRange(period, rangeStart, now, rangeEnd);
+  if (!range) return [];
   return donations.filter(donation => {
     const date = parseDdMmYyyy(donation.date);
-    return !!date && date >= from && date <= to;
+    return !!date && date >= range.from && date <= range.to;
   });
 }
 

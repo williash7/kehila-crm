@@ -22,7 +22,7 @@ import { toCanonicalHebrewString } from '../lib/hebrewDates';
 import { ACTIVITY_KIND_LABEL, activityDonations, activityReadiness, upcomingActivities } from '../lib/activities';
 import { projectProgress, projectPurposeTags } from '../lib/projects';
 import { sumBudgetLines } from '../lib/holidayEvents';
-import { DonationDashboardPeriod, filterDonationsForDashboard, recentDonationsFirst } from '../lib/donationFilter';
+import { dashboardDonationDateRange, DonationDashboardPeriod, filterDonationsForDashboard, recentDonationsFirst } from '../lib/donationFilter';
 import { logAction } from '../lib/score';
 import { emptyFinanceData, normalizeFinanceData, summarizeFinance } from '../lib/finance';
 
@@ -45,17 +45,28 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd }: { setTab: (t: s
   const [rebbeReportTo, setRebbeReportTo] = useState(() => new Date().toISOString().slice(0, 10));
   const [rebbeReportText, setRebbeReportText] = useState('');
   const [rebbeReportCopied, setRebbeReportCopied] = useState(false);
+  const [handledFocusIds, setHandledFocusIds] = useState<Record<string, number>>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('dashboard_handled_focus') || '{}');
+      if (Array.isArray(saved)) return Object.fromEntries(saved.map(id => [id, Date.now()]));
+      return saved && typeof saved === 'object' ? saved : {};
+    } catch { return {}; }
+  });
   const [hkReminderDismissed, setHkReminderDismissed] = useState(isMonthlyReminderReviewed());
   const [donationPeriod, setDonationPeriod] = useState<DonationDashboardPeriod>('month');
-  const [specificDonationDate, setSpecificDonationDate] = useState(() => {
+  const [donationRangeStart, setDonationRangeStart] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  });
+  const [donationRangeEnd, setDonationRangeEnd] = useState(() => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   });
 
   const dashboardDonations = React.useMemo(() =>
-    (filterDonationsForDashboard(donations, donationPeriod, specificDonationDate) as typeof donations)
+    (filterDonationsForDashboard(donations, donationPeriod, donationRangeStart, new Date(), donationRangeEnd) as typeof donations)
       .filter(donation => Number(donation.amount) > 0),
-  [donations, donationPeriod, specificDonationDate]);
+  [donations, donationPeriod, donationRangeStart, donationRangeEnd]);
 
   const dashboardDonationSummary = React.useMemo(() => {
     const byMethod: Record<string, number> = {};
@@ -71,12 +82,31 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd }: { setTab: (t: s
     return { total, donorCount: donorNames.size, byMethod };
   }, [dashboardDonations]);
 
+  const dashboardStandingOrders = React.useMemo(() => {
+    const range = dashboardDonationDateRange(donationPeriod, donationRangeStart, new Date(), donationRangeEnd);
+    if (!range) return [];
+    return hk.filter(order => {
+      const start = parseDdMmYyyy(order.startDate || order.lastBilled || order.nextCharge);
+      const end = parseDdMmYyyy(order.cancelDate);
+      return (!start || start <= range.to) && (!end || end >= range.from);
+    });
+  }, [hk, donationPeriod, donationRangeStart, donationRangeEnd]);
+
+  const dashboardFailures = React.useMemo(() => {
+    const range = dashboardDonationDateRange(donationPeriod, donationRangeStart, new Date(), donationRangeEnd);
+    if (!range) return [];
+    return failures.filter(failure => {
+      const date = parseDdMmYyyy(failure.date);
+      return date && date >= range.from && date <= range.to;
+    });
+  }, [failures, donationPeriod, donationRangeStart, donationRangeEnd]);
+
   const donationPeriodLabel: Record<DonationDashboardPeriod, string> = {
     today: 'היום',
     week: 'השבוע',
     month: 'החודש',
     year: 'השנה',
-    date: 'בתאריך שנבחר',
+    date: 'בטווח שנבחר',
   };
 
   const handleRebbeSave = (e: React.FormEvent<HTMLFormElement>) => {
@@ -303,7 +333,7 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd }: { setTab: (t: s
       // **לא** e.date — זה תאריך המופע הראשון. באירוע שבועי הוא בעבר
       // הרחוק, ולכן כל משימה שלו הייתה נראית כאילו איחרה בחודשים.
       buckets.push({
-        scope: 'event',
+        scope: 'campaign',
         contextId: e.id,
         contextDate: nextEventOccurrence(e, today),
         tasks: e.tasks,
@@ -323,7 +353,7 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd }: { setTab: (t: s
     const standalone = holidayExtras[STANDALONE_TASKS_ID]?.tasks || [];
     if (standalone.length) buckets.push({ scope: 'standalone', contextId: STANDALONE_TASKS_ID, tasks: standalone });
 
-    return buildTodayFocus({
+    const result = buildTodayFocus({
       today,
       taskBuckets: buckets,
       failures,
@@ -331,9 +361,18 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd }: { setTab: (t: s
       hkExpiringThreshold: settings.hkExpiringThreshold ?? 2,
       personalDates: computePersonalDateEvents(visibleDonors, crm, today),
       overdueContacts: computeOverdueContacts(visibleDonors, crm, donations, today),
+      limitPerGroup: 1000,
     });
+    const groups = result.groups.map(group => {
+      const remaining = group.items.filter(item => {
+        const handledAt = Number(handledFocusIds[item.id] || 0);
+        return !handledAt || Date.now() - handledAt > 30 * 86400000;
+      });
+      return { ...group, count: remaining.length, items: remaining.slice(0, 5) };
+    }).filter(group => group.count > 0);
+    return { groups, total: groups.reduce((sum, group) => sum + group.count, 0) };
   }, [holidays, holidayExtras, eventsData, projects, failures, hk, settings.hkExpiringThreshold,
-      visibleDonors, crm, donations]);
+      visibleDonors, crm, donations, handledFocusIds]);
 
   /** לחיצה על שורה מובילה למסך שמטפל בה. אין כאן שום פעולה שמשנה נתונים. */
   const openFocusTarget = (t: FocusTarget) => {
@@ -341,6 +380,32 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd }: { setTab: (t: s
     else if (t.kind === 'task') setTab?.('tasks');
     else if (t.kind === 'hk') setIsHkOpen?.(true);
     else if (t.kind === 'donation') setTab?.('donations');
+  };
+
+  const markFocusHandled = (item: { id: string; target: FocusTarget }) => {
+    if (item.target.kind === 'task') {
+      const parts = item.target.id.split(':');
+      const scope = parts.shift();
+      const index = Number(parts.pop());
+      const contextId = parts.join(':');
+      const done = (tasks: any[]) => tasks.map((task, taskIndex) => taskIndex === index
+        ? { ...task, done: true, doneAt: new Date().toISOString() }
+        : task);
+      if ((scope === 'holiday' || scope === 'standalone') && contextId) {
+        updateHolidayExtras(contextId, { tasks: done(holidayExtras[contextId]?.tasks || []) });
+      } else if (scope === 'event') {
+        updateEventsData(eventsData.map((event: any) => event.id === contextId ? { ...event, tasks: done(event.tasks || []) } : event));
+      } else if (scope === 'campaign') {
+        updateProjects(projects.map(project => project.id === contextId ? { ...project, tasks: done(project.tasks || []) } : project));
+      }
+      logAction('task_complete');
+      return;
+    }
+    setHandledFocusIds(current => {
+      const next = { ...current, [item.id]: Date.now() };
+      localStorage.setItem('dashboard_handled_focus', JSON.stringify(next));
+      return next;
+    });
   };
 
   const FOCUS_ICON: Record<FocusGroupKind, string> = {
@@ -373,14 +438,15 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd }: { setTab: (t: s
               </div>
               <div className="space-y-1">
                 {g.items.map(it => (
-                  <button
-                    key={it.id}
-                    onClick={() => openFocusTarget(it.target)}
-                    className="w-full text-right bg-[#FAF6EE] hover:bg-[#C9A84C]/10 rounded-lg px-2.5 py-1.5 transition-colors"
-                  >
-                    <div className="text-[12px] font-bold text-[#0D1B2A] truncate">{it.label}</div>
-                    {it.sub && <div className="text-[10px] text-gray-500 truncate">{it.sub}</div>}
-                  </button>
+                  <div key={it.id} className="flex items-center gap-1.5 bg-[#FAF6EE] rounded-lg p-1">
+                    <button onClick={() => openFocusTarget(it.target)} className="flex-1 min-w-0 text-right hover:bg-[#C9A84C]/10 rounded-md px-2 py-1 transition-colors">
+                      <div className="text-[12px] font-bold text-[#0D1B2A] truncate">{it.label}</div>
+                      {it.sub && <div className="text-[10px] text-gray-500 truncate">{it.sub}</div>}
+                    </button>
+                    <button onClick={() => markFocusHandled(it)} className="shrink-0 flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-md px-2 py-1.5" aria-label={`סמן את ${it.label} כטופל`}>
+                      <CheckCircle size={12} /> טופל
+                    </button>
+                  </div>
                 ))}
                 {g.count > g.items.length && (
                   <div className="text-[10px] text-gray-400 px-2.5">ועוד {g.count - g.items.length}…</div>
@@ -577,16 +643,17 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd }: { setTab: (t: s
           <option className="text-gray-900" value="week">השבוע</option>
           <option className="text-gray-900" value="month">החודש</option>
           <option className="text-gray-900" value="year">השנה</option>
-          <option className="text-gray-900" value="date">תאריך מסוים</option>
+          <option className="text-gray-900" value="date">טווח תאריכים</option>
         </select>
       </div>
-      {donationPeriod === 'date' && <input
-        aria-label="בחירת תאריך לתרומות"
-        type="date"
-        value={specificDonationDate}
-        onChange={event => setSpecificDonationDate(event.target.value)}
-        className="relative z-10 mb-3 bg-white/10 border border-white/20 text-white text-xs rounded-lg px-2 py-1.5 [color-scheme:dark]"
-      />}
+      {donationPeriod === 'date' && <div className="relative z-10 grid grid-cols-2 gap-2 mb-3">
+        <label className="text-[10px] text-white/60">מתאריך
+          <input aria-label="תאריך התחלה לתרומות" type="date" value={donationRangeStart} onChange={event => setDonationRangeStart(event.target.value)} className="mt-1 w-full bg-white/10 border border-white/20 text-white text-xs rounded-lg px-2 py-1.5 [color-scheme:dark]" />
+        </label>
+        <label className="text-[10px] text-white/60">עד תאריך
+          <input aria-label="תאריך סיום לתרומות" type="date" value={donationRangeEnd} onChange={event => setDonationRangeEnd(event.target.value)} className="mt-1 w-full bg-white/10 border border-white/20 text-white text-xs rounded-lg px-2 py-1.5 [color-scheme:dark]" />
+        </label>
+      </div>}
       <div className="font-['Frank_Ruhl_Libre'] text-4xl font-black text-[#E8C97A] leading-none mb-1">
         <span className="text-xl font-normal ml-1">₪</span>{dashboardDonationSummary.total.toLocaleString()}
       </div>
@@ -610,24 +677,24 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd }: { setTab: (t: s
     <div className="grid grid-cols-3 gap-2.5">
       <div className="bg-white rounded-xl p-3 shadow-sm cursor-pointer active:scale-95 transition-transform hover:border hover:border-[#C9A84C]/30"
         onClick={() => setTab('reports')}
-        title={settings.donationsSinceDate ? `מ-${new Date(settings.donationsSinceDate).toLocaleDateString('he-IL')}` : 'מתחילת השנה'}>
-        <div className="text-[10px] text-gray-500 uppercase tracking-wide mb-1 truncate">{settings.donationsSinceDate ? 'תרומות מ-תאריך' : 'תרומות מתחילת שנה'}</div>
-        <div className="font-['Frank_Ruhl_Libre'] text-xl font-bold text-[#0D1B2A] leading-none mb-1">₪{effectiveSummary?.total?.toLocaleString() || 0}</div>
+        title={`תרומות ${donationPeriodLabel[donationPeriod]}`}>
+        <div className="text-[10px] text-gray-500 uppercase tracking-wide mb-1 truncate">תרומות {donationPeriodLabel[donationPeriod]}</div>
+        <div className="font-['Frank_Ruhl_Libre'] text-xl font-bold text-[#0D1B2A] leading-none mb-1">₪{dashboardDonationSummary.total.toLocaleString()}</div>
         <div className="text-[10px] text-[#9B7A2F] font-medium flex items-center gap-1">דוחות <ChevronLeft size={10} /></div>
       </div>
       <div className="bg-white rounded-xl p-3 shadow-sm cursor-pointer active:scale-95 transition-transform hover:border hover:border-[#C9A84C]/30"
         onClick={() => setTab('donors')}>
-        <div className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">תורמים</div>
-        <div className="font-['Frank_Ruhl_Libre'] text-xl font-bold text-[#0D1B2A] leading-none mb-1">{effectiveSummary?.donorCount || 0}</div>
-        <div className="text-[10px] text-[#9B7A2F] font-medium flex items-center gap-1">פעילים <ChevronLeft size={10} /></div>
+        <div className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">תורמים {donationPeriodLabel[donationPeriod]}</div>
+        <div className="font-['Frank_Ruhl_Libre'] text-xl font-bold text-[#0D1B2A] leading-none mb-1">{dashboardDonationSummary.donorCount}</div>
+        <div className="text-[10px] text-[#9B7A2F] font-medium flex items-center gap-1">שתרמו <ChevronLeft size={10} /></div>
       </div>
       <div className="bg-white rounded-xl p-3 shadow-sm cursor-pointer active:scale-95 transition-transform hover:border hover:border-[#C9A84C]/30"
         onClick={() => setTab('donors')}>
-        <div className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">הוראות קבע</div>
-        <div className="font-['Frank_Ruhl_Libre'] text-xl font-bold text-[#0D1B2A] leading-none mb-1">{summary?.hkActive || 0}</div>
+        <div className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">הוראות קבע {donationPeriodLabel[donationPeriod]}</div>
+        <div className="font-['Frank_Ruhl_Libre'] text-xl font-bold text-[#0D1B2A] leading-none mb-1">{dashboardStandingOrders.length}</div>
         <div className="text-[10px] font-medium">
-          {(summary?.failureCount || 0) > 0 ? (
-            <span className="text-amber-500 flex items-center gap-1"><AlertTriangle size={10} /> {summary?.failureCount || 0}</span>
+          {dashboardFailures.length > 0 ? (
+            <span className="text-amber-500 flex items-center gap-1"><AlertTriangle size={10} /> {dashboardFailures.length}</span>
           ) : (
             <span className="text-green-500 flex items-center gap-1"><CheckCircle size={10} /> תקין</span>
           )}
