@@ -13,28 +13,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: main
-          fetch-depth: 0
-
-      - name: Apply standing-order breakdown patch once
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          path = Path('src/components/FinanceTab.tsx')
-          text = path.read_text(encoding='utf-8')
-          old = '        <DetailLine label="השפעת כל ההתחייבויות וההכנסות המובטחות" value={summary.guaranteedBalance - summary.currentBalance} />'
-          new = '        <DetailLine label="התחייבויות עתידיות" value={-summary.committedExpense} />\n        <DetailLine label="הכנסות עתידיות שהוגדרו כמובטחות" value={summary.committedIncome} />\n        <DetailLine label="הוראות קבע צפויות" value={summary.standingOrderIncome} />'
-          if old in text:
-              path.write_text(text.replace(old, new, 1), encoding='utf-8')
-          PY
-          if ! git diff --quiet -- src/components/FinanceTab.tsx; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add src/components/FinanceTab.tsx
-            git commit -m "Show standing orders in safe cashflow breakdown"
-            git push origin main
-          fi
 
       - uses: actions/setup-node@v4
         with:
