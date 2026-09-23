@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Download } from 'lucide-react';
+import { X, Download, Plus, Trash2 } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import { useAppStore } from '../store/AppContext';
 import { HDate } from '@hebcal/core';
@@ -12,15 +12,20 @@ export function PosterTab({ onClose }: { onClose: () => void }) {
   // כל הטקסטים בפוסטר מגיעים ממילון התרגומים לפי השפה שנבחרה בהגדרות,
   // ופרטי הארגון (שם, כתובת, טלפון) מגיעים מהגדרות הארגון.
   const org = getOrg();
-  const T = POSTER_TEXT[org.posterLang] || POSTER_TEXT.he;
-  const venue = org.venueName || org.orgName.he;
+  const [posterLang, setPosterLang] = useState<'he' | 'ru' | 'en'>(() =>
+    (localStorage.getItem('poster_lang') as 'he' | 'ru' | 'en') || org.posterLang || 'he');
+  const T = POSTER_TEXT[posterLang] || POSTER_TEXT.he;
+  const [venue, setVenue] = useState(() => localStorage.getItem('poster_venue') || org.venueName || org.orgName.he);
+  const [posterAddress, setPosterAddress] = useState(() => localStorage.getItem('poster_address') || [org.address, org.city].filter(Boolean).join(', '));
+  const [titleLine1, setTitleLine1] = useState(() => localStorage.getItem('poster_title_1') || T.titleLine1);
+  const [titleLine2, setTitleLine2] = useState(() => localStorage.getItem('poster_title_2') || T.titleLine2);
+  const [footerText, setFooterText] = useState(() => localStorage.getItem('poster_footer') || T.farewell);
   const posterRef = useRef<HTMLDivElement>(null);
   const isMevarchimToggled = useRef<boolean>(false);
+  const parashaManuallyEdited = useRef(false);
   
   // Custom states
-  const [includeClass, setIncludeClass] = useState(true);
   const [isMevarchim, setIsMevarchim] = useState(false);
-  const [halachaTime, setHalachaTime] = useState('18:15');
   const [candleTime, setCandleTime] = useState('18:45');
   const [minchaFriday, setMinchaFriday] = useState('19:00');
   const [kabbalatShabbat, setKabbalatShabbat] = useState('19:35');
@@ -35,12 +40,68 @@ export function PosterTab({ onClose }: { onClose: () => void }) {
   const [dateShabbat, setDateShabbat] = useState('');
   const [parasha, setParasha] = useState('');
 
+  type PosterWidget = { id: string; title: string; detail: string; time: string };
+  const [widgets, setWidgets] = useState<PosterWidget[]>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('poster_widgets') || 'null');
+      if (Array.isArray(saved)) return saved;
+    } catch { /* משתמשים בברירת המחדל */ }
+    return [
+      { id: 'kiddush', title: T.kiddushWidget, detail: T.kiddushWidgetSub, time: '' },
+      { id: 'halacha', title: T.halachaClass, detail: '', time: '18:15' },
+    ];
+  });
+
+  const [logoImage, setLogoImage] = useState<string | null>(() => localStorage.getItem('poster_logo'));
+  const logoInputRef = useRef<HTMLInputElement>(null);
+
   const [bgImage, setBgImage] = useState<string | null>(() => localStorage.getItem('poster_bgImage'));
   const [bgOverlay, setBgOverlay] = useState(() => {
     const saved = localStorage.getItem('poster_bgOverlay');
     return saved !== null ? +saved : 40;
   });
   const bgInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    localStorage.setItem('poster_lang', posterLang);
+    localStorage.setItem('poster_venue', venue);
+    localStorage.setItem('poster_address', posterAddress);
+    localStorage.setItem('poster_title_1', titleLine1);
+    localStorage.setItem('poster_title_2', titleLine2);
+    localStorage.setItem('poster_footer', footerText);
+    localStorage.setItem('poster_widgets', JSON.stringify(widgets));
+  }, [posterLang, venue, posterAddress, titleLine1, titleLine2, footerText, widgets]);
+
+  const changePosterLanguage = (lang: 'he' | 'ru' | 'en') => {
+    const next = POSTER_TEXT[lang] || POSTER_TEXT.he;
+    setPosterLang(lang);
+    setTitleLine1(next.titleLine1);
+    setTitleLine2(next.titleLine2);
+    setFooterText(next.farewell);
+    setWidgets(current => current.map(widget => widget.id === 'kiddush'
+      ? { ...widget, title: next.kiddushWidget, detail: next.kiddushWidgetSub }
+      : widget.id === 'halacha' ? { ...widget, title: next.halachaClass } : widget));
+    if (!parashaManuallyEdited.current) setParasha('');
+  };
+
+  const handleLogoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const dataUrl = ev.target?.result as string;
+      setLogoImage(dataUrl);
+      try { localStorage.setItem('poster_logo', dataUrl); }
+      catch { alert('הלוגו גדול מדי לשמירה — נסה קובץ קטן יותר'); }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const removeLogo = () => {
+    setLogoImage(null);
+    localStorage.removeItem('poster_logo');
+    if (logoInputRef.current) logoInputRef.current.value = '';
+  };
 
   useEffect(() => {
     localStorage.setItem('poster_bgOverlay', String(bgOverlay));
@@ -85,15 +146,15 @@ export function PosterTab({ onClose }: { onClose: () => void }) {
       if (parashaItem) {
         // Fetch translated parasha
         // אותה בקשה, בשפת הפוסטר — Hebcal מחזיר את שם הפרשה מתורגם
-        fetch(hebcalUrl('shabbat', { lg: HEBCAL_LANG[org.posterLang] }))
+        fetch(hebcalUrl('shabbat', { lg: HEBCAL_LANG[posterLang] }))
           .then(r => r.json())
           .then(data => {
              const translated = data.items?.find((i: any) => i.category === 'parashat');
              const raw = translated?.title || parashaItem.title;
              const name = raw.replace(/^(Parashat|Глава|פרשת)\s+/, '');
-             setParasha(`${T.parashaPrefix} ${name}`);
+             if (!parashaManuallyEdited.current) setParasha(`${T.parashaPrefix} ${name}`);
           }).catch(() => {
-             setParasha(`${T.parashaPrefix} ${parashaItem.title.replace('Parashat ', '')}`);
+             if (!parashaManuallyEdited.current) setParasha(`${T.parashaPrefix} ${parashaItem.title.replace('Parashat ', '')}`);
           });
       }
 
@@ -122,9 +183,7 @@ export function PosterTab({ onClose }: { onClose: () => void }) {
         if (candleItem) {
           const cd = new Date(candleItem.date);
           setMinchaShabbat(`${cd.getHours()}:${cd.getMinutes().toString().padStart(2, '0')}`);
-          // Halacha 30m before
-          const hd = new Date(cd.getTime() - 30*60000);
-          setHalachaTime(`${hd.getHours()}:${hd.getMinutes().toString().padStart(2, '0')}`);
+          // שיעור הלכה נשאר משבצת ניתנת לעריכה, ולכן אינו נדרס בכל פתיחה.
         }
         
         // Shabbat Date string
@@ -132,7 +191,7 @@ export function PosterTab({ onClose }: { onClose: () => void }) {
         setDateShabbat(`${T.saturday}, ${hdShab.getDate()} ${translateHebMonth(hdShab.getMonthName())} / ${d.getDate()} ${months[d.getMonth()]}`);
       }
     }
-  }, [shabbat]);
+  }, [shabbat, posterLang]);
 
   const translateHebMonth = (m: string) => T.hebMonths[m] || m;
 
@@ -186,10 +245,11 @@ export function PosterTab({ onClose }: { onClose: () => void }) {
         <div className="bg-white rounded-xl p-4 shadow-sm mb-6 border border-[#EDE6D6]" dir="rtl">
            <h3 className="font-bold text-[#0D1B2A] mb-3">הגדרות מודעה</h3>
            <div className="flex flex-wrap gap-4 mb-4">
-              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
-                 <input type="checkbox" checked={includeClass} onChange={(e) => setIncludeClass(e.target.checked)} className="w-4 h-4 text-[#C9A84C]" />
-                 כולל שיעור הלכה (מציג את התיבה)
-              </label>
+              <div className="flex items-center gap-1 bg-[#FAF6EE] rounded-lg p-1">
+                {([['he', 'עברית'], ['ru', 'Русский'], ['en', 'English']] as const).map(([lang, label]) => (
+                  <button key={lang} onClick={() => changePosterLanguage(lang)} className={`px-3 py-1.5 rounded-md text-xs font-bold ${posterLang === lang ? 'bg-[#0D1B2A] text-white' : 'text-gray-500'}`}>{label}</button>
+                ))}
+              </div>
               <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
                  <input type="checkbox" checked={isMevarchim} onChange={(e) => {
                     isMevarchimToggled.current = true;
@@ -198,15 +258,54 @@ export function PosterTab({ onClose }: { onClose: () => void }) {
                  שבת מברכים (מציג תהילים)
               </label>
            </div>
-           <div className="mb-4">
-              <label className="block text-xs font-bold text-gray-500 mb-1">כותרת משנה (למשל: שבת מברכים, שבת ראש חודש)</label>
-              <input
-                type="text"
-                value={subtitle}
-                onChange={e => setSubtitle(e.target.value)}
-                placeholder="השאר ריק אם אין כותרת משנה"
-                className="w-full border border-[#EDE6D6] rounded-lg px-3 py-2 text-sm outline-none focus:border-[#C9A84C]"
-              />
+           <div className="grid md:grid-cols-2 gap-3 mb-4">
+              <label className="block text-xs font-bold text-gray-500">כותרת ראשית — שורה 1
+                <input type="text" value={titleLine1} onChange={e => setTitleLine1(e.target.value)} className="mt-1 w-full border border-[#EDE6D6] rounded-lg px-3 py-2 text-sm font-normal text-[#0D1B2A]" />
+              </label>
+              <label className="block text-xs font-bold text-gray-500">כותרת ראשית — שורה 2
+                <input type="text" value={titleLine2} onChange={e => setTitleLine2(e.target.value)} className="mt-1 w-full border border-[#EDE6D6] rounded-lg px-3 py-2 text-sm font-normal text-[#0D1B2A]" />
+              </label>
+              <label className="block text-xs font-bold text-gray-500">שם הפרשה או החג
+                <input type="text" value={parasha} onChange={e => { parashaManuallyEdited.current = true; setParasha(e.target.value); }} placeholder="למשל: חג הסוכות" className="mt-1 w-full border border-[#EDE6D6] rounded-lg px-3 py-2 text-sm font-normal text-[#0D1B2A]" />
+              </label>
+              <label className="block text-xs font-bold text-gray-500">כותרת משנה
+                <input type="text" value={subtitle} onChange={e => setSubtitle(e.target.value)} placeholder="למשל: שבת מברכים" className="mt-1 w-full border border-[#EDE6D6] rounded-lg px-3 py-2 text-sm font-normal text-[#0D1B2A]" />
+              </label>
+              <label className="block text-xs font-bold text-gray-500">שם בית הכנסת או המקום
+                <input type="text" value={venue} onChange={e => setVenue(e.target.value)} className="mt-1 w-full border border-[#EDE6D6] rounded-lg px-3 py-2 text-sm font-normal text-[#0D1B2A]" />
+              </label>
+              <label className="block text-xs font-bold text-gray-500">כתובת
+                <input type="text" value={posterAddress} onChange={e => setPosterAddress(e.target.value)} className="mt-1 w-full border border-[#EDE6D6] rounded-lg px-3 py-2 text-sm font-normal text-[#0D1B2A]" />
+              </label>
+              <label className="block text-xs font-bold text-gray-500 md:col-span-2">כותרת תחתונה
+                <input type="text" value={footerText} onChange={e => setFooterText(e.target.value)} className="mt-1 w-full border border-[#EDE6D6] rounded-lg px-3 py-2 text-sm font-normal text-[#0D1B2A]" />
+              </label>
+           </div>
+           <div className="border-t border-[#EDE6D6] pt-4 mt-2 mb-4">
+             <p className="text-sm font-bold text-[#0D1B2A] mb-2">לוגו בפינה העליונה</p>
+             <div className="flex items-center gap-3 flex-wrap">
+               <button onClick={() => logoInputRef.current?.click()} className="bg-[#0D1B2A] text-white px-4 py-1.5 rounded-lg text-sm font-bold">📁 העלה לוגו</button>
+               {logoImage && <button onClick={removeLogo} className="text-red-500 text-sm font-semibold">✕ הסר לוגו</button>}
+               <input ref={logoInputRef} type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" />
+               <span className={`text-xs ${logoImage ? 'text-green-600 font-bold' : 'text-gray-400'}`}>{logoImage ? '✓ הלוגו יופיע במודעה' : 'ללא לוגו יוצגו פרטי הארגון'}</span>
+             </div>
+           </div>
+
+           <div className="border-t border-[#EDE6D6] pt-4 mt-2 mb-4">
+             <div className="flex items-center justify-between gap-3 mb-2">
+               <div><p className="text-sm font-bold text-[#0D1B2A]">משבצות צד</p><p className="text-[10px] text-gray-400">קידוש, שיעור או כל הודעה אחרת</p></div>
+               <button onClick={() => setWidgets(current => [...current, { id: `widget-${Date.now()}`, title: 'משבצת חדשה', detail: '', time: '' }])} className="flex items-center gap-1 bg-[#C9A84C]/15 text-[#9B7A2F] rounded-lg px-3 py-1.5 text-xs font-bold"><Plus size={13} /> הוסף משבצת</button>
+             </div>
+             <div className="space-y-2">
+               {widgets.map((widget, index) => (
+                 <div key={widget.id} className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_100px_auto] gap-2 items-end bg-[#FAF6EE] rounded-xl p-2">
+                   <label className="text-[10px] font-bold text-gray-500">כותרת<input value={widget.title} onChange={e => setWidgets(current => current.map((item, i) => i === index ? { ...item, title: e.target.value } : item))} className="mt-1 w-full border rounded-lg px-2 py-1.5 text-xs font-normal" /></label>
+                   <label className="text-[10px] font-bold text-gray-500">שורה נוספת<input value={widget.detail} onChange={e => setWidgets(current => current.map((item, i) => i === index ? { ...item, detail: e.target.value } : item))} className="mt-1 w-full border rounded-lg px-2 py-1.5 text-xs font-normal" /></label>
+                   <label className="text-[10px] font-bold text-gray-500">שעה<input type="time" value={widget.time} onChange={e => setWidgets(current => current.map((item, i) => i === index ? { ...item, time: e.target.value } : item))} className="mt-1 w-full border rounded-lg px-2 py-1.5 text-xs font-normal" /></label>
+                   <button onClick={() => setWidgets(current => current.filter((_, i) => i !== index))} className="p-2 text-red-400" aria-label="מחק משבצת"><Trash2 size={15} /></button>
+                 </div>
+               ))}
+             </div>
            </div>
 
            {/* Background image upload */}
@@ -271,12 +370,6 @@ export function PosterTab({ onClose }: { onClose: () => void }) {
                   <label className="text-xs text-gray-500 font-bold uppercase">{T.minchaDay} — {T.saturday}</label>
                  <input type="time" value={minchaShabbat} onChange={e=>setMinchaShabbat(e.target.value)} className="border rounded px-2 py-1" />
               </div>
-              {includeClass && (
-                <div className="flex flex-col gap-1">
-                   <label className="text-xs text-gray-500 font-bold uppercase">{T.halachaClass}</label>
-                   <input type="time" value={halachaTime} onChange={e=>setHalachaTime(e.target.value)} className="border rounded px-2 py-1" />
-                </div>
-              )}
               <div className="flex flex-col gap-1">
                  <label className="text-xs text-gray-500 font-bold uppercase">{T.havdalah}</label>
                  <input type="time" value={havdalah} onChange={e=>setHavdalah(e.target.value)} className="border rounded px-2 py-1" />
@@ -326,7 +419,11 @@ export function PosterTab({ onClose }: { onClose: () => void }) {
                   {/* Top Logos */}
                   <div className="absolute top-0 left-0 w-full flex justify-between items-start px-24 z-30">
                      <div className="text-[#ffffff] opacity-80 text-2xl font-bold tracking-widest mt-8 leading-none">ב"ה</div>
-                     <div className="bg-[#ffffff] rounded-b-[2rem] px-8 py-6 pb-8 flex flex-col items-center min-w-[280px]" style={{ boxShadow: '0 12px 30px rgba(0,0,0,0.15)' }}>
+                     <div className="bg-[#ffffff] rounded-b-[2rem] px-8 py-6 pb-8 flex flex-col items-center min-w-[280px] max-w-[360px]" style={{ boxShadow: '0 12px 30px rgba(0,0,0,0.15)' }}>
+                       {logoImage ? (
+                         <img src={logoImage} alt="לוגו" className="max-w-[280px] max-h-[150px] object-contain" />
+                       ) : (
+                         <>
                          <div className="w-full h-14 bg-[#6B1A28] mb-3 flex items-center justify-center text-[#ffffff] text-[32px] font-black rounded-tl-2xl rounded-br-2xl border-2 border-[#4A0A16] border-b-[5px] tracking-wider leading-none pb-1 relative overflow-hidden">
                            <div className="absolute inset-0 bg-white opacity-10 rounded-full blur-md -top-6 -left-6 w-20 h-20"></div>
                            <span className="relative z-10">{org.shortName || org.orgName.he}</span>
@@ -336,16 +433,18 @@ export function PosterTab({ onClose }: { onClose: () => void }) {
                             {[org.address, org.city].filter(Boolean).join(', ')}
                             {org.phone && <span className="font-bold text-[22px] mt-2 block text-[#6B1A28]">{org.phone}</span>}
                          </div>
+                         </>
+                       )}
                      </div>
                   </div>
 
                   {/* כותרת ראשית */}
                   <div className="px-24 mt-8 flex flex-col items-start gap-4">
                      <div className="bg-[#ffffff] px-10 py-3 rounded-lg transform -rotate-2" style={{ boxShadow: '0 8px 25px rgba(0,0,0,0.15)' }}>
-                        <h1 className="text-[110px] leading-none font-bold text-[#6B1A28] pb-2" style={{ fontFamily: 'Georgia, serif', fontStyle:'italic' }}>{T.titleLine1}</h1>
+                        <h1 className="text-[110px] leading-none font-bold text-[#6B1A28] pb-2" style={{ fontFamily: 'Georgia, serif', fontStyle:'italic' }}>{titleLine1}</h1>
                      </div>
                      <div className="bg-[#ffffff] px-10 py-3 rounded-lg transform rotate-1 ml-16" style={{ boxShadow: '0 8px 25px rgba(0,0,0,0.15)' }}>
-                        <h1 className="text-[110px] leading-none font-bold text-[#6B1A28] pb-2" style={{ fontFamily: 'Georgia, serif', fontStyle:'italic' }}>{T.titleLine2}</h1>
+                        <h1 className="text-[110px] leading-none font-bold text-[#6B1A28] pb-2" style={{ fontFamily: 'Georgia, serif', fontStyle:'italic' }}>{titleLine2}</h1>
                      </div>
                   </div>
 
@@ -357,15 +456,15 @@ export function PosterTab({ onClose }: { onClose: () => void }) {
                         </h2>
                      </div>
                      <div className="px-24 mt-6 shrink-0 inline-block w-full">
-                        <h3 className="text-[#6B1A28] text-[36px] font-bold leading-tight opacity-90" style={{ textShadow: "0px 1px 2px rgba(0,0,0,0.1)" }}>
-                           {T.atVenue(venue)}<br/>
-                           {[org.address, org.city].filter(Boolean).join(', ')}
-                        </h3>
                         {subtitle && (
-                           <div className="mt-3 inline-block bg-[#6B1A28] text-[#f4bc3a] text-[26px] font-black px-6 py-2 rounded-full tracking-wide">
+                           <div className="mb-3 inline-block bg-[#6B1A28] text-[#f4bc3a] text-[26px] font-black px-6 py-2 rounded-full tracking-wide">
                               {subtitle}
                            </div>
                         )}
+                        <h3 className="text-[#6B1A28] text-[36px] font-bold leading-tight opacity-90" style={{ textShadow: "0px 1px 2px rgba(0,0,0,0.1)" }}>
+                           {T.atVenue(venue)}<br/>
+                           {posterAddress}
+                        </h3>
                      </div>
                   </div>
 
@@ -435,19 +534,14 @@ export function PosterTab({ onClose }: { onClose: () => void }) {
                            </div>
                         )}
 
-                        <div className="bg-[#DDE4E4] rounded-[2rem] px-5 py-6 relative flex flex-col items-center justify-center text-center border-2 border-white overflow-hidden" style={{ boxShadow: '0 10px 40px rgba(0,0,0,0.1)' }}>
-                           <div className="absolute -bottom-10 -left-10 w-32 h-32 bg-white opacity-40 rounded-full blur-xl"></div>
-                           <div className="text-[#6B1A28] text-[32px] font-bold leading-[1.1] mb-2 relative z-10" style={{ textShadow: "0px 1px 1px rgba(255,255,255,0.5)" }}>{T.kiddushWidget.split('\n').map((l, i) => <React.Fragment key={i}>{i > 0 && <br/>}{l}</React.Fragment>)}</div>
-                           <div className="text-[#1f2937] text-[14px] font-black uppercase tracking-widest relative z-10">{T.kiddushWidgetSub}</div>
-                        </div>
-
-                        {includeClass && (
-                           <div className="bg-[#F8F5EE] rounded-[2rem] px-5 py-6 relative flex flex-col items-center justify-center text-center border-2 border-white overflow-hidden" style={{ boxShadow: '0 10px 40px rgba(0,0,0,0.1)' }}>
+                        {widgets.map((widget, index) => (
+                           <div key={widget.id} className={`${index % 2 === 0 ? 'bg-[#DDE4E4]' : 'bg-[#F8F5EE]'} rounded-[2rem] px-5 py-6 relative flex flex-col items-center justify-center text-center border-2 border-white overflow-hidden`} style={{ boxShadow: '0 10px 40px rgba(0,0,0,0.1)' }}>
                               <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-40 h-40 bg-white opacity-40 rounded-full blur-xl"></div>
-                              <div className="text-[#6B1A28] text-[26px] font-bold leading-none mb-2 relative z-10">{T.halachaClass}</div>
-                              <div className="text-[#6B1A28] text-[42px] font-black leading-none relative z-10 tracking-tight" style={{ textShadow: "0px 1px 1px rgba(0,0,0,0.1)" }}>{halachaTime}</div>
+                              <div className="text-[#6B1A28] text-[28px] font-bold leading-tight mb-2 relative z-10">{widget.title}</div>
+                              {widget.detail && <div className="text-[#1f2937] text-[15px] font-black uppercase tracking-wider relative z-10 mb-2">{widget.detail}</div>}
+                              {widget.time && <div className="text-[#6B1A28] text-[42px] font-black leading-none relative z-10 tracking-tight" style={{ textShadow: "0px 1px 1px rgba(0,0,0,0.1)" }}>{widget.time}</div>}
                            </div>
-                        )}
+                        ))}
                         
                      </div>
                   </div>
@@ -458,11 +552,11 @@ export function PosterTab({ onClose }: { onClose: () => void }) {
                        <svg className="absolute top-[-30px] rotate-180 left-0 w-full z-10" viewBox="0 0 1080 30" fill="none" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">
                           <path d="M0,0 Q270,30 540,15 T1080,0 L1080,30 L0,30 Z" fill="#6B1A28"/>
                        </svg>
-                       <h1 className="text-[#ffffff] text-[56px] font-bold relative z-20" style={{ fontFamily: 'Georgia, serif', fontStyle:'italic', textShadow: "2px 2px 4px rgba(0,0,0,0.3)" }}>{T.farewell}</h1>
+                       <h1 className="text-[#ffffff] text-[56px] font-bold relative z-20" style={{ fontFamily: 'Georgia, serif', fontStyle:'italic', textShadow: "2px 2px 4px rgba(0,0,0,0.3)" }}>{footerText}</h1>
                     </div>
                   ) : (
                     <div className="absolute bottom-0 left-0 w-full px-24 py-10 flex justify-end items-center">
-                       <h1 className="text-[#6B1A28] text-[56px] font-bold" style={{ fontFamily: 'Georgia, serif', fontStyle:'italic', textShadow: "1px 1px 0px rgba(255,255,255,0.8), 2px 2px 6px rgba(0,0,0,0.15)" }}>{T.farewell}</h1>
+                       <h1 className="text-[#6B1A28] text-[56px] font-bold" style={{ fontFamily: 'Georgia, serif', fontStyle:'italic', textShadow: "1px 1px 0px rgba(255,255,255,0.8), 2px 2px 6px rgba(0,0,0,0.15)" }}>{footerText}</h1>
                     </div>
                   )}
 
