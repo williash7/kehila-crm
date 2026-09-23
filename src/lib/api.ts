@@ -458,8 +458,12 @@ export async function saveContactMergeCloud(
   data: Record<string, any>, aliasName: string, canonicalName: string
 ): Promise<boolean> {
   saveCRMData(data);
-  const res = await apiPost('saveContactMerge', { data, aliasName, canonicalName });
+  // בשרת החדש המיזוג הוא שורה קטנה ועצמאית ב"מיפוי שמות". אין סיבה
+  // לשלוח ולכתוב מחדש את כל ה-CRM בכל חיבור של שני שמות — זה היה החלק
+  // האיטי בפעולה. `data` נשאר כאן רק לצורך התאימות לשרת ישן למטה.
+  const res = await apiPost('saveContactMerge', { aliasName, canonicalName });
   if (res?.success) return true;
+  // תאימות לפריסה ישנה של Apps Script שאינה מכירה saveContactMerge.
   const fallback = await apiPost('saveCRM', { data });
   return !(fallback?.error || fallback?.success === false);
 }
@@ -469,7 +473,8 @@ export async function deleteContactMergeCloud(
   data: Record<string, any>, aliasName: string
 ): Promise<boolean> {
   saveCRMData(data);
-  const res = await apiPost('deleteContactMerge', { data, aliasName });
+  // כמו בהוספת חיבור: מוחקים רק את השורה המתאימה, בלי כתיבה מלאה של CRM.
+  const res = await apiPost('deleteContactMerge', { aliasName });
   if (res?.success) return true;
   const fallback = await apiPost('saveCRM', { data });
   return !(fallback?.error || fallback?.success === false);

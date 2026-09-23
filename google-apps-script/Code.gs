@@ -3959,7 +3959,10 @@ function saveContactMerge_(body) {
   var alias = String(body.aliasName || '').trim();
   var canonical = String(body.canonicalName || '').trim();
   if (!alias || !canonical || alias === canonical) throw new Error('חיבור אנשי קשר אינו תקין');
-  saveCRM_(body.data);
+  // המיזוג נשמר כמיפוי עצמאי. ה-CRM הגולמי נשאר כפי שהוא, ובקריאה
+  // readCRM_ מחילה עליו את המיפוי. כך אין כתיבה מחדש של כל מאגר אנשי
+  // הקשר עבור שינוי של שורה אחת, וגם ביטול מיזוג יכול לחשוף שוב את
+  // שתי הרשומות המקוריות.
   var one = {};
   one[alias] = canonical;
   writeNameMerges_(one);
@@ -3969,7 +3972,6 @@ function saveContactMerge_(body) {
 function deleteContactMerge_(body) {
   var alias = String(body.aliasName || '').trim();
   if (!alias) throw new Error('חסר שם מקושר לביטול');
-  saveCRM_(body.data);
   deleteNameMerge_(alias);
   return { success: true, aliasName: alias };
 }
