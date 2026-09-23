@@ -401,6 +401,7 @@ function Transactions({ data, donations, hk, onAdd, onEdit, onCancel, onDelete, 
   const [amountFrom, setAmountFrom] = useState('');
   const [amountTo, setAmountTo] = useState('');
   const [showFilters, setShowFilters] = useState(false);
+  const [expandedHkMonth, setExpandedHkMonth] = useState('');
   const [sort, setSort] = usePersistentListSort('kehila:list-sort:finance-transactions');
   const flowRows = useMemo(() => buildFinanceFlowRows(data, donations), [data, donations]);
 
@@ -420,12 +421,12 @@ function Transactions({ data, donations, hk, onAdd, onEdit, onCancel, onDelete, 
     const until = addMonthsKeepingDay(todayIso(), 12, Number(todayIso().slice(8, 10)));
     const charges = projectStandingOrderCharges(hk, todayIso(), until);
     const incoming = standingOrderIncomeByMonth(charges);
-    const byMonth = new Map(incoming.map(entry => [entry.month, { ...entry, outgoing: 0, otherIncome: 0 }]));
+    const byMonth = new Map(incoming.map(entry => [entry.month, { ...entry, outgoing: 0, otherIncome: 0, charges: charges.filter(charge => charge.date.slice(0, 7) === entry.month) }]));
     data.transactions.forEach(tx => {
       if (tx.status !== 'committed' && tx.status !== 'expected') return;
       if (!tx.date || tx.date <= todayIso() || tx.date > until) return;
       const month = tx.date.slice(0, 7);
-      const entry = byMonth.get(month) || { month, amount: 0, count: 0, outgoing: 0, otherIncome: 0 };
+      const entry = byMonth.get(month) || { month, amount: 0, count: 0, outgoing: 0, otherIncome: 0, charges: [] };
       const effects = transactionEffects(tx, true);
       entry.outgoing += effects.expense;
       entry.otherIncome += effects.income;
@@ -590,15 +591,36 @@ function Transactions({ data, donations, hk, onAdd, onEdit, onCancel, onDelete, 
       {aheadMonths.map(month => {
         const income = month.amount + month.otherIncome;
         const net = income - month.outgoing;
-        return <div key={month.month} className="grid grid-cols-4 gap-2 px-4 py-3 text-xs text-right">
-          <b>{new Date(`${month.month}-15T12:00:00`).toLocaleDateString('he-IL', { month: 'long', year: 'numeric' })}</b>
-          <span className="text-emerald-700">{money(month.amount)}{month.count ? <small className="text-gray-400"> · {month.count}</small> : null}</span>
-          <span className="text-red-600">{money(month.outgoing)}</span>
-          <b className={net >= 0 ? 'text-[#0D1B2A]' : 'text-red-600'}>{money(net)}</b>
-        </div>;
+        return <React.Fragment key={month.month}>
+          <div className="grid grid-cols-4 gap-2 px-4 py-3 text-xs text-right">
+            <b>{new Date(`${month.month}-15T12:00:00`).toLocaleDateString('he-IL', { month: 'long', year: 'numeric' })}</b>
+            <button
+              type="button"
+              disabled={!month.count}
+              onClick={() => setExpandedHkMonth(current => current === month.month ? '' : month.month)}
+              className={`text-right text-emerald-700 font-bold ${month.count ? 'underline decoration-dotted underline-offset-2' : 'cursor-default'}`}
+            >
+              {money(month.amount)}{month.count ? <small className="text-gray-400"> · {month.count} · פירוט</small> : null}
+            </button>
+            <span className="text-red-600">{money(month.outgoing)}</span>
+            <b className={net >= 0 ? 'text-[#0D1B2A]' : 'text-red-600'}>{money(net)}</b>
+          </div>
+          {expandedHkMonth === month.month && month.charges.length > 0 && <div className="bg-emerald-50/60 px-4 py-3 border-t border-emerald-100">
+            <div className="flex items-center justify-between gap-3 mb-2 text-xs">
+              <b className="text-emerald-900">הוראות הקבע הצפויות בחודש הזה</b>
+              <b className="text-emerald-800">{money(month.amount)}</b>
+            </div>
+            <div className="divide-y divide-emerald-100">
+              {month.charges.map((charge, index) => <div key={`${charge.hkId}-${charge.date}-${index}`} className="flex items-center justify-between gap-3 py-2 text-xs">
+                <span className="min-w-0"><b className="block text-[#0D1B2A] truncate">{charge.name}</b><small className="text-gray-500">{dateLabel(charge.date)}</small></span>
+                <b className="text-emerald-700 shrink-0">{money(charge.amount)}</b>
+              </div>)}
+            </div>
+          </div>}
+        </React.Fragment>;
       })}
     </div>
-    <p className="px-4 py-3 text-[11px] text-gray-500 bg-[#FAF6EE] border-t border-[#EDE6D6]">הוראת קבע יכולה להיכשל, ולכן הסכומים כאן נחשבים „צפוי” ולא „מובטח”. הם משפרים את התמונה האופטימית ואינם נכנסים לתחזית הבטוחה.</p>
+    <p className="px-4 py-3 text-[11px] text-gray-500 bg-[#FAF6EE] border-t border-[#EDE6D6]">הוראת קבע יכולה להיכשל, ולכן היא עדיין מסומנת „צפוי”. לצורך התכנון היא כן נלקחת בחשבון ב„מה בטוח להוציא”, עד שהחיוב נכנס בפועל.</p>
   </section>}
   </div>;
 }
@@ -720,10 +742,21 @@ function FinanceMetricDetails({ kind, summary, data, donations, reimbursementBal
   summary: ReturnType<typeof summarizeFinance>; data: FinanceData; donations: Donation[];
   reimbursementBalance: number; heldCashBalance: number; onClose: () => void; onResolved: () => Promise<void>;
 }) {
+  const { hk } = useAppStore();
+  const [showStandingOrders, setShowStandingOrders] = useState(false);
   const unresolved = useMemo(() => unresolvedCashDonations(data, donations), [data, donations]);
   const rows = buildFinanceFlowRows(data, donations);
   const end = new Date(`${todayIso()}T12:00:00`); end.setDate(end.getDate() + data.forecastDays);
   const horizon = end.toISOString().slice(0, 10);
+  const projectedStandingOrders = useMemo(() => projectStandingOrderCharges(hk, todayIso(), horizon), [hk, horizon]);
+  const standingOrdersByMonth = useMemo(() => {
+    const grouped = new Map<string, typeof projectedStandingOrders>();
+    projectedStandingOrders.forEach(charge => {
+      const month = charge.date.slice(0, 7);
+      grouped.set(month, [...(grouped.get(month) || []), charge]);
+    });
+    return [...grouped.entries()].sort(([a], [b]) => a.localeCompare(b));
+  }, [projectedStandingOrders]);
   const currentRows = rows.filter(row => row.status === 'actual' && row.includedAfterOpening && (row.currentBalanceEffect !== 0 || row.source === 'donation'));
   const committedRows = rows.filter(row => row.status === 'committed' && row.direction === 'expense' && row.date <= horizon);
   const reimbursementRows = rows.filter(row =>
@@ -757,7 +790,17 @@ function FinanceMetricDetails({ kind, summary, data, donations, reimbursementBal
         <DetailLine label="זמין כרגע" value={summary.currentBalance} />
         <DetailLine label="התחייבויות עתידיות" value={-summary.committedExpense} />
         <DetailLine label="הכנסות עתידיות שהוגדרו כמובטחות" value={summary.committedIncome} />
-        <DetailLine label="הוראות קבע צפויות" value={summary.standingOrderIncome} />
+        <DetailLine label={`הוראות קבע צפויות · ${projectedStandingOrders.length} חיובים · לחץ לפירוט`} value={summary.standingOrderIncome} onClick={() => setShowStandingOrders(value => !value)} />
+        {showStandingOrders && <div className="border border-emerald-100 bg-emerald-50/50 rounded-xl overflow-hidden my-2">
+          {standingOrdersByMonth.length === 0 ? <p className="p-3 text-xs text-gray-500 text-center">אין הוראות קבע צפויות בטווח החישוב.</p> : standingOrdersByMonth.map(([month, charges]) => {
+            const total = charges.reduce((sum, charge) => sum + charge.amount, 0);
+            const label = new Date(`${month}-15T12:00:00`).toLocaleDateString('he-IL', { month: 'long', year: 'numeric' });
+            return <div key={month} className="border-b last:border-b-0 border-emerald-100">
+              <div className="flex items-center justify-between gap-3 px-3 py-2 bg-emerald-50"><b className="text-xs text-emerald-900">{label} · {charges.length} חיובים</b><b className="text-xs text-emerald-800">{money(total)}</b></div>
+              <div className="divide-y divide-emerald-100 px-3">{charges.map((charge, index) => <div key={`${charge.hkId}-${charge.date}-${index}`} className="flex items-center justify-between gap-3 py-2 text-xs"><span className="min-w-0"><b className="block text-[#0D1B2A] truncate">{charge.name}</b><small className="text-gray-500">{dateLabel(charge.date)}</small></span><b className="text-emerald-700 shrink-0">{money(charge.amount)}</b></div>)}</div>
+            </div>;
+          })}
+        </div>}
         <DetailLine label="רזרבת ביטחון" value={-data.safetyReserve} />
         <DetailLine label="שכירות שעדיין לא נרשמה כהתחייבות" value={-rentProtection} />
         <DetailLine label="כסף שהפעילות חייבת לך" value={-Math.max(0, summary.personalBalance)} />
@@ -932,8 +975,11 @@ function CashDecisions({ donations, total, onDone }: {
   </div>;
 }
 
-function DetailLine({ label, value }: { label: string; value: number }) {
-  return <div className="flex items-center justify-between gap-3 py-2 text-xs"><span className="text-gray-600">{label}</span><b className={value < 0 ? 'text-red-600 shrink-0' : 'text-emerald-700 shrink-0'}>{value > 0 ? '+' : value < 0 ? '−' : ''}{money(Math.abs(value))}</b></div>;
+function DetailLine({ label, value, onClick }: { label: string; value: number; onClick?: () => void }) {
+  const content = <><span className={onClick ? 'text-[#0D1B2A] font-bold' : 'text-gray-600'}>{label}</span><b className={value < 0 ? 'text-red-600 shrink-0' : 'text-emerald-700 shrink-0'}>{value > 0 ? '+' : value < 0 ? '−' : ''}{money(Math.abs(value))}</b></>;
+  return onClick
+    ? <button type="button" onClick={onClick} className="w-full flex items-center justify-between gap-3 py-2 text-xs text-right hover:bg-emerald-50 rounded-lg px-1">{content}</button>
+    : <div className="flex items-center justify-between gap-3 py-2 text-xs">{content}</div>;
 }
 function DetailTotal({ label, value, negative = false }: { label: string; value: number; negative?: boolean }) {
   return <div className="flex items-center justify-between gap-3 bg-[#0D1B2A] text-white rounded-xl p-3 text-sm"><b>{label}</b><b className="text-[#E8C97A]">{(negative || value < 0) && value ? '−' : ''}{money(Math.abs(value))}</b></div>;
