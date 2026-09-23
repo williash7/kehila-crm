@@ -41,7 +41,13 @@ ok(cancelled.notes === 'הערה קיימת', 'הערה קיימת נשמרה ב
 result = cancelDonationsBulk_({ ids: ['man:clean-manual', 'mail:clean-email'] });
 ok(result.cancelled === 0 && result.already === 2, 'הרצה חוזרת אינה משנה שוב את אותן שורות');
 
-console.log('\nג. סינון וביטול בצד האפליקציה:');
+console.log('\nג. שינוי שם איש קשר מתעדכן בכל המקורות:');
+result = renameContact_({ oldName: 'תרומה ומפגש', newName: 'תרומה ומפגש מתוקן' });
+ok(result.success === true && result.changed >= 1, 'שינוי השם עודכן בגיליון');
+ok(getDonations_().some(row => row.name === 'תרומה ומפגש מתוקן'), 'השם החדש מופיע בתרומות וברשימה הראשית');
+ok(readNameMerges_()['תרומה ומפגש'] === 'תרומה ומפגש מתוקן', 'השם הישן נשמר ככינוי לשם החדש');
+
+console.log('\nד. סינון וביטול בצד האפליקציה:');
 const D = require('/tmp/stub/dataCleanup.js');
 const donations = [
   { id: 'a', name: 'א', amount: 10, date: '01/08/2026', source: 'ידני' },
@@ -69,7 +75,7 @@ const changed = D.cancelFinanceTransactions(finance, ['f1']);
 ok(changed.cancelled === 1 && changed.data.transactions.find(x => x.id === 'f1').status === 'cancelled', 'תנועה בוטלה במקום להימחק');
 ok(changed.data.transactions.find(x => x.id === 'f1').history.length === 1, 'המצב הקודם נשמר בהיסטוריה');
 
-console.log('\nד. שערי הבטיחות בממשק:');
+console.log('\nה. שערי הבטיחות בממשק:');
 const cardSource = fs.readFileSync(__dirname + '/../src/components/DataCleanupCard.tsx', 'utf8');
 const backupAt = cardSource.indexOf('await createAndDownloadFullBackup');
 const donationAt = cardSource.indexOf('await cancelDonationsBulkQueued');
@@ -90,3 +96,6 @@ ok(/השגיאה כבר לא רלוונטית/.test(donorsTab), 'אפשר להס
 ok(/resolveChargeFailureQueued/.test(appContext), 'סימון השגיאה כטופלה נשלח בבטחה לשרת');
 ok(/function resolveChargeFailure_/.test(gas) && /get_\(r, t, 'טופל'\)/.test(gas),
   'השרת שומר היסטוריה ומסתיר רק שגיאות שסומנו כטופלו');
+const profile = fs.readFileSync(__dirname + '/../src/components/ProfileModal.tsx', 'utf8');
+ok(/renameContact\(name, requestedName\)/.test(profile), 'עריכת שם בכרטיס משתמשת בפעולת שינוי השם המלאה');
+ok(/function renameContact_/.test(gas) && /SH\.LOG/.test(gas), 'השרת מעדכן גם תרומות והוראות קבע בשם החדש');

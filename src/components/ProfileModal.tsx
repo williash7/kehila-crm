@@ -39,7 +39,7 @@ export function ProfileModal({ name, onClose, backLabel, siblings, onSelectSibli
   siblings?: SiblingItem[];
   onSelectSibling?: (name: string) => void;
 }) {
-  const { donors, crm, donations, updateCrm, settings, holidayExtras, updateHolidayExtras, refresh } = useAppStore();
+  const { donors, crm, donations, updateCrm, renameContact, settings, holidayExtras, updateHolidayExtras, refresh } = useAppStore();
   const [editingDonation, setEditingDonation] = useState<Donation | null>(null);
   const [editingPhone, setEditingPhone] = useState(false);
   const [phoneInput, setPhoneInput] = useState('');
@@ -195,6 +195,15 @@ export function ProfileModal({ name, onClose, backLabel, siblings, onSelectSibli
   const handleFieldSave = async () => {
     setIsSaving(true);
     try {
+      const requestedName = String(editedFields['שם מלא'] || name).trim().replace(/\s+/g, ' ');
+      if (!requestedName) {
+        alert('שם איש הקשר אינו יכול להיות ריק');
+        return;
+      }
+      if (requestedName !== name && (donors[requestedName] || crm[requestedName])) {
+        alert('כבר קיים איש קשר בשם הזה. כדי לחבר ביניהם יש להשתמש במיזוג אנשי קשר.');
+        return;
+      }
       let changed = false;
       const reverseMapRaw = localStorage.getItem('reverseHeaderMap');
       const reverseHeaderMap = reverseMapRaw ? JSON.parse(reverseMapRaw) : {};
@@ -209,6 +218,9 @@ export function ProfileModal({ name, onClose, backLabel, siblings, onSelectSibli
       };
 
       for (const [field, value] of Object.entries(editedFields)) {
+         // שינוי שם הוא פעולה מערכתית נפרדת: היא מעדכנת גם תרומות, הוראות
+         // קבע, שגיאות ומיפוי שמות. אסור לשמור אותו כתא רגיל בלבד.
+         if (field === 'שם מלא') continue;
          const originalValue = newCustomFields[field] ?? (donor as any)[field] ?? '';
          if (originalValue !== value) {
             newCustomFields[field] = value;
@@ -239,6 +251,17 @@ export function ProfileModal({ name, onClose, backLabel, siblings, onSelectSibli
       setPendingFieldWrites(failedSpecs);
       if (failedSpecs.length) {
         alert(`הפרטים נשמרו בכרטיס המקומי, אך ${failedSpecs.length} עדכונים לא נשמרו בגיליון. אפשר ללחוץ שוב על שמירה כדי לנסות מחדש.`);
+        return;
+      }
+      if (requestedName !== name) {
+        const renamed = await renameContact(name, requestedName);
+        if (!renamed) {
+          alert('הפרטים נשמרו, אך שינוי השם לא הצליח. ייתכן שכבר קיים איש קשר בשם החדש.');
+          return;
+        }
+        setIsEditingFields(false);
+        if (onSelectSibling) onSelectSibling(requestedName);
+        else onClose();
         return;
       }
       setIsEditingFields(false);
@@ -509,7 +532,7 @@ export function ProfileModal({ name, onClose, backLabel, siblings, onSelectSibli
             <h3 className="font-['Frank_Ruhl_Libre'] text-lg font-bold text-[#0D1B2A]">פרטים ומידע מלאים</h3>
             <button 
               onClick={() => {
-                const init: Record<string, string> = {};
+                const init: Record<string, string> = { 'שם מלא': name };
                 const combined = { ...donor, ...(crmData.customFields || {}) };
                 Object.keys(combined).filter(k => !['name','total','donations','lastDate'].includes(k) && !/^\d+$/.test(k)).forEach(k => {
                   init[k] = (combined as any)[k] || '';

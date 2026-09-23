@@ -249,6 +249,10 @@ export const updateDonorFieldQueued = (data: any): Promise<WriteOutcome> =>
 export const updatePersonalDateQueued = (data: any): Promise<WriteOutcome> =>
   submitWrite('updatePersonalDate', data, apiPost);
 
+/** שינוי שם של איש קשר בכל הלשוניות, תוך שמירת השם הישן ככינוי. */
+export const renameContactQueued = (data: any): Promise<WriteOutcome> =>
+  submitWrite('renameContact', data, apiPost);
+
 export const restoreBegin = (manifest: any) => restorePost('restoreBegin', { manifest });
 export const restoreSheet = (data: any) => restorePost('restoreSheet', data);
 export const restoreSync = (data: any) => restorePost('restoreSync', data);

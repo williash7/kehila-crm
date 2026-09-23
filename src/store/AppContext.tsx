@@ -67,6 +67,7 @@ interface AppState {
   refresh: () => void;
   addManualDonation: (donation: any) => void;
   updateCrm: (name: string, data: any) => void;
+  renameContact: (oldName: string, newName: string) => Promise<boolean>;
   updateCrmMany: (updates: Record<string, any>) => Promise<boolean>;
   updateHolidayExtras: (id: string, data: any) => void;
   updateEventsData: (data: any[]) => void;
@@ -514,6 +515,36 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       return next;
     });
     logAction('contact_update');
+  };
+
+  const renameContact = async (oldName: string, newNameRaw: string): Promise<boolean> => {
+    const newName = newNameRaw.trim().replace(/\s+/g, ' ');
+    if (!oldName || !newName || oldName === newName) return false;
+    if (donors[newName] || crm[newName]) return false;
+
+    const { renameContactQueued } = await import('../lib/api');
+    const outcome = await renameContactQueued({ oldName, newName });
+    if (outcome.status === 'failed') return false;
+
+    const nextMerges = { ...nameMerges, [oldName]: newName };
+    setNameMerges(nextMerges);
+    setCrm(prev => {
+      const next = { ...prev, [newName]: prev[oldName] || {} };
+      delete next[oldName];
+      saveCRMData({ ...next, [MERGES_KEY]: nextMerges });
+      return next;
+    });
+    setDonations(prev => prev.map(d => d.name === oldName ? { ...d, name: newName } : d));
+    setDonors(prev => {
+      const current = prev[oldName];
+      if (!current) return prev;
+      const next = { ...prev, [newName]: { ...current, name: newName } };
+      delete next[oldName];
+      return next;
+    });
+    setHk(prev => prev.map(row => row.name === oldName ? { ...row, name: newName } : row));
+    setFailures(prev => prev.map(row => row.name === oldName ? { ...row, name: newName } : row));
+    return true;
   };
 
   const resolveChargeFailure = async (failure: ChargeFailure): Promise<boolean> => {
@@ -1069,7 +1100,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       loading, loadingText, apiError, crm, holidayExtras, eventsData, history, nameMerges,
       refresh: () => loadAll({ silent: true }),
       projects, updateProjects, financeData, updateFinanceData,
-      addManualDonation, updateCrm, updateCrmMany, updateHolidayExtras, updateEventsData, updateRebbeDate,
+      addManualDonation, updateCrm, renameContact, updateCrmMany, updateHolidayExtras, updateEventsData, updateRebbeDate,
       mergeContacts, mergeContactsMany, unmergeContact, settings, updateSettings,
       archiveOccurrence, importTasksFromHistory, updateHistoryEntry, addHistoryEntries, deleteHistoryEntry,
       homeVisits, startHomeVisitRound, markHomeVisitDone, unmarkHomeVisitDone, createHomeVisitTaskForEntry,

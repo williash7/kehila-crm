@@ -838,6 +838,7 @@ function route_(action, body) {
     case 'addManualChargeFailure': return addManualChargeFailure_(body);
     case 'resolveChargeFailure': return resolveChargeFailure_(body);
     case 'updateDonorField':   return updateDonorField_(body);
+    case 'renameContact':      return renameContact_(body);
     case 'deleteContactColumns': return deleteContactColumns_(body);
     case 'updatePersonalDate': return updateDonorField_(body);
     case 'createHolidayDoc':   return createHolidayDoc_(body);
@@ -884,6 +885,7 @@ var AUDITED_ACTIONS = {
   addManualChargeFailure: 'סימון כשל חיוב ידני',
   resolveChargeFailure: 'סימון כשל חיוב כטופל',
   updateDonorField: 'עדכון איש קשר',
+  renameContact: 'שינוי שם איש קשר',
   updatePersonalDate: 'עדכון תאריך אישי',
   deleteContactColumns: 'מחיקת שדות אנשי קשר',
   createHolidayDoc: 'יצירת מסמך חג',
@@ -2641,6 +2643,59 @@ function updateDonorField_(body) {
 
   t.sheet.getRange(row, col + 1).setValue(body.value);
   return { success: true };
+}
+
+/**
+ * משנה שם של איש קשר בכל המקורות שבהם הוא יכול להופיע. שינוי תא "שם מלא"
+ * בלבד אינו מספיק: התרומות והוראות הקבע היו ממשיכות ליצור מחדש את השם הישן.
+ * בנוסף נשמר מיפוי ישן→חדש, כדי שמייל עתידי מהספק בשם הישן עדיין יתחבר
+ * לכרטיס הנכון.
+ */
+function renameContact_(body) {
+  var oldName = standardName(body.oldName);
+  var newName = standardName(body.newName);
+  if (!oldName || !newName || oldName === newName) {
+    return { success: false, error: 'שמות איש הקשר אינם תקינים' };
+  }
+
+  var sources = [
+    { sheet: SH.CONTACTS, field: 'שם מלא' },
+    { sheet: SH.LOG, field: 'שם' },
+    { sheet: SH.HK, field: 'שם' },
+    { sheet: SH.FAILURES, field: 'שם' },
+  ];
+
+  // לא דורסים איש קשר קיים. במקרה כזה הפעולה הנכונה היא מיזוג.
+  for (var s = 0; s < sources.length; s++) {
+    var check = table_(sources[s].sheet);
+    var checkCol = check.col(sources[s].field);
+    if (checkCol < 0) continue;
+    for (var c = 0; c < check.rows.length; c++) {
+      if (standardName(check.rows[c][checkCol]) === newName) {
+        return { success: false, error: 'כבר קיים איש קשר בשם החדש; יש להשתמש במיזוג אנשי קשר' };
+      }
+    }
+  }
+
+  var changed = 0;
+  sources.forEach(function (source) {
+    var t = table_(source.sheet);
+    if (!t.sheet) return;
+    var col = t.col(source.field);
+    if (col < 0) return;
+    var values = t.sheet.getDataRange().getValues();
+    for (var row = 1; row < values.length; row++) {
+      if (standardName(values[row][col]) !== oldName) continue;
+      t.sheet.getRange(row + 1, col + 1).setValue(newName);
+      changed++;
+    }
+    invalidateTable_(source.sheet);
+  });
+
+  var one = {};
+  one[oldName] = newName;
+  writeNameMerges_(one);
+  return { success: true, oldName: oldName, newName: newName, changed: changed };
 }
 
 /**
