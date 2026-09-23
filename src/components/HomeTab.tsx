@@ -36,6 +36,7 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd }: { setTab: (t: s
   const [thankYouInfo, setThankYouInfo] = useState<{name: string, amount: number, phone: string} | null>(null);
   const [letterInfo, setLetterInfo] = useState<{name: string, amount: number, date: string, phone: string} | null>(null);
   const [isHkOpen, setIsHkOpen] = useState(false);
+  const [isTasksSummaryOpen, setIsTasksSummaryOpen] = useState(false);
   const [hkReminderDismissed, setHkReminderDismissed] = useState(isMonthlyReminderReviewed());
   const [donationPeriod, setDonationPeriod] = useState<DonationDashboardPeriod>('month');
   const [specificDonationDate, setSpecificDonationDate] = useState(() => {
@@ -84,17 +85,61 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd }: { setTab: (t: s
   const tasksSummary = React.useMemo(() => {
     const today = new Date(); today.setHours(0, 0, 0, 0);
     let openHolidayTasks = 0;
+    const items: { key: string; text: string; group: string; context: string; dueDate?: string }[] = [];
     const holidayIds = new Set<string>();
     holidays.forEach(h => holidayIds.add(h.hebrew || h.title));
     getCustomHols().forEach((c: any) => holidayIds.add(c.name));
     holidayIds.forEach(id => {
-      openHolidayTasks += (holidayExtras[id]?.tasks || []).filter((t: any) => !t.done).length;
+      const open = (holidayExtras[id]?.tasks || []).filter((t: any) => !t.done);
+      openHolidayTasks += open.length;
+      open.forEach((task: any, index: number) => items.push({
+        key: `holiday-${id}-${task.id || index}`,
+        text: task.text || 'משימה ללא כותרת',
+        group: 'חג',
+        context: id,
+        dueDate: task.dueDate,
+      }));
     });
     let openEventTasks = 0;
-    eventsData.forEach((e: any) => { openEventTasks += (e.tasks || []).filter((t: any) => !t.done).length; });
-    const openCampaignTasks = projects.reduce((sum, project) => sum + (project.tasks || []).filter((t: any) => !t.done).length, 0);
+    eventsData.forEach((event: any) => {
+      const open = (event.tasks || []).filter((task: any) => !task.done);
+      openEventTasks += open.length;
+      open.forEach((task: any, index: number) => items.push({
+        key: `event-${event.id}-${task.id || index}`,
+        text: task.text || 'משימה ללא כותרת',
+        group: 'פעילות',
+        context: event.name || 'פעילות',
+        dueDate: task.dueDate,
+      }));
+    });
+    let openCampaignTasks = 0;
+    projects.forEach(project => {
+      const open = (project.tasks || []).filter((task: any) => !task.done);
+      openCampaignTasks += open.length;
+      open.forEach((task: any, index: number) => items.push({
+        key: `campaign-${project.id}-${task.id || index}`,
+        text: task.text || 'משימה ללא כותרת',
+        group: 'קמפיין',
+        context: project.name || 'קמפיין',
+        dueDate: task.dueDate,
+      }));
+    });
+    const standalone = (holidayExtras[STANDALONE_TASKS_ID]?.tasks || []).filter((task: any) => !task.done);
+    standalone.forEach((task: any, index: number) => items.push({
+      key: `standalone-${task.id || index}`,
+      text: task.text || 'משימה ללא כותרת',
+      group: 'כללי',
+      context: 'משימה כללית',
+      dueDate: task.dueDate,
+    }));
     const personalDates = computePersonalDateEvents(visibleDonors, crm, today).filter(e => e.dist <= 7);
-    return { openHolidayTasks, openEventTasks, openCampaignTasks, personalDates };
+    personalDates.forEach(event => items.push({
+      key: `personal-${event.key}`,
+      text: `${event.name} — ${event.msg}`,
+      group: 'תאריך אישי',
+      context: event.dist === 0 ? 'היום' : `בעוד ${event.dist} ימים`,
+    }));
+    return { openHolidayTasks, openEventTasks, openCampaignTasks, openStandaloneTasks: standalone.length, personalDates, items };
   }, [holidays, holidayExtras, eventsData, projects, visibleDonors, crm]);
 
   // ── מה דורש טיפול ──────────────────────────────────────────────────────
@@ -243,10 +288,10 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd }: { setTab: (t: s
   // ── Render helpers ──────────────────────────────────────────────────────────
 
   const renderTasksSummary = () => {
-    const total = tasksSummary.openHolidayTasks + tasksSummary.openEventTasks + tasksSummary.openCampaignTasks + tasksSummary.personalDates.length;
+    const total = tasksSummary.items.length;
     return (
       <div
-        onClick={() => setTab('tasks')}
+        onClick={() => setIsTasksSummaryOpen(true)}
         className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6] cursor-pointer active:scale-[0.98] transition-transform flex items-center justify-between gap-3"
       >
         <div className="flex items-center gap-3 min-w-0">
@@ -256,7 +301,7 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd }: { setTab: (t: s
               {total === 0 ? 'אין משימות פתוחות כרגע' : `${total} משימות פתוחות`}
             </div>
             <div className="text-[11px] text-gray-500 mt-0.5 truncate">
-              {tasksSummary.openHolidayTasks} חגים · {tasksSummary.openEventTasks} פעילויות · {tasksSummary.openCampaignTasks} קמפיינים · {tasksSummary.personalDates.length} תאריכים השבוע
+              {tasksSummary.openHolidayTasks} חגים · {tasksSummary.openEventTasks} פעילויות · {tasksSummary.openCampaignTasks} קמפיינים · {tasksSummary.openStandaloneTasks} כלליות · {tasksSummary.personalDates.length} תאריכים
             </div>
           </div>
         </div>
@@ -831,6 +876,43 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd }: { setTab: (t: s
       </div>
 
       {/* ── Modals ── */}
+      {isTasksSummaryOpen && (
+        <div className="fixed inset-0 bg-black/50 z-[200] flex items-end md:items-center justify-center p-0 md:p-4" onClick={event => event.target === event.currentTarget && setIsTasksSummaryOpen(false)}>
+          <div className="bg-[#FAF6EE] rounded-t-3xl md:rounded-3xl p-5 pb-8 md:pb-5 w-full max-w-[520px] max-h-[85vh] flex flex-col animate-in slide-in-from-bottom duration-300">
+            <div className="w-10 h-1 bg-gray-300 rounded-full mx-auto mb-4 md:hidden" />
+            <div className="flex items-center justify-between gap-3 mb-4">
+              <div>
+                <h2 className="font-['Frank_Ruhl_Libre'] text-xl font-bold text-[#0D1B2A] flex items-center gap-2"><ClipboardList size={20} /> משימות פתוחות</h2>
+                <p className="text-[11px] text-gray-500 mt-0.5">{tasksSummary.items.length} משימות מכל התחומים</p>
+              </div>
+              <button onClick={() => setIsTasksSummaryOpen(false)} className="p-2 bg-white rounded-full shadow-sm" aria-label="סגור רשימת משימות"><X size={16} /></button>
+            </div>
+
+            <div className="overflow-y-auto space-y-2 flex-1 min-h-0">
+              {tasksSummary.items.length === 0 ? (
+                <div className="bg-white rounded-2xl border border-[#EDE6D6] p-8 text-center text-sm text-gray-400">אין משימות פתוחות כרגע</div>
+              ) : tasksSummary.items.map(item => (
+                <div key={item.key} className="bg-white rounded-xl border border-[#EDE6D6] shadow-sm p-3 flex items-start gap-3">
+                  <span className="w-7 h-7 rounded-full border-2 border-[#C9A84C]/50 shrink-0 mt-0.5" />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-bold text-[#0D1B2A] leading-snug">{item.text}</div>
+                    <div className="flex flex-wrap items-center gap-1.5 mt-1 text-[10px] text-gray-400">
+                      <span className="bg-[#FAF6EE] rounded-md px-1.5 py-0.5 text-[#9B7A2F] font-bold">{item.group}</span>
+                      <span>{item.context}</span>
+                      {item.dueDate && <><span>·</span><span>{new Date(`${item.dueDate}T12:00:00`).toLocaleDateString('he-IL')}</span></>}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <button onClick={() => { setIsTasksSummaryOpen(false); setTab('tasks'); }} className="mt-4 w-full bg-[#0D1B2A] text-white rounded-xl py-3 text-sm font-bold">
+              פתח את מסך המשימות המלא
+            </button>
+          </div>
+        </div>
+      )}
+
       {isRebbeEditOpen && (
         <div className="fixed inset-0 bg-black/50 z-[200] flex items-end md:items-center justify-center p-0 md:p-4" onClick={(e) => e.target === e.currentTarget && setIsRebbeEditOpen(false)}>
           <div className="bg-[#FAF6EE] rounded-t-3xl md:rounded-3xl p-5 pb-10 md:pb-5 w-full max-w-[430px] md:max-w-sm animate-in slide-in-from-bottom duration-300">
