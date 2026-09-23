@@ -29,7 +29,7 @@ import { emptyFinanceData, normalizeFinanceData, summarizeFinance } from '../lib
 const FAILURE_WINDOW_DAYS = 30;
 
 export function HomeTab({ setTab, onDonationClick, onQuickAdd, onOpenSearch, onOpenInbox }: { setTab: (t: string) => void, onDonationClick: () => void, onQuickAdd: (tab: string) => void, onOpenSearch: () => void, onOpenInbox: () => void }) {
-  const { summary, effectiveSummary, donations, failures, hk, rebbeDate, crm, visibleDonors, shabbat, holidays, hebrewDate, updateRebbeDate, holidayExtras, updateHolidayExtras, eventsData, updateEventsData, settings, projects, updateProjects, financeData, homeVisits } = useAppStore();
+  const { summary, effectiveSummary, donations, failures, hk, rebbeDate, crm, visibleDonors, shabbat, holidays, hebrewDate, updateRebbeDate, holidayExtras, updateHolidayExtras, eventsData, updateEventsData, settings, projects, updateProjects, financeData, homeVisits, updateHomeVisitRoundMeta } = useAppStore();
   const [selectedDonor, setSelectedDonor] = useState<string | null>(null);
   const [selectedHoliday, setSelectedHoliday] = useState<any | null>(null);
   const [isRebbeEditOpen, setIsRebbeEditOpen] = useState(false);
@@ -39,6 +39,7 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd, onOpenSearch, onO
   const [letterInfo, setLetterInfo] = useState<{name: string, amount: number, date: string, phone: string} | null>(null);
   const [isHkOpen, setIsHkOpen] = useState(false);
   const [isTasksSummaryOpen, setIsTasksSummaryOpen] = useState(false);
+  const [dashboardTaskSearch, setDashboardTaskSearch] = useState('');
   const [rebbeReportFrom, setRebbeReportFrom] = useState(() => rebbeDate
     ? rebbeDate.toISOString().slice(0, 10)
     : `${new Date().getFullYear()}-01-01`);
@@ -207,7 +208,7 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd, onOpenSearch, onO
       group: string;
       context: string;
       dueDate?: string;
-      source?: 'holiday' | 'event' | 'campaign' | 'standalone';
+      source?: 'holiday' | 'event' | 'campaign' | 'standalone' | 'homeVisitPrep' | 'personalDate';
       sourceId?: string;
       taskId?: string;
       taskIndex?: number;
@@ -258,27 +259,50 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd, onOpenSearch, onO
       }));
     });
     const allStandalone = holidayExtras[STANDALONE_TASKS_ID]?.tasks || [];
-    const standalone = allStandalone.filter((task: any) => !task.done);
+    const standalone = allStandalone.filter((task: any) => !task.done && task.kind !== 'homeVisit');
+    const homeVisitTasks = allStandalone.filter((task: any) => !task.done && task.kind === 'homeVisit');
     allStandalone.forEach((task: any, index: number) => !task.done && items.push({
       key: `standalone-${task.id || index}`,
       text: task.text || 'משימה ללא כותרת',
-      group: 'כללי',
-      context: 'משימה כללית',
+      group: task.kind === 'homeVisit' ? 'ביקור בית' : 'כללי',
+      context: task.kind === 'homeVisit' ? (task.personName || 'ביקור מתוכנן') : 'משימה כללית',
       dueDate: task.dueDate,
       source: 'standalone', sourceId: STANDALONE_TASKS_ID, taskId: task.id, taskIndex: index,
     }));
+    let openHomeVisitPrepTasks = 0;
+    (homeVisits?.rounds || []).filter((round: any) => round.status === 'active').forEach((round: any) => {
+      (round.prepTasks || []).forEach((task: any, index: number) => {
+        if (task.done) return;
+        openHomeVisitPrepTasks++;
+        items.push({
+          key: `home-visit-prep-${round.id}-${index}`,
+          text: task.text || 'משימת הכנה לביקורי בית',
+          group: 'הכנת ביקורים',
+          context: round.purpose || 'מערך ביקורי בית',
+          dueDate: round.dateRangeStart,
+          source: 'homeVisitPrep', sourceId: round.id, taskIndex: index,
+        });
+      });
+    });
+    const personalDateExtras: Record<string, any> = holidayExtras[PERSONAL_DATE_EXTRAS_ID] || {};
     const personalDates = computePersonalDateEvents(visibleDonors, crm, today).filter(e => e.dist <= 7);
-    personalDates.forEach(event => items.push({
+    personalDates.forEach(event => {
+      const occurrence = new Date(today.getTime() + event.dist * 86400000).toISOString().slice(0, 10);
+      if (personalDateExtras[event.key]?.dismissedFor === occurrence) return;
+      items.push({
       key: `personal-${event.key}`,
       text: `${event.name} — ${event.msg}`,
       group: 'תאריך אישי',
       context: event.dist === 0 ? 'היום' : `בעוד ${event.dist} ימים`,
-    }));
-    return { openHolidayTasks, openEventTasks, openCampaignTasks, openStandaloneTasks: standalone.length, personalDates, items };
-  }, [holidays, holidayExtras, eventsData, projects, visibleDonors, crm]);
+      dueDate: occurrence,
+      source: 'personalDate', sourceId: event.key,
+    });
+    });
+    return { openHolidayTasks, openEventTasks, openCampaignTasks, openStandaloneTasks: standalone.length, openHomeVisitTasks: homeVisitTasks.length, openHomeVisitPrepTasks, personalDates, items };
+  }, [holidays, holidayExtras, eventsData, projects, visibleDonors, crm, homeVisits]);
 
   const completeDashboardTask = (item: typeof tasksSummary.items[number]) => {
-    if (!item.source || item.taskIndex === undefined) return;
+    if (!item.source) return;
     const markDone = (tasks: any[]) => tasks.map((task, index) => {
       const matches = item.taskId ? task.id === item.taskId : index === item.taskIndex;
       return matches ? { ...task, done: true, doneAt: new Date().toISOString() } : task;
@@ -295,9 +319,21 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd, onOpenSearch, onO
       updateProjects(projects.map(project => project.id === item.sourceId
         ? { ...project, tasks: markDone(project.tasks || []) }
         : project));
+    } else if (item.source === 'homeVisitPrep' && item.taskIndex !== undefined) {
+      const round = homeVisits.rounds.find(round => round.id === item.sourceId);
+      if (round) updateHomeVisitRoundMeta(round.id, { prepTasks: markDone(round.prepTasks || []) });
+    } else if (item.source === 'personalDate' && item.sourceId && item.dueDate) {
+      const existing = holidayExtras[PERSONAL_DATE_EXTRAS_ID]?.[item.sourceId] || {};
+      updateHolidayExtras(PERSONAL_DATE_EXTRAS_ID, { [item.sourceId]: { ...existing, dismissedFor: item.dueDate } });
     }
     logAction('task_complete');
   };
+
+  const filteredDashboardTasks = React.useMemo(() => {
+    const query = dashboardTaskSearch.trim().toLocaleLowerCase('he');
+    if (!query) return tasksSummary.items;
+    return tasksSummary.items.filter(item => `${item.text} ${item.group} ${item.context} ${item.dueDate || ''}`.toLocaleLowerCase('he').includes(query));
+  }, [tasksSummary.items, dashboardTaskSearch]);
 
   // ── מה דורש טיפול ──────────────────────────────────────────────────────
   //
@@ -494,7 +530,7 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd, onOpenSearch, onO
               {total === 0 ? 'אין משימות פתוחות כרגע' : `${total} משימות פתוחות`}
             </div>
             <div className="text-[11px] text-gray-500 mt-0.5 truncate">
-              {tasksSummary.openHolidayTasks} חגים · {tasksSummary.openEventTasks} פעילויות · {tasksSummary.openCampaignTasks} קמפיינים · {tasksSummary.openStandaloneTasks} כלליות · {tasksSummary.personalDates.length} תאריכים
+              {tasksSummary.openHolidayTasks} חגים · {tasksSummary.openEventTasks} פעילויות · {tasksSummary.openCampaignTasks} קמפיינים · {tasksSummary.openHomeVisitTasks + tasksSummary.openHomeVisitPrepTasks} ביקורי בית · {tasksSummary.openStandaloneTasks} כלליות · {tasksSummary.personalDates.length} תאריכים
             </div>
           </div>
         </div>
@@ -1110,10 +1146,16 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd, onOpenSearch, onO
               <button onClick={() => setIsTasksSummaryOpen(false)} className="p-2 bg-white rounded-full shadow-sm" aria-label="סגור רשימת משימות"><X size={16} /></button>
             </div>
 
+            <label className="bg-white border border-[#EDE6D6] rounded-xl px-3 py-2.5 mb-3 flex items-center gap-2 focus-within:border-[#C9A84C]">
+              <Search size={16} className="text-[#9B7A2F] shrink-0" />
+              <input autoFocus value={dashboardTaskSearch} onChange={event => setDashboardTaskSearch(event.target.value)} placeholder="חיפוש משימה, חג, פעילות או אדם…" className="flex-1 min-w-0 bg-transparent outline-none text-sm" />
+              {dashboardTaskSearch && <button onClick={() => setDashboardTaskSearch('')} className="text-[10px] text-gray-400">נקה</button>}
+            </label>
+
             <div className="overflow-y-auto space-y-2 flex-1 min-h-0">
-              {tasksSummary.items.length === 0 ? (
-                <div className="bg-white rounded-2xl border border-[#EDE6D6] p-8 text-center text-sm text-gray-400">אין משימות פתוחות כרגע</div>
-              ) : tasksSummary.items.map(item => (
+              {filteredDashboardTasks.length === 0 ? (
+                <div className="bg-white rounded-2xl border border-[#EDE6D6] p-8 text-center text-sm text-gray-400">{dashboardTaskSearch ? 'לא נמצאו משימות מתאימות לחיפוש' : 'אין משימות פתוחות כרגע'}</div>
+              ) : filteredDashboardTasks.map(item => (
                 <div key={item.key} className="bg-white rounded-xl border border-[#EDE6D6] shadow-sm p-3 flex items-start gap-3">
                   {item.source ? (
                     <button
