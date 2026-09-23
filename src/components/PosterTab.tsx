@@ -35,6 +35,35 @@ export function PosterTab({ onClose }: { onClose: () => void }) {
   const [minchaShabbat, setMinchaShabbat] = useState('18:45');
   const [havdalah, setHavdalah] = useState('19:54');
   const [subtitle, setSubtitle] = useState('');
+
+  type ScheduleKey = 'candles' | 'minchaFriday' | 'kabbalat' | 'kiddush' | 'chassidut' | 'shacharit' | 'minchaShabbat' | 'nigunim' | 'havdalah';
+  type CustomScheduleRow = { id: string; section: 'friday' | 'saturday'; label: string; time: string; visible: boolean };
+  const defaultScheduleLabels = (texts: typeof T): Record<ScheduleKey, string> => ({
+    candles: texts.candles,
+    minchaFriday: texts.minchaEve,
+    kabbalat: texts.kabbalat,
+    kiddush: texts.kiddushEve,
+    chassidut: texts.chassidut,
+    shacharit: texts.shacharit,
+    minchaShabbat: texts.minchaDay,
+    nigunim: texts.nigunim,
+    havdalah: texts.havdalah,
+  });
+  const [scheduleLabels, setScheduleLabels] = useState<Record<ScheduleKey, string>>(() => {
+    try { return { ...defaultScheduleLabels(T), ...JSON.parse(localStorage.getItem('poster_schedule_labels') || '{}') }; }
+    catch { return defaultScheduleLabels(T); }
+  });
+  const [scheduleVisible, setScheduleVisible] = useState<Record<ScheduleKey, boolean>>(() => {
+    const defaults = Object.fromEntries(Object.keys(defaultScheduleLabels(T)).map(key => [key, true])) as Record<ScheduleKey, boolean>;
+    try { return { ...defaults, ...JSON.parse(localStorage.getItem('poster_schedule_visible') || '{}') }; }
+    catch { return defaults; }
+  });
+  const [customScheduleRows, setCustomScheduleRows] = useState<CustomScheduleRow[]>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('poster_custom_schedule') || '[]');
+      return Array.isArray(saved) ? saved : [];
+    } catch { return []; }
+  });
   
   const [dateFriday, setDateFriday] = useState('');
   const [dateShabbat, setDateShabbat] = useState('');
@@ -70,7 +99,10 @@ export function PosterTab({ onClose }: { onClose: () => void }) {
     localStorage.setItem('poster_title_2', titleLine2);
     localStorage.setItem('poster_footer', footerText);
     localStorage.setItem('poster_widgets', JSON.stringify(widgets));
-  }, [posterLang, venue, posterAddress, titleLine1, titleLine2, footerText, widgets]);
+    localStorage.setItem('poster_schedule_labels', JSON.stringify(scheduleLabels));
+    localStorage.setItem('poster_schedule_visible', JSON.stringify(scheduleVisible));
+    localStorage.setItem('poster_custom_schedule', JSON.stringify(customScheduleRows));
+  }, [posterLang, venue, posterAddress, titleLine1, titleLine2, footerText, widgets, scheduleLabels, scheduleVisible, customScheduleRows]);
 
   const changePosterLanguage = (lang: 'he' | 'ru' | 'en') => {
     const next = POSTER_TEXT[lang] || POSTER_TEXT.he;
@@ -78,6 +110,7 @@ export function PosterTab({ onClose }: { onClose: () => void }) {
     setTitleLine1(next.titleLine1);
     setTitleLine2(next.titleLine2);
     setFooterText(next.farewell);
+    setScheduleLabels(defaultScheduleLabels(next));
     setWidgets(current => current.map(widget => widget.id === 'kiddush'
       ? { ...widget, title: next.kiddushWidget, detail: next.kiddushWidgetSub }
       : widget.id === 'halacha' ? { ...widget, title: next.halachaClass } : widget));
@@ -225,6 +258,31 @@ export function PosterTab({ onClose }: { onClose: () => void }) {
     }
   };
 
+  const coreScheduleRows: Array<{
+    key: ScheduleKey;
+    section: 'friday' | 'saturday';
+    time: string;
+    setTime?: React.Dispatch<React.SetStateAction<string>>;
+  }> = [
+    { key: 'candles', section: 'friday', time: candleTime, setTime: setCandleTime },
+    { key: 'minchaFriday', section: 'friday', time: minchaFriday, setTime: setMinchaFriday },
+    { key: 'kabbalat', section: 'friday', time: kabbalatShabbat, setTime: setKabbalatShabbat },
+    { key: 'kiddush', section: 'friday', time: kiddush, setTime: setKiddush },
+    { key: 'chassidut', section: 'saturday', time: chassidut, setTime: setChassidut },
+    { key: 'shacharit', section: 'saturday', time: shacharit, setTime: setShacharit },
+    { key: 'minchaShabbat', section: 'saturday', time: minchaShabbat, setTime: setMinchaShabbat },
+    { key: 'nigunim', section: 'saturday', time: '' },
+    { key: 'havdalah', section: 'saturday', time: havdalah, setTime: setHavdalah },
+  ];
+
+  const posterScheduleLine = (key: string, label: string, time: string) => (
+    <div key={key} className="flex justify-between items-end border-b-[2px] border-[#d1d5db] pb-1 w-[460px]">
+      <span className="text-[22px] text-[#551120] font-bold tracking-wide">{label}</span>
+      <span className="text-[22px] text-[#551120] dotted-leader flex-1 mx-4 border-b-[3px] border-dotted border-[#aaa] opacity-60 mb-2 block"></span>
+      {time && <span className="text-[24px] font-black text-[#1f2937] leading-none mb-1">{time}</span>}
+    </div>
+  );
+
   return (
     <div className="fixed inset-0 bg-[#FAF6EE] z-[100] flex flex-col h-full override-rtl" dir="ltr">
       <div className="bg-[#0D1B2A] text-white px-4 py-3 flex items-center justify-between" dir="rtl">
@@ -341,39 +399,29 @@ export function PosterTab({ onClose }: { onClose: () => void }) {
                </div>
              )}
            </div>
-           <div className="grid grid-cols-2 gap-3" dir="ltr">
-              <div className="flex flex-col gap-1">
-                 <label className="text-xs text-gray-500 font-bold uppercase">{T.candles}</label>
-                 <input type="time" value={candleTime} onChange={e=>setCandleTime(e.target.value)} className="border rounded px-2 py-1" />
-              </div>
-              <div className="flex flex-col gap-1">
-                 <label className="text-xs text-gray-500 font-bold uppercase">{T.minchaEve} — {T.friday}</label>
-                 <input type="time" value={minchaFriday} onChange={e=>setMinchaFriday(e.target.value)} className="border rounded px-2 py-1" />
-              </div>
-              <div className="flex flex-col gap-1">
-                 <label className="text-xs text-gray-500 font-bold uppercase">{T.kabbalat}</label>
-                 <input type="time" value={kabbalatShabbat} onChange={e=>setKabbalatShabbat(e.target.value)} className="border rounded px-2 py-1" />
-              </div>
-              <div className="flex flex-col gap-1">
-                 <label className="text-xs text-gray-500 font-bold uppercase">{T.kiddushEve}</label>
-                 <input type="time" value={kiddush} onChange={e=>setKiddush(e.target.value)} className="border rounded px-2 py-1" />
-              </div>
-              <div className="flex flex-col gap-1">
-                 <label className="text-xs text-gray-500 font-bold uppercase">{T.chassidut}</label>
-                  <input type="time" value={chassidut} onChange={e=>setChassidut(e.target.value)} className="border rounded px-2 py-1" />
-               </div>
-               <div className="flex flex-col gap-1">
-                  <label className="text-xs text-gray-500 font-bold uppercase">{T.shacharit}</label>
-                  <input type="time" value={shacharit} onChange={e=>setShacharit(e.target.value)} className="border rounded px-2 py-1" />
-               </div>
-               <div className="flex flex-col gap-1">
-                  <label className="text-xs text-gray-500 font-bold uppercase">{T.minchaDay} — {T.saturday}</label>
-                 <input type="time" value={minchaShabbat} onChange={e=>setMinchaShabbat(e.target.value)} className="border rounded px-2 py-1" />
-              </div>
-              <div className="flex flex-col gap-1">
-                 <label className="text-xs text-gray-500 font-bold uppercase">{T.havdalah}</label>
-                 <input type="time" value={havdalah} onChange={e=>setHavdalah(e.target.value)} className="border rounded px-2 py-1" />
-              </div>
+           <div className="border-t border-[#EDE6D6] pt-4 mt-4" dir="rtl">
+             <div className="flex items-center justify-between gap-3 mb-3">
+               <div><p className="text-sm font-bold text-[#0D1B2A]">זמני התפילות והפעילויות</p><p className="text-[10px] text-gray-400">אפשר להסתיר, לשנות ולהוסיף שורות</p></div>
+               <button onClick={() => setCustomScheduleRows(rows => [...rows, { id: `time-${Date.now()}`, section: 'saturday', label: 'זמן חדש', time: '', visible: true }])} className="flex items-center gap-1 bg-[#C9A84C]/15 text-[#9B7A2F] rounded-lg px-3 py-1.5 text-xs font-bold"><Plus size={13} /> הוסף זמן</button>
+             </div>
+             <div className="space-y-2">
+               {coreScheduleRows.map(row => (
+                 <div key={row.key} className="grid grid-cols-[auto_1fr_100px] gap-2 items-center bg-[#FAF6EE] rounded-xl p-2">
+                   <label className="flex items-center gap-1 text-[10px] font-bold text-gray-500"><input type="checkbox" checked={scheduleVisible[row.key]} onChange={e => setScheduleVisible(current => ({ ...current, [row.key]: e.target.checked }))} /> הצג</label>
+                   <input value={scheduleLabels[row.key]} onChange={e => setScheduleLabels(current => ({ ...current, [row.key]: e.target.value }))} className="w-full border rounded-lg px-2 py-1.5 text-xs" aria-label="שם הזמן" />
+                   <input type="text" inputMode="numeric" value={row.time} disabled={!row.setTime} onChange={e => row.setTime?.(e.target.value)} placeholder={row.setTime ? 'שעה' : 'ללא שעה'} className="w-full border rounded-lg px-2 py-1.5 text-xs disabled:bg-gray-100" aria-label="שעה" />
+                 </div>
+               ))}
+               {customScheduleRows.map((row, index) => (
+                 <div key={row.id} className="grid grid-cols-1 sm:grid-cols-[auto_95px_1fr_100px_auto] gap-2 items-center bg-[#F3EBDD] rounded-xl p-2">
+                   <label className="flex items-center gap-1 text-[10px] font-bold text-gray-500"><input type="checkbox" checked={row.visible} onChange={e => setCustomScheduleRows(rows => rows.map((item, i) => i === index ? { ...item, visible: e.target.checked } : item))} /> הצג</label>
+                   <select value={row.section} onChange={e => setCustomScheduleRows(rows => rows.map((item, i) => i === index ? { ...item, section: e.target.value as 'friday' | 'saturday' } : item))} className="border rounded-lg px-2 py-1.5 text-xs"><option value="friday">יום שישי</option><option value="saturday">שבת</option></select>
+                   <input value={row.label} onChange={e => setCustomScheduleRows(rows => rows.map((item, i) => i === index ? { ...item, label: e.target.value } : item))} className="border rounded-lg px-2 py-1.5 text-xs" placeholder="שם" />
+                   <input value={row.time} onChange={e => setCustomScheduleRows(rows => rows.map((item, i) => i === index ? { ...item, time: e.target.value } : item))} className="border rounded-lg px-2 py-1.5 text-xs" placeholder="שעה" />
+                   <button onClick={() => setCustomScheduleRows(rows => rows.filter((_, i) => i !== index))} className="p-2 text-red-400" aria-label="מחק זמן"><Trash2 size={15} /></button>
+                 </div>
+               ))}
+             </div>
            </div>
         </div>
 
@@ -474,52 +522,27 @@ export function PosterTab({ onClose }: { onClose: () => void }) {
                      <div className="w-[460px] flex flex-col gap-3">
                         
                         <h3 className="text-[#d78f3c] text-[20px] font-bold mb-1 tracking-widest uppercase text-center">{dateFriday || `${T.friday}...`}</h3>
-                        <div className="flex flex-col items-center mb-3 pt-0 bg-white rounded-2xl py-2" style={{ boxShadow: '0 5px 20px rgba(0,0,0,0.06)' }}>
-                           <div className="text-[#6B1A28] text-[24px] font-bold leading-none mb-1">{T.candles}</div>
+                        {scheduleVisible.candles && <div className="flex flex-col items-center mb-3 pt-0 bg-white rounded-2xl py-2" style={{ boxShadow: '0 5px 20px rgba(0,0,0,0.06)' }}>
+                           <div className="text-[#6B1A28] text-[24px] font-bold leading-none mb-1">{scheduleLabels.candles}</div>
                            <div className="text-[#6B1A28] text-[34px] font-black leading-none tracking-tight">{candleTime}</div>
-                        </div>
-
-                        <div className="flex justify-between items-end border-b-[2px] border-[#d1d5db] pb-1 w-[460px]">
-                           <span className="text-[22px] text-[#551120] font-bold tracking-wide">{T.minchaEve}</span>
-                           <span className="text-[22px] text-[#551120] dotted-leader flex-1 mx-4 border-b-[3px] border-dotted border-[#aaa] opacity-60 mb-2 block"></span>
-                           <span className="text-[24px] font-black text-[#1f2937] leading-none mb-1">{minchaFriday}</span>
-                        </div>
-                        <div className="flex justify-between items-end border-b-[2px] border-[#d1d5db] pb-1 w-[460px]">
-                           <span className="text-[22px] text-[#551120] font-bold tracking-wide">{T.kabbalat}</span>
-                           <span className="text-[22px] text-[#551120] dotted-leader flex-1 mx-4 border-b-[3px] border-dotted border-[#aaa] opacity-60 mb-2 block"></span>
-                           <span className="text-[24px] font-black text-[#1f2937] leading-none mb-1">{kabbalatShabbat}</span>
-                        </div>
-                        <div className="flex justify-between items-end border-b-[2px] border-[#d1d5db] pb-1 w-[460px]">
-                           <span className="text-[22px] text-[#551120] font-bold tracking-wide">{T.kiddushEve}</span>
-                           <span className="text-[22px] text-[#551120] dotted-leader flex-1 mx-4 border-b-[3px] border-dotted border-[#aaa] opacity-60 mb-2 block"></span>
-                           <span className="text-[24px] font-black text-[#1f2937] leading-none mb-1">{kiddush}</span>
-                        </div>
+                        </div>}
+                        {scheduleVisible.minchaFriday && posterScheduleLine('minchaFriday', scheduleLabels.minchaFriday, minchaFriday)}
+                        {scheduleVisible.kabbalat && posterScheduleLine('kabbalat', scheduleLabels.kabbalat, kabbalatShabbat)}
+                        {scheduleVisible.kiddush && posterScheduleLine('kiddush', scheduleLabels.kiddush, kiddush)}
+                        {customScheduleRows.filter(row => row.visible && row.section === 'friday').map(row => posterScheduleLine(row.id, row.label, row.time))}
 
                         <h3 className="text-[#d78f3c] text-[20px] font-bold mt-4 mb-1 tracking-widest uppercase text-center">{dateShabbat || `${T.saturday}...`}</h3>
                         
-                        <div className="flex justify-between items-end border-b-[2px] border-[#d1d5db] pb-1 w-[460px]">
-                           <span className="text-[22px] text-[#551120] font-bold tracking-wide">{T.chassidut}</span>
-                           <span className="text-[22px] text-[#551120] dotted-leader flex-1 mx-4 border-b-[3px] border-dotted border-[#aaa] opacity-60 mb-2 block"></span>
-                           <span className="text-[24px] font-black text-[#1f2937] leading-none mb-1">{chassidut}</span>
-                        </div>
-                        <div className="flex justify-between items-end border-b-[2px] border-[#d1d5db] pb-1 w-[460px]">
-                           <span className="text-[22px] text-[#551120] font-bold tracking-wide">{T.shacharit}</span>
-                           <span className="text-[22px] text-[#551120] dotted-leader flex-1 mx-4 border-b-[3px] border-dotted border-[#aaa] opacity-60 mb-2 block"></span>
-                           <span className="text-[24px] font-black text-[#1f2937] leading-none mb-1">{shacharit}</span>
-                        </div>
-                        <div className="flex justify-between items-end border-b-[2px] border-[#d1d5db] pb-1 w-[460px]">
-                           <span className="text-[22px] text-[#551120] font-bold tracking-wide">{T.minchaDay}</span>
-                           <span className="text-[22px] text-[#551120] dotted-leader flex-1 mx-4 border-b-[3px] border-dotted border-[#aaa] opacity-60 mb-2 block"></span>
-                           <span className="text-[24px] font-black text-[#1f2937] leading-none mb-1">{minchaShabbat}</span>
-                        </div>
-                        <div className="flex justify-between items-end w-[460px] mt-1">
-                           <span className="text-[22px] text-[#551120] font-bold tracking-wide">{T.nigunim}</span>
-                        </div>
+                        {scheduleVisible.chassidut && posterScheduleLine('chassidut', scheduleLabels.chassidut, chassidut)}
+                        {scheduleVisible.shacharit && posterScheduleLine('shacharit', scheduleLabels.shacharit, shacharit)}
+                        {scheduleVisible.minchaShabbat && posterScheduleLine('minchaShabbat', scheduleLabels.minchaShabbat, minchaShabbat)}
+                        {scheduleVisible.nigunim && posterScheduleLine('nigunim', scheduleLabels.nigunim, '')}
+                        {customScheduleRows.filter(row => row.visible && row.section === 'saturday').map(row => posterScheduleLine(row.id, row.label, row.time))}
                         
-                        <div className="flex flex-col items-center mt-3 bg-white rounded-2xl py-2" style={{ boxShadow: '0 5px 20px rgba(0,0,0,0.06)' }}>
-                           <div className="text-[#6B1A28] text-[24px] font-bold leading-none mb-1">{T.havdalah}</div>
+                        {scheduleVisible.havdalah && <div className="flex flex-col items-center mt-3 bg-white rounded-2xl py-2" style={{ boxShadow: '0 5px 20px rgba(0,0,0,0.06)' }}>
+                           <div className="text-[#6B1A28] text-[24px] font-bold leading-none mb-1">{scheduleLabels.havdalah}</div>
                            <div className="text-[#6B1A28] text-[34px] font-black leading-none tracking-tight">{havdalah}</div>
-                        </div>
+                        </div>}
                         
                      </div>
 
