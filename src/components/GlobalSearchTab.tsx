@@ -11,7 +11,7 @@ const KIND_META: Record<GlobalSearchKind, { label: string; Icon: React.Component
   task: { label: 'משימה', Icon: ClipboardList },
 };
 
-export function GlobalSearchTab({ onNavigate }: { onNavigate: (result: GlobalSearchResult) => void }) {
+export function GlobalSearchTab({ onNavigate, embedded = false }: { onNavigate: (result: GlobalSearchResult) => void; embedded?: boolean }) {
   const { donors, crm, donations, eventsData, projects, holidayExtras, holidays } = useAppStore();
   const [query, setQuery] = React.useState('');
 
@@ -27,11 +27,11 @@ export function GlobalSearchTab({ onNavigate }: { onNavigate: (result: GlobalSea
   const results = React.useMemo(() => searchGlobalIndex(index, query), [index, query]);
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-5 md:px-8 md:py-8" dir="rtl">
-      <div className="mb-5">
+    <div className={`max-w-3xl mx-auto ${embedded ? 'px-0 py-1' : 'px-4 py-5 md:px-8 md:py-8'}`} dir="rtl">
+      {!embedded && <div className="mb-5">
         <h1 className="font-['Frank_Ruhl_Libre'] text-3xl font-bold text-[#0D1B2A]">חיפוש בכל האפליקציה</h1>
         <p className="text-sm text-gray-500 mt-1">אנשים, תרומות, פעילויות, קמפיינים ומשימות — במקום אחד.</p>
-      </div>
+      </div>}
 
       <label className="bg-white rounded-2xl px-4 py-3.5 flex items-center gap-3 border-2 border-transparent focus-within:border-[#C9A84C] shadow-sm">
         <Search size={22} className="text-[#9B7A2F] shrink-0" />

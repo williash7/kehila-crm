@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAppStore } from '../store/AppContext';
-import { Plus, Users, Calendar, AlertTriangle, CheckCircle, ChevronLeft, ChevronDown, ChevronUp, Pencil, X, CalendarDays, MessageSquare, ClipboardList, Copy, Download } from 'lucide-react';
+import { Plus, Users, Calendar, AlertTriangle, CheckCircle, ChevronLeft, ChevronDown, ChevronUp, Pencil, X, CalendarDays, MessageSquare, ClipboardList, Copy, Download, Search, Inbox } from 'lucide-react';
 import { ProfileModal } from './ProfileModal';
 import { HolidayModal } from './HolidayModal';
 import { DateConverterModal } from './DateConverterModal';
@@ -28,7 +28,7 @@ import { emptyFinanceData, normalizeFinanceData, summarizeFinance } from '../lib
 
 const FAILURE_WINDOW_DAYS = 30;
 
-export function HomeTab({ setTab, onDonationClick, onQuickAdd }: { setTab: (t: string) => void, onDonationClick: () => void, onQuickAdd: (tab: string) => void }) {
+export function HomeTab({ setTab, onDonationClick, onQuickAdd, onOpenSearch, onOpenInbox }: { setTab: (t: string) => void, onDonationClick: () => void, onQuickAdd: (tab: string) => void, onOpenSearch: () => void, onOpenInbox: () => void }) {
   const { summary, effectiveSummary, donations, failures, hk, rebbeDate, crm, visibleDonors, shabbat, holidays, hebrewDate, updateRebbeDate, holidayExtras, updateHolidayExtras, eventsData, updateEventsData, settings, projects, updateProjects, financeData, homeVisits } = useAppStore();
   const [selectedDonor, setSelectedDonor] = useState<string | null>(null);
   const [selectedHoliday, setSelectedHoliday] = useState<any | null>(null);
@@ -1064,6 +1064,12 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd }: { setTab: (t: s
           <div className="text-[11px] text-white/45 mt-[1px]">{hebrewDate}</div>
         </div>
         <div className="flex gap-2">
+          <button onClick={onOpenSearch} title="חיפוש בכל האפליקציה" aria-label="פתח חיפוש" className="w-9 h-9 bg-white/10 text-[#E8C97A] rounded-full flex items-center justify-center shrink-0">
+            <Search size={18} />
+          </button>
+          <button onClick={onOpenInbox} title="קליטה מהירה" aria-label="פתח קליטה מהירה" className="w-9 h-9 bg-white/10 text-[#E8C97A] rounded-full flex items-center justify-center shrink-0">
+            <Inbox size={18} />
+          </button>
           <button onClick={() => setIsDateConverterOpen(true)} className="w-9 h-9 bg-white/10 text-[#E8C97A] rounded-full flex items-center justify-center shrink-0">
             <CalendarDays size={18} />
           </button>

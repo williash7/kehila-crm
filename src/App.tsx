@@ -34,6 +34,7 @@ import { GlobalSearchResult } from './lib/globalSearch';
 import { OpenTarget, onOpenItemRequest } from './lib/openTarget';
 import { QuickInboxTab } from './components/QuickInboxTab';
 import { DailyReminderAgent } from './components/DailyReminderAgent';
+import { X } from 'lucide-react';
 
 // תווית לכפתור "+" הגלובלי (FAB במובייל, "הוסף X" בסיידבר) לפי המסך הפעיל.
 // מסכים שלא ברשימה (דוחות, פוסטר, הגדרות) — אין פעולת "הוספה" משמעותית, הכפתור מוסתר בהם.
@@ -61,6 +62,8 @@ function AppContent() {
   const [openTarget, setOpenTarget] = useState<OpenTarget | null>(null);
   const [settingsTarget, setSettingsTarget] = useState<SettingsOpenTarget | null>(null);
   const [dataOnboardingOpen, setDataOnboardingOpen] = useState(() => shouldShowDataOnboarding());
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isQuickInboxOpen, setIsQuickInboxOpen] = useState(false);
   // { tab, count } — לחיצה על "+" הגלובלי מעדכנת את זה, וכל מסך שמאזין (donors/tasks/events/calendar)
   // פותח את מודל ההוספה שלו כשה-tab תואם לו. count משתנה בכל לחיצה כדי שאפשר יהיה לפתוח שוב אחרי סגירה.
   const [addTrigger, setAddTrigger] = useState<{ tab: string; count: number }>({ tab: '', count: 0 });
@@ -115,6 +118,7 @@ function AppContent() {
   }), []);
 
   const openSearchResult = (result: GlobalSearchResult) => {
+    setIsSearchOpen(false);
     if (result.kind === 'contact') {
       setOpenContact({ name: result.target.entityId, from: 'search' });
       return;
@@ -155,7 +159,7 @@ function AppContent() {
         <SideNav currentTab={activeTab} setTab={setActiveTab} onDonationClick={requestAdd} addLabel={ADD_LABELS[activeTab]} />
 
         <main className="flex-1 min-w-0 pb-20 md:pb-6">
-          {activeTab === 'home' && <HomeTab setTab={setActiveTab} onDonationClick={() => setIsDonationOpen(true)} onQuickAdd={requestAddFor} />}
+          {activeTab === 'home' && <HomeTab setTab={setActiveTab} onDonationClick={() => setIsDonationOpen(true)} onQuickAdd={requestAddFor} onOpenSearch={() => setIsSearchOpen(true)} onOpenInbox={() => setIsQuickInboxOpen(true)} />}
           {activeTab === 'search' && <GlobalSearchTab onNavigate={openSearchResult} />}
           {activeTab === 'inbox' && <QuickInboxTab />}
           {activeTab === 'donors' && <DonorsTab addTrigger={addTrigger} />}
@@ -193,6 +197,30 @@ function AppContent() {
 
       {/* Mobile bottom nav */}
       <BottomNav currentTab={activeTab} setTab={setActiveTab} />
+
+      {isSearchOpen && (
+        <div className="fixed inset-0 z-[240] bg-black/50 flex items-end md:items-center justify-center p-0 md:p-5" onClick={event => event.target === event.currentTarget && setIsSearchOpen(false)}>
+          <div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto bg-[#FAF6EE] rounded-t-3xl md:rounded-3xl p-4 md:p-6 shadow-2xl">
+            <div className="flex items-center justify-between gap-3 mb-4" dir="rtl">
+              <div><h2 className="font-['Frank_Ruhl_Libre'] text-2xl font-bold text-[#0D1B2A]">🔎 חיפוש בכל האפליקציה</h2><p className="text-xs text-gray-500">אנשים, תרומות, פעילויות, קמפיינים ומשימות</p></div>
+              <button onClick={() => setIsSearchOpen(false)} className="p-2 bg-white rounded-full shadow-sm" aria-label="סגור חיפוש"><X size={17} /></button>
+            </div>
+            <GlobalSearchTab embedded onNavigate={openSearchResult} />
+          </div>
+        </div>
+      )}
+
+      {isQuickInboxOpen && (
+        <div className="fixed inset-0 z-[240] bg-black/50 flex items-end md:items-center justify-center p-0 md:p-5" onClick={event => event.target === event.currentTarget && setIsQuickInboxOpen(false)}>
+          <div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto bg-[#FAF6EE] rounded-t-3xl md:rounded-3xl p-4 md:p-6 shadow-2xl">
+            <div className="flex items-center justify-between gap-3 mb-4" dir="rtl">
+              <div><h2 className="font-['Frank_Ruhl_Libre'] text-2xl font-bold text-[#0D1B2A]">📥 קליטה מהירה</h2><p className="text-xs text-gray-500">רושמים טיוטה עכשיו ומחליטים אחר כך מה לעשות איתה</p></div>
+              <button onClick={() => setIsQuickInboxOpen(false)} className="p-2 bg-white rounded-full shadow-sm" aria-label="סגור קליטה מהירה"><X size={17} /></button>
+            </div>
+            <QuickInboxTab embedded />
+          </div>
+        </div>
+      )}
 
       {isDonationOpen && <DonationModal onClose={() => setIsDonationOpen(false)} />}
       {openContact && (

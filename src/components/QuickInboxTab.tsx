@@ -14,7 +14,7 @@ interface InboxDraft {
 
 const MAX_TEXT_FILE = 200_000;
 
-export function QuickInboxTab() {
+export function QuickInboxTab({ embedded = false }: { embedded?: boolean }) {
   const { holidayExtras, updateHolidayExtras } = useAppStore();
   const container = holidayExtras[STANDALONE_TASKS_ID] || {};
   const drafts: InboxDraft[] = Array.isArray(container.quickInbox) ? container.quickInbox : [];
@@ -91,8 +91,8 @@ export function QuickInboxTab() {
     catch { alert('לא ניתן להעתיק אוטומטית בדפדפן הזה.'); }
   };
 
-  return <div className="max-w-3xl mx-auto px-4 py-5 md:px-8 md:py-8" dir="rtl">
-    <div className="mb-5"><h1 className="font-['Frank_Ruhl_Libre'] text-3xl font-bold text-[#0D1B2A] flex items-center gap-2"><Inbox className="text-[#9B7A2F]" /> קליטה מהירה</h1><p className="text-sm text-gray-500 mt-1">רושמים עכשיו כטיוטה. שום דבר אינו הופך לתרומה, הוצאה או משימה בלי החלטה שלך.</p></div>
+  return <div className={`max-w-3xl mx-auto ${embedded ? 'px-0 py-1' : 'px-4 py-5 md:px-8 md:py-8'}`} dir="rtl">
+    {!embedded && <div className="mb-5"><h1 className="font-['Frank_Ruhl_Libre'] text-3xl font-bold text-[#0D1B2A] flex items-center gap-2"><Inbox className="text-[#9B7A2F]" /> קליטה מהירה</h1><p className="text-sm text-gray-500 mt-1">רושמים עכשיו כטיוטה. שום דבר אינו הופך לתרומה, הוצאה או משימה בלי החלטה שלך.</p></div>}
 
     <section className="bg-white border border-[#EDE6D6] rounded-2xl p-4 shadow-sm">
       <textarea value={text} onChange={event => setText(event.target.value)} className="w-full min-h-32 resize-y outline-none text-sm text-[#0D1B2A] placeholder:text-gray-400" placeholder="מה צריך לזכור? אפשר לכתוב חופשי…" />
