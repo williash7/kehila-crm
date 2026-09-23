@@ -812,6 +812,7 @@ function route_(action, body) {
     // כתיבה
     case 'saveCRM':           saveCRM_(body.data);                     return { success: true };
     case 'saveContactMerge':  return saveContactMerge_(body);
+    case 'saveContactMerges': return saveContactMerges_(body);
     case 'deleteContactMerge': return deleteContactMerge_(body);
     case 'saveEvents':        writeSync_('events', body.data);        return { success: true };
     case 'saveHolidayExtras': writeSync_('holidayExtras', body.data); return { success: true };
@@ -3967,6 +3968,20 @@ function saveContactMerge_(body) {
   one[alias] = canonical;
   writeNameMerges_(one);
   return { success: true, aliasName: alias, canonicalName: canonical };
+}
+
+/** מיזוג מרובה — כל השמות נכתבים יחד ומקבלים אותו שם ראשי. */
+function saveContactMerges_(body) {
+  var canonical = String(body.canonicalName || '').trim();
+  var aliases = Array.isArray(body.aliasNames) ? body.aliasNames : [];
+  var merges = {};
+  aliases.forEach(function (value) {
+    var alias = String(value || '').trim();
+    if (alias && canonical && alias !== canonical) merges[alias] = canonical;
+  });
+  if (!canonical || !Object.keys(merges).length) throw new Error('חיבור אנשי קשר אינו תקין');
+  writeNameMerges_(merges);
+  return { success: true, count: Object.keys(merges).length, canonicalName: canonical };
 }
 
 function deleteContactMerge_(body) {
