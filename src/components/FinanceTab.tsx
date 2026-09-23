@@ -755,7 +755,9 @@ function FinanceMetricDetails({ kind, summary, data, donations, reimbursementBal
       {kind === 'safe' && <div className="space-y-1">
         <p className="text-xs bg-emerald-50 text-emerald-800 rounded-xl p-3 mb-3">זה הסכום שאפשר לשקול להפנות לפעילות חדשה או למשכורת בלי לגעת בהתחייבויות, בשכירות, ברזרבה או בכסף שהפעילות חייבת לך.</p>
         <DetailLine label="זמין כרגע" value={summary.currentBalance} />
-        <DetailLine label="השפעת כל ההתחייבויות וההכנסות המובטחות" value={summary.guaranteedBalance - summary.currentBalance} />
+        <DetailLine label="התחייבויות עתידיות" value={-summary.committedExpense} />
+        <DetailLine label="הכנסות עתידיות שהוגדרו כמובטחות" value={summary.committedIncome} />
+        <DetailLine label="הוראות קבע צפויות" value={summary.standingOrderIncome} />
         <DetailLine label="רזרבת ביטחון" value={-data.safetyReserve} />
         <DetailLine label="שכירות שעדיין לא נרשמה כהתחייבות" value={-rentProtection} />
         <DetailLine label="כסף שהפעילות חייבת לך" value={-Math.max(0, summary.personalBalance)} />
