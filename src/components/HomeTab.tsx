@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAppStore } from '../store/AppContext';
-import { Plus, Users, Calendar, AlertTriangle, CheckCircle, ChevronLeft, Pencil, X, CalendarDays, MessageSquare, ClipboardList, Copy, Download } from 'lucide-react';
+import { Plus, Users, Calendar, AlertTriangle, CheckCircle, ChevronLeft, ChevronDown, ChevronUp, Pencil, X, CalendarDays, MessageSquare, ClipboardList, Copy, Download } from 'lucide-react';
 import { ProfileModal } from './ProfileModal';
 import { HolidayModal } from './HolidayModal';
 import { DateConverterModal } from './DateConverterModal';
@@ -51,6 +51,19 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd }: { setTab: (t: s
       if (Array.isArray(saved)) return Object.fromEntries(saved.map(id => [id, Date.now()]));
       return saved && typeof saved === 'object' ? saved : {};
     } catch { return {}; }
+  });
+  const [collapsedDashboardCards, setCollapsedDashboardCards] = useState<Set<DashCardId>>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('dashboard_collapsed_cards') || '[]');
+      return new Set(Array.isArray(saved) ? saved : []);
+    } catch { return new Set(); }
+  });
+
+  const toggleDashboardCard = (id: DashCardId) => setCollapsedDashboardCards(current => {
+    const next = new Set(current);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    localStorage.setItem('dashboard_collapsed_cards', JSON.stringify([...next]));
+    return next;
   });
   const [hkReminderDismissed, setHkReminderDismissed] = useState(isMonthlyReminderReviewed());
   const [donationPeriod, setDonationPeriod] = useState<DonationDashboardPeriod>('month');
@@ -1019,6 +1032,28 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd }: { setTab: (t: s
     }
   };
 
+  const renderDashboardCard = (id: DashCardId) => {
+    const meta = DASH_CARDS.find(card => card.id === id);
+    const collapsed = collapsedDashboardCards.has(id);
+    const content = renderCard(id);
+    if (!content) return null;
+    if (collapsed) return (
+      <button onClick={() => toggleDashboardCard(id)} className="w-full bg-white rounded-xl border border-[#EDE6D6] shadow-sm px-3 py-2.5 flex items-center gap-2 text-right">
+        <span className="text-lg">{meta?.icon || '▦'}</span>
+        <span className="flex-1 text-sm font-bold text-[#0D1B2A]">{meta?.label || id}</span>
+        <span className="text-[10px] text-gray-400">הרחב</span><ChevronDown size={15} className="text-gray-400" />
+      </button>
+    );
+    return (
+      <div className="relative">
+        <button onClick={() => toggleDashboardCard(id)} className="absolute -top-2 left-2 z-20 w-7 h-7 bg-white border border-[#EDE6D6] shadow-sm rounded-full flex items-center justify-center text-gray-400 hover:text-[#9B7A2F]" title={`כווץ ${meta?.label || ''}`} aria-label={`כווץ ${meta?.label || id}`}>
+          <ChevronUp size={14} />
+        </button>
+        {content}
+      </div>
+    );
+  };
+
   return (
     <div className="animate-in fade-in pb-24 md:pb-0">
       {/* Topbar */}
@@ -1041,7 +1076,7 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd }: { setTab: (t: s
       {/* ── Mobile layout ──
           עמודה אחת, בדיוק בסדר שנקבע בהגדרות ← מראה ותצוגה ← דשבורד. */}
       <div className="p-4 space-y-4 md:hidden">
-        {cardOrder.map(id => <React.Fragment key={id}>{renderCard(id)}</React.Fragment>)}
+        {cardOrder.map(id => <React.Fragment key={id}>{renderDashboardCard(id)}</React.Fragment>)}
       </div>
 
       {/* ── Desktop layout — two columns ──
@@ -1049,10 +1084,10 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd }: { setTab: (t: s
           ופעולות בצד. הסדר שהמשתמש קבע נשמר **בתוך** כל עמודה. */}
       <div className="hidden md:grid md:grid-cols-[1fr_380px] md:gap-6 md:p-6 md:items-start">
         <div className="space-y-5">
-          {mainColumn.map(id => <React.Fragment key={id}>{renderCard(id)}</React.Fragment>)}
+          {mainColumn.map(id => <React.Fragment key={id}>{renderDashboardCard(id)}</React.Fragment>)}
         </div>
         <div className="space-y-5">
-          {sideColumn.map(id => <React.Fragment key={id}>{renderCard(id)}</React.Fragment>)}
+          {sideColumn.map(id => <React.Fragment key={id}>{renderDashboardCard(id)}</React.Fragment>)}
         </div>
       </div>
 
