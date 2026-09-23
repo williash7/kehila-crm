@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { EmptyState } from './EmptyState';
 import { useAppStore } from '../store/AppContext';
-import { Search, RefreshCw, Plus, Users, Map, Navigation, MapPin, X, Link2, PhoneCall } from 'lucide-react';
+import { Search, RefreshCw, Plus, Users, Map, Navigation, MapPin, X, Link2, PhoneCall, CheckSquare, Square, House, UserCheck } from 'lucide-react';
 import { Donor } from '../types';
 import { ProfileModal } from './ProfileModal';
 import { DonorsMap } from './DonorsMap';
@@ -13,6 +13,7 @@ import { withCity } from '../lib/orgConfig';
 import { avatarGradient, hasDisplayName } from '../lib/donorDisplay';
 import { ExportButton } from './ExportButton';
 import { CONTACT_COLUMNS } from '../lib/exportRows';
+import { emptyHomeVisitEntry, liveCategoryFor } from '../lib/homeVisits';
 
 const DONOR_SORT_KEY = 'kehila:list-sort:contacts';
 type DonorSortState = { field: string; direction: 'asc' | 'desc' };
@@ -29,7 +30,11 @@ function readDonorSort(): DonorSortState {
 }
 
 export function DonorsTab({ addTrigger }: { addTrigger?: { tab: string; count: number } } = {}) {
-  const { donors, visibleDonors, hk, failures, crm, donations, refresh, updateCrm, nameMerges } = useAppStore();
+  const {
+    donors, visibleDonors, hk, failures, crm, donations, refresh, updateCrm, nameMerges,
+    mergeContactsMany, homeVisits, addHomeVisitEntries, startHomeVisitRound,
+    eventsData, updateEventsData,
+  } = useAppStore();
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
   const [initialSort] = useState(readDonorSort);
@@ -37,6 +42,14 @@ export function DonorsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>(initialSort.direction);
   const [detailFilter, setDetailFilter] = useState('all');
   const [selectedDonor, setSelectedDonor] = useState<string | null>(null);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedNames, setSelectedNames] = useState<Set<string>>(new Set());
+  const [bulkAction, setBulkAction] = useState<'merge' | 'home' | 'attendance' | null>(null);
+  const [bulkTarget, setBulkTarget] = useState('');
+  const [bulkSearch, setBulkSearch] = useState('');
+  const [newRoundPurpose, setNewRoundPurpose] = useState('');
+  const [attendanceDate, setAttendanceDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [bulkSaving, setBulkSaving] = useState(false);
 
   // כיוון ברירת מחדל הגיוני לכל סוג מיון (כמו שהיה נהוג עד כה): תרומה
   // ומעגל — מהגבוה/הקרוב ביותר קודם; שם ותאריך — א'-ב'/הקרוב ביותר קודם.
@@ -57,6 +70,22 @@ export function DonorsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
   const [isMapOpen, setIsMapOpen] = useState(false);
   const [isMergeOpen, setIsMergeOpen] = useState(false);
   const [isContactFocusOpen, setIsContactFocusOpen] = useState(false);
+
+  const toggleSelected = (name: string) => {
+    setSelectedNames(prev => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name); else next.add(name);
+      return next;
+    });
+  };
+
+  const leaveSelectionMode = () => {
+    setSelectionMode(false);
+    setSelectedNames(new Set());
+    setBulkAction(null);
+    setBulkTarget('');
+    setBulkSearch('');
+  };
 
   // כפתור "+" הגלובלי (FAB/סיידבר) — כשמדובר במסך הזה, פותח "הוספת איש קשר"
   React.useEffect(() => {
@@ -193,6 +222,80 @@ export function DonorsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
   // המכולה כיחידה אחת ושומר את המונה והכרטיסים מסונכרנים.
   const listRenderKey = list.map(d => d.name).join('\u001f');
 
+  const selectedList = [...selectedNames];
+  const activeRounds = (homeVisits.rounds || []).filter(r => r.status === 'active');
+  const closeBulkDialog = () => {
+    setBulkAction(null);
+    setBulkTarget('');
+    setBulkSearch('');
+    setNewRoundPurpose('');
+  };
+
+  const runBulkAction = async () => {
+    if (!bulkAction || selectedList.length === 0 || bulkSaving) return;
+    setBulkSaving(true);
+    try {
+      if (bulkAction === 'merge') {
+        if (!bulkTarget || !selectedNames.has(bulkTarget)) {
+          alert('בחר מי יהיה איש הקשר הראשי');
+          return;
+        }
+        const ok = await mergeContactsMany(selectedList.filter(n => n !== bulkTarget), bulkTarget);
+        if (!ok) { alert('המיזוג לא נשמר. נסה שוב.'); return; }
+      } else if (bulkAction === 'home') {
+        const entries = selectedList.map(name => emptyHomeVisitEntry(name, liveCategoryFor(name, crm)));
+        if (bulkTarget === '__new') {
+          startHomeVisitRound(entries, { purpose: newRoundPurpose.trim() || 'מערך ביקורי בית' });
+        } else {
+          const round = activeRounds.find(r => r.id === bulkTarget);
+          if (!round) { alert('בחר מערך ביקורי בית'); return; }
+          const existing = new Set(round.entries.map(e => e.name));
+          const fresh = entries.filter(e => !existing.has(e.name));
+          if (fresh.length) addHomeVisitEntries(round.id, fresh);
+        }
+      } else if (bulkAction === 'attendance') {
+        const activity = eventsData.find(e => e.id === bulkTarget);
+        if (!activity) { alert('בחר פעילות'); return; }
+        const [year, month, day] = attendanceDate.split('-');
+        const dateKey = `${day}/${month}/${year}`;
+        const currentAttendance = activity.attendance?.[dateKey] || {};
+        const currentParticipants = activity.participants?.[dateKey] || {};
+        updateEventsData(eventsData.map(e => e.id === activity.id ? {
+          ...e,
+          attendance: {
+            ...(e.attendance || {}),
+            [dateKey]: { ...currentAttendance, ...Object.fromEntries(selectedList.map(name => [name, true])) },
+          },
+          participants: {
+            ...(e.participants || {}),
+            [dateKey]: {
+              ...currentParticipants,
+              ...Object.fromEntries(selectedList.map(name => [name, { ...(currentParticipants[name] || {}), attended: true }]))
+            },
+          },
+        } : e));
+
+        // הנוכחות מופיעה גם בכרטיס האדם כרשומת יצירת קשר, כמו בשמירה
+        // הרגילה מתוך מסך הפעילות. מי שכבר היה מסומן אינו נרשם שוב.
+        const newlyPresent = selectedList.filter(name => !currentAttendance[name]);
+        if (newlyPresent.length) {
+          const { addMeetingQueued } = await import('../lib/api');
+          await Promise.all(newlyPresent.map(name => addMeetingQueued({
+            name,
+            date: `${day}.${month}.${year}`,
+            meetType: 'נוכחות בפעילות',
+            purpose: activity.name || '',
+            notes: `נוכחות בפעילות: ${activity.name || ''}`,
+            nextMeet: '',
+          })));
+        }
+      }
+      leaveSelectionMode();
+    } finally {
+      setBulkSaving(false);
+    }
+  };
+
   const circleLabel: Record<string, string> = { close: '⭐ קרוב', approach: '🔄 מתקרב', third: '⭕ שלישי', far: '' };
 
   const filterTabs = [
@@ -217,6 +320,13 @@ export function DonorsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
           <div className="text-[11px] text-white/45 mt-[1px]">{list.length} רשומות</div>
         </div>
         <div className="flex gap-2">
+          <button
+            onClick={() => selectionMode ? leaveSelectionMode() : setSelectionMode(true)}
+            className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition-colors ${selectionMode ? 'bg-[#C9A84C] text-[#0D1B2A]' : 'bg-white/10 text-white/80 hover:bg-white/20'}`}
+            title={selectionMode ? 'סיום בחירה' : 'בחירת כמה אנשי קשר'}
+          >
+            <CheckSquare size={17} />
+          </button>
           <button
             onClick={() => setIsContactFocusOpen(true)}
             className="relative w-9 h-9 bg-white/10 rounded-full flex items-center justify-center text-white/80 shrink-0 hover:bg-white/20 transition-colors"
@@ -357,6 +467,31 @@ export function DonorsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
         </div>
       </div>
 
+      {selectionMode && (
+        <div className="mx-4 md:mx-6 mb-3 bg-[#0D1B2A] text-white rounded-2xl p-3 shadow-lg flex flex-wrap items-center gap-2 sticky top-[68px] z-40">
+          <div className="font-bold text-sm ml-auto">נבחרו {selectedNames.size}</div>
+          <button
+            onClick={() => {
+              const visibleNames = list.map(d => d.name);
+              const allSelected = visibleNames.length > 0 && visibleNames.every(name => selectedNames.has(name));
+              setSelectedNames(allSelected ? new Set() : new Set(visibleNames));
+            }}
+            className="px-3 py-2 rounded-xl bg-white/10 text-xs font-bold"
+          >
+            {list.length > 0 && list.every(d => selectedNames.has(d.name)) ? 'נקה בחירה' : 'בחר את המוצגים'}
+          </button>
+          <button disabled={selectedNames.size < 2} onClick={() => { setBulkAction('merge'); setBulkTarget(selectedList[0] || ''); }} className="px-3 py-2 rounded-xl bg-[#C9A84C] text-[#0D1B2A] text-xs font-bold disabled:opacity-40 flex items-center gap-1">
+            <Link2 size={14} /> מיזוג
+          </button>
+          <button disabled={!selectedNames.size} onClick={() => { setBulkAction('home'); setBulkTarget(activeRounds[0]?.id || '__new'); }} className="px-3 py-2 rounded-xl bg-white text-[#0D1B2A] text-xs font-bold disabled:opacity-40 flex items-center gap-1">
+            <House size={14} /> ביקורי בית
+          </button>
+          <button disabled={!selectedNames.size || !eventsData.length} onClick={() => { setBulkAction('attendance'); setBulkTarget(eventsData[0]?.id || ''); }} className="px-3 py-2 rounded-xl bg-white text-[#0D1B2A] text-xs font-bold disabled:opacity-40 flex items-center gap-1">
+            <UserCheck size={14} /> נוכחות
+          </button>
+        </div>
+      )}
+
       {list.length === 0 ? (
         <EmptyState
           icon="🔍"
@@ -374,9 +509,14 @@ export function DonorsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
               return (
                 <div
                   key={d.name}
-                  className="bg-white rounded-xl p-3 flex items-center gap-3 shadow-sm active:scale-95 transition-transform cursor-pointer"
-                  onClick={() => setSelectedDonor(d.name)}
+                  className={`bg-white rounded-xl p-3 flex items-center gap-3 shadow-sm active:scale-95 transition-transform cursor-pointer ${selectedNames.has(d.name) ? 'ring-2 ring-[#C9A84C] bg-[#FFF9E8]' : ''}`}
+                  onClick={() => selectionMode ? toggleSelected(d.name) : setSelectedDonor(d.name)}
                 >
+                  {selectionMode && (
+                    <span className={selectedNames.has(d.name) ? 'text-[#9B7A2F]' : 'text-gray-300'}>
+                      {selectedNames.has(d.name) ? <CheckSquare size={22} /> : <Square size={22} />}
+                    </span>
+                  )}
                   <div
                     className="w-[42px] h-[42px] rounded-full flex justify-center items-center text-white font-['Frank_Ruhl_Libre'] font-bold text-lg shrink-0"
                     style={{ background: avatarGradient(d.name) }}
@@ -448,18 +588,24 @@ export function DonorsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
                 return (
                   <div
                     key={d.name}
-                    onClick={() => setSelectedDonor(d.name)}
-                    className={`grid grid-cols-[2.5rem_1fr_8rem_7rem_7rem_5rem] gap-0 items-center cursor-pointer transition-colors hover:bg-[#FAF6EE] ${
+                    onClick={() => selectionMode ? toggleSelected(d.name) : setSelectedDonor(d.name)}
+                    className={`grid grid-cols-[2.5rem_1fr_8rem_7rem_7rem_5rem] gap-0 items-center cursor-pointer transition-colors hover:bg-[#FAF6EE] ${selectedNames.has(d.name) ? 'bg-[#FFF9E8]' : ''} ${
                       i > 0 ? 'border-t border-[#EDE6D6]' : ''
                     }`}
                   >
                     <div className="px-3 py-3">
-                      <div
-                        className="w-8 h-8 rounded-full flex justify-center items-center text-white font-['Frank_Ruhl_Libre'] font-bold text-sm"
-                        style={{ background: avatarGradient(d.name) }}
-                      >
-                        {d.name.charAt(0)}
-                      </div>
+                      {selectionMode ? (
+                        <span className={selectedNames.has(d.name) ? 'text-[#9B7A2F]' : 'text-gray-300'}>
+                          {selectedNames.has(d.name) ? <CheckSquare size={22} /> : <Square size={22} />}
+                        </span>
+                      ) : (
+                        <div
+                          className="w-8 h-8 rounded-full flex justify-center items-center text-white font-['Frank_Ruhl_Libre'] font-bold text-sm"
+                          style={{ background: avatarGradient(d.name) }}
+                        >
+                          {d.name.charAt(0)}
+                        </div>
+                      )}
                     </div>
                     <div className="px-4 py-3">
                       <div className="text-sm font-semibold text-[#0D1B2A]">{d.name}</div>
@@ -651,6 +797,92 @@ export function DonorsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
                   הוספה
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {bulkAction && (
+        <div className="fixed inset-0 bg-black/50 z-[250] flex items-end md:items-center justify-center p-0 md:p-4 backdrop-blur-sm" dir="rtl" onClick={e => e.target === e.currentTarget && closeBulkDialog()}>
+          <div className="bg-[#FAF6EE] rounded-t-3xl md:rounded-3xl w-full max-w-lg max-h-[88vh] flex flex-col shadow-2xl">
+            <div className="bg-[#0D1B2A] px-5 py-4 flex items-center justify-between rounded-t-3xl shrink-0">
+              <div>
+                <div className="font-['Frank_Ruhl_Libre'] text-lg font-bold text-[#C9A84C]">
+                  {bulkAction === 'merge' ? 'מיזוג אנשי קשר' : bulkAction === 'home' ? 'הוספה למערך ביקורי בית' : 'רישום נוכחות בפעילות'}
+                </div>
+                <div className="text-[11px] text-white/50">{selectedNames.size} אנשי קשר מסומנים</div>
+              </div>
+              <button onClick={closeBulkDialog} className="p-2 bg-white/10 rounded-full text-white/70"><X size={18} /></button>
+            </div>
+
+            <div className="p-5 overflow-y-auto">
+              <div className="relative mb-3">
+                <Search size={16} className="absolute right-3 top-3 text-gray-400" />
+                <input value={bulkSearch} onChange={e => setBulkSearch(e.target.value)} placeholder="חיפוש בחלון הזה..." className="w-full bg-white border border-[#EDE6D6] rounded-xl py-2.5 pr-9 pl-3 text-sm outline-none focus:border-[#C9A84C]" />
+              </div>
+
+              {bulkAction === 'merge' && (
+                <>
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-900 mb-3">
+                    בחר את הכרטיס הראשי שיישאר. התרומות והפרטים של כל שאר השמות יחוברו אליו.
+                  </div>
+                  <div className="space-y-2">
+                    {selectedList.filter(name => name.includes(bulkSearch.trim())).map(name => (
+                      <label key={name} className={`flex items-center gap-3 bg-white border rounded-xl p-3 cursor-pointer ${bulkTarget === name ? 'border-[#C9A84C] ring-1 ring-[#C9A84C]' : 'border-[#EDE6D6]'}`}>
+                        <input type="radio" name="merge-primary" checked={bulkTarget === name} onChange={() => setBulkTarget(name)} />
+                        <span className="font-bold text-sm text-[#0D1B2A]">{name}</span>
+                        <span className="mr-auto text-[11px] text-gray-400">{bulkTarget === name ? 'יישאר כשם הראשי' : 'יתמזג'}</span>
+                      </label>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {bulkAction === 'home' && (
+                <div className="space-y-2">
+                  <label className={`block bg-white border rounded-xl p-3 cursor-pointer ${bulkTarget === '__new' ? 'border-[#C9A84C] ring-1 ring-[#C9A84C]' : 'border-[#EDE6D6]'}`}>
+                    <div className="flex items-center gap-3">
+                      <input type="radio" name="home-round" checked={bulkTarget === '__new'} onChange={() => setBulkTarget('__new')} />
+                      <span className="font-bold text-sm">מערך חדש</span>
+                    </div>
+                    {bulkTarget === '__new' && <input value={newRoundPurpose} onChange={e => setNewRoundPurpose(e.target.value)} placeholder="שם או מטרת המערך" className="mt-3 w-full bg-[#FAF6EE] border border-[#EDE6D6] rounded-lg p-2 text-sm outline-none" />}
+                  </label>
+                  {activeRounds.filter(r => (r.purpose || 'מערך ביקורי בית').includes(bulkSearch.trim())).map(round => (
+                    <label key={round.id} className={`flex items-center gap-3 bg-white border rounded-xl p-3 cursor-pointer ${bulkTarget === round.id ? 'border-[#C9A84C] ring-1 ring-[#C9A84C]' : 'border-[#EDE6D6]'}`}>
+                      <input type="radio" name="home-round" checked={bulkTarget === round.id} onChange={() => setBulkTarget(round.id)} />
+                      <div>
+                        <div className="font-bold text-sm">{round.purpose || 'מערך ביקורי בית'}</div>
+                        <div className="text-[11px] text-gray-400">{round.entries.length} אנשים במערך</div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              )}
+
+              {bulkAction === 'attendance' && (
+                <>
+                  <label className="block text-xs font-bold text-gray-600 mb-2">תאריך הנוכחות</label>
+                  <input type="date" value={attendanceDate} onChange={e => setAttendanceDate(e.target.value)} className="w-full bg-white border border-[#EDE6D6] rounded-xl p-2.5 text-sm mb-3" />
+                  <div className="space-y-2">
+                    {eventsData.filter(e => e.name.includes(bulkSearch.trim())).map(activity => (
+                      <label key={activity.id} className={`flex items-center gap-3 bg-white border rounded-xl p-3 cursor-pointer ${bulkTarget === activity.id ? 'border-[#C9A84C] ring-1 ring-[#C9A84C]' : 'border-[#EDE6D6]'}`}>
+                        <input type="radio" name="attendance-activity" checked={bulkTarget === activity.id} onChange={() => setBulkTarget(activity.id)} />
+                        <div>
+                          <div className="font-bold text-sm">{activity.name}</div>
+                          <div className="text-[11px] text-gray-400">{activity.activityKind === 'recurring' ? 'פעילות קבועה' : 'פעילות מיוחדת'}</div>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="p-4 border-t border-[#EDE6D6] bg-white rounded-b-3xl flex gap-2 shrink-0">
+              <button onClick={closeBulkDialog} className="flex-1 py-3 rounded-xl bg-gray-100 text-gray-600 font-bold">ביטול</button>
+              <button disabled={bulkSaving || !bulkTarget} onClick={runBulkAction} className="flex-[2] py-3 rounded-xl bg-[#C9A84C] text-[#0D1B2A] font-bold disabled:opacity-40">
+                {bulkSaving ? 'שומר...' : bulkAction === 'merge' ? `מזג ${selectedNames.size} אנשי קשר` : bulkAction === 'home' ? 'הוסף למערך' : 'שמור נוכחות'}
+              </button>
             </div>
           </div>
         </div>

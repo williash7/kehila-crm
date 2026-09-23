@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import {
   apiGet, apiPost, getCRMData,
   getCRMDataCloud, saveCRMDataCloud, saveCRMDataCloudSync,
-  saveContactMergeCloud, deleteContactMergeCloud,
+  saveContactMergeCloud, saveContactMergesCloud, deleteContactMergeCloud,
   getEventsDataCloud, saveEventsDataCloud,
   getHolidayExtrasCloud, saveHolidayExtrasCloud,
   getManualDonations, saveManualDonations,
@@ -72,6 +72,7 @@ interface AppState {
   updateProjects: (data: Project[]) => void;
   updateRebbeDate: (date: Date) => void;
   mergeContacts: (aliasName: string, canonicalName: string) => Promise<boolean>;
+  mergeContactsMany: (aliasNames: string[], canonicalName: string) => Promise<boolean>;
   unmergeContact: (aliasName: string) => Promise<boolean>;
   archiveOccurrence: (params: { type: 'holiday' | 'event'; id: string; name: string; occurrenceDate?: string }) => void;
   importTasksFromHistory: (params: { type: 'holiday' | 'event'; id: string; name: string; occurrenceDate?: string }) => boolean;
@@ -559,6 +560,37 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     );
   };
 
+  // ממזג קבוצת שמות לאיש קשר ראשי אחד. כל העדכון המקומי נעשה יחד, ובענן
+  // נשלחת בקשה יחידה — גם כשנבחרו עשרות אנשי קשר.
+  const mergeContactsMany = async (aliasNames: string[], canonicalName: string): Promise<boolean> => {
+    const aliases = [...new Set(aliasNames.map(n => n.trim()))]
+      .filter(n => n && n !== canonicalName);
+    if (!canonicalName || aliases.length === 0) return false;
+
+    const additions = Object.fromEntries(aliases.map(alias => [alias, canonicalName]));
+    const nextMerges = { ...nameMerges, ...additions };
+    let snapshot: Record<string, any> = {};
+    setCrm(prev => {
+      const next = { ...prev };
+      aliases.forEach(alias => {
+        if (!next[alias]) return;
+        next[canonicalName] = mergeCrmPair(next[alias], next[canonicalName]);
+        delete next[alias];
+      });
+      snapshot = next;
+      return next;
+    });
+    setNameMerges(nextMerges);
+    const aliasSet = new Set(aliases);
+    setDonations(prev => prev.map(d => aliasSet.has(d.name) ? { ...d, name: canonicalName } : d));
+    setDonors(prev => coalesceDonorsByMerges(prev, additions));
+
+    await new Promise(r => setTimeout(r, 0));
+    return saveContactMergesCloud(
+      { ...snapshot, [MERGES_KEY]: nextMerges }, aliases, canonicalName
+    );
+  };
+
   // מבטל מיזוג — טוען מחדש מהשרת כדי לפצל בחזרה לשתי רשומות נפרדות עם הנתונים המקוריים
   /** ביטול מיזוג. גם כאן ממתינים לשמירה לפני שמושכים מחדש. */
   const unmergeContact = async (aliasName: string): Promise<boolean> => {
@@ -1019,7 +1051,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       refresh: () => loadAll({ silent: true }),
       projects, updateProjects, financeData, updateFinanceData,
       addManualDonation, updateCrm, updateCrmMany, updateHolidayExtras, updateEventsData, updateRebbeDate,
-      mergeContacts, unmergeContact, settings, updateSettings,
+      mergeContacts, mergeContactsMany, unmergeContact, settings, updateSettings,
       archiveOccurrence, importTasksFromHistory, updateHistoryEntry, addHistoryEntries, deleteHistoryEntry,
       homeVisits, startHomeVisitRound, markHomeVisitDone, unmarkHomeVisitDone, createHomeVisitTaskForEntry,
       updateHomeVisitEntry, reorderHomeVisitEntries, archiveHomeVisitRound, deleteHomeVisitRound,

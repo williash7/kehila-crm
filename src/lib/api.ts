@@ -468,6 +468,20 @@ export async function saveContactMergeCloud(
   return !(fallback?.error || fallback?.success === false);
 }
 
+/** שומר כמה כינויים לאותו איש קשר בפעולת רשת אחת. */
+export async function saveContactMergesCloud(
+  data: Record<string, any>, aliasNames: string[], canonicalName: string
+): Promise<boolean> {
+  saveCRMData(data);
+  const cleanAliases = [...new Set(aliasNames.map(n => n.trim()))]
+    .filter(n => n && n !== canonicalName);
+  if (!cleanAliases.length || !canonicalName.trim()) return false;
+  const res = await apiPost('saveContactMerges', { aliasNames: cleanAliases, canonicalName });
+  if (res?.success) return true;
+  const fallback = await apiPost('saveCRM', { data });
+  return !(fallback?.error || fallback?.success === false);
+}
+
 /** מבטל חיבור יחיד; בסקריפט ישן נשמרת המפה המלאה כתאימות זמנית. */
 export async function deleteContactMergeCloud(
   data: Record<string, any>, aliasName: string

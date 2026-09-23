@@ -36,6 +36,14 @@ ok(Object.keys(aliases).length === 3, 'חיבור חדש נוסף בשורה מ�
 ok(readSync_('crm')['ישראל ישראלי'].circle === 'approach',
   'הוספת חיבור אינה כותבת מחדש את מאגר ה-CRM');
 
+saveContactMerges_({
+  aliasNames: ['ישראל השלישי', 'ישראל הרביעי'],
+  canonicalName: 'ישראל ישראלי',
+});
+aliases = readNameMerges_();
+ok(aliases['ישראל השלישי'] === 'ישראל ישראלי' && aliases['ישראל הרביעי'] === 'ישראל ישראלי',
+  'מיזוג מרובה שומר את כל השמות בפעולה אחת');
+
 deleteContactMerge_({
   aliasName: 'ישראל י.',
 });
@@ -45,7 +53,7 @@ ok(aliases['ישראלי ישראל'] && aliases['י. ישראל'], 'שאר הח
 
 console.log('\nג. עריכת CRM מאוחרת אינה מוחקת חיבורים:');
 saveCRM_({ 'ישראל ישראלי': { phone: '050' } });
-ok(Object.keys(readNameMerges_()).length === 2, 'כל השורות נשארו אחרי עריכה רגילה');
+ok(Object.keys(readNameMerges_()).length === 4, 'כל השורות נשארו אחרי עריכה רגילה');
 
 console.log('\nד. הלקוח משתמש בפעולות יחידניות ושומר תאימות:');
 const root = __dirname + '/..';
@@ -55,6 +63,8 @@ ok(/apiPost\('saveContactMerge'/.test(api), 'קיימת פעולת הוספת ח
 ok(/apiPost\('deleteContactMerge'/.test(api), 'קיימת פעולת מחיקת חיבור יחיד');
 ok(/apiPost\('saveContactMerge', \{ aliasName, canonicalName \}\)/.test(api),
   'הלקוח שולח במיזוג רק את שני השמות');
+ok(/apiPost\('saveContactMerges', \{ aliasNames: cleanAliases, canonicalName \}\)/.test(api),
+  'הלקוח שולח מיזוג מרובה בבקשה אחת');
 ok(!/function saveContactMerge_\(body\)[\s\S]*?saveCRM_\(body\.data\)[\s\S]*?return \{ success: true/.test(
   fs.readFileSync(root + '/google-apps-script/Code.gs', 'utf8')),
   'השרת לא כותב את כל ה-CRM בזמן מיזוג');
