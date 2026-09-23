@@ -23,11 +23,12 @@ import { ACTIVITY_KIND_LABEL, activityDonations, activityReadiness, upcomingActi
 import { projectProgress, projectPurposeTags } from '../lib/projects';
 import { sumBudgetLines } from '../lib/holidayEvents';
 import { DonationDashboardPeriod, filterDonationsForDashboard, recentDonationsFirst } from '../lib/donationFilter';
+import { logAction } from '../lib/score';
 
 const FAILURE_WINDOW_DAYS = 30;
 
 export function HomeTab({ setTab, onDonationClick, onQuickAdd }: { setTab: (t: string) => void, onDonationClick: () => void, onQuickAdd: (tab: string) => void }) {
-  const { summary, effectiveSummary, donations, failures, hk, rebbeDate, crm, visibleDonors, shabbat, holidays, hebrewDate, updateRebbeDate, holidayExtras, eventsData, settings, projects } = useAppStore();
+  const { summary, effectiveSummary, donations, failures, hk, rebbeDate, crm, visibleDonors, shabbat, holidays, hebrewDate, updateRebbeDate, holidayExtras, updateHolidayExtras, eventsData, updateEventsData, settings, projects, updateProjects } = useAppStore();
   const [selectedDonor, setSelectedDonor] = useState<string | null>(null);
   const [selectedHoliday, setSelectedHoliday] = useState<any | null>(null);
   const [isRebbeEditOpen, setIsRebbeEditOpen] = useState(false);
@@ -85,52 +86,71 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd }: { setTab: (t: s
   const tasksSummary = React.useMemo(() => {
     const today = new Date(); today.setHours(0, 0, 0, 0);
     let openHolidayTasks = 0;
-    const items: { key: string; text: string; group: string; context: string; dueDate?: string }[] = [];
+    type DashboardTaskItem = {
+      key: string;
+      text: string;
+      group: string;
+      context: string;
+      dueDate?: string;
+      source?: 'holiday' | 'event' | 'campaign' | 'standalone';
+      sourceId?: string;
+      taskId?: string;
+      taskIndex?: number;
+    };
+    const items: DashboardTaskItem[] = [];
     const holidayIds = new Set<string>();
     holidays.forEach(h => holidayIds.add(h.hebrew || h.title));
     getCustomHols().forEach((c: any) => holidayIds.add(c.name));
     holidayIds.forEach(id => {
-      const open = (holidayExtras[id]?.tasks || []).filter((t: any) => !t.done);
+      const allTasks = holidayExtras[id]?.tasks || [];
+      const open = allTasks.filter((t: any) => !t.done);
       openHolidayTasks += open.length;
-      open.forEach((task: any, index: number) => items.push({
+      allTasks.forEach((task: any, index: number) => !task.done && items.push({
         key: `holiday-${id}-${task.id || index}`,
         text: task.text || 'משימה ללא כותרת',
         group: 'חג',
         context: id,
         dueDate: task.dueDate,
+        source: 'holiday', sourceId: id, taskId: task.id, taskIndex: index,
       }));
     });
     let openEventTasks = 0;
     eventsData.forEach((event: any) => {
-      const open = (event.tasks || []).filter((task: any) => !task.done);
+      const allTasks = event.tasks || [];
+      const open = allTasks.filter((task: any) => !task.done);
       openEventTasks += open.length;
-      open.forEach((task: any, index: number) => items.push({
+      allTasks.forEach((task: any, index: number) => !task.done && items.push({
         key: `event-${event.id}-${task.id || index}`,
         text: task.text || 'משימה ללא כותרת',
         group: 'פעילות',
         context: event.name || 'פעילות',
         dueDate: task.dueDate,
+        source: 'event', sourceId: event.id, taskId: task.id, taskIndex: index,
       }));
     });
     let openCampaignTasks = 0;
     projects.forEach(project => {
-      const open = (project.tasks || []).filter((task: any) => !task.done);
+      const allTasks = project.tasks || [];
+      const open = allTasks.filter((task: any) => !task.done);
       openCampaignTasks += open.length;
-      open.forEach((task: any, index: number) => items.push({
+      allTasks.forEach((task: any, index: number) => !task.done && items.push({
         key: `campaign-${project.id}-${task.id || index}`,
         text: task.text || 'משימה ללא כותרת',
         group: 'קמפיין',
         context: project.name || 'קמפיין',
         dueDate: task.dueDate,
+        source: 'campaign', sourceId: project.id, taskId: task.id, taskIndex: index,
       }));
     });
-    const standalone = (holidayExtras[STANDALONE_TASKS_ID]?.tasks || []).filter((task: any) => !task.done);
-    standalone.forEach((task: any, index: number) => items.push({
+    const allStandalone = holidayExtras[STANDALONE_TASKS_ID]?.tasks || [];
+    const standalone = allStandalone.filter((task: any) => !task.done);
+    allStandalone.forEach((task: any, index: number) => !task.done && items.push({
       key: `standalone-${task.id || index}`,
       text: task.text || 'משימה ללא כותרת',
       group: 'כללי',
       context: 'משימה כללית',
       dueDate: task.dueDate,
+      source: 'standalone', sourceId: STANDALONE_TASKS_ID, taskId: task.id, taskIndex: index,
     }));
     const personalDates = computePersonalDateEvents(visibleDonors, crm, today).filter(e => e.dist <= 7);
     personalDates.forEach(event => items.push({
@@ -141,6 +161,28 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd }: { setTab: (t: s
     }));
     return { openHolidayTasks, openEventTasks, openCampaignTasks, openStandaloneTasks: standalone.length, personalDates, items };
   }, [holidays, holidayExtras, eventsData, projects, visibleDonors, crm]);
+
+  const completeDashboardTask = (item: typeof tasksSummary.items[number]) => {
+    if (!item.source || item.taskIndex === undefined) return;
+    const markDone = (tasks: any[]) => tasks.map((task, index) => {
+      const matches = item.taskId ? task.id === item.taskId : index === item.taskIndex;
+      return matches ? { ...task, done: true, doneAt: new Date().toISOString() } : task;
+    });
+
+    if (item.source === 'holiday' || item.source === 'standalone') {
+      const sourceId = item.sourceId!;
+      updateHolidayExtras(sourceId, { tasks: markDone(holidayExtras[sourceId]?.tasks || []) });
+    } else if (item.source === 'event') {
+      updateEventsData(eventsData.map((event: any) => event.id === item.sourceId
+        ? { ...event, tasks: markDone(event.tasks || []) }
+        : event));
+    } else if (item.source === 'campaign') {
+      updateProjects(projects.map(project => project.id === item.sourceId
+        ? { ...project, tasks: markDone(project.tasks || []) }
+        : project));
+    }
+    logAction('task_complete');
+  };
 
   // ── מה דורש טיפול ──────────────────────────────────────────────────────
   //
@@ -893,7 +935,18 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd }: { setTab: (t: s
                 <div className="bg-white rounded-2xl border border-[#EDE6D6] p-8 text-center text-sm text-gray-400">אין משימות פתוחות כרגע</div>
               ) : tasksSummary.items.map(item => (
                 <div key={item.key} className="bg-white rounded-xl border border-[#EDE6D6] shadow-sm p-3 flex items-start gap-3">
-                  <span className="w-7 h-7 rounded-full border-2 border-[#C9A84C]/50 shrink-0 mt-0.5" />
+                  {item.source ? (
+                    <button
+                      onClick={() => completeDashboardTask(item)}
+                      className="w-7 h-7 rounded-full border-2 border-[#C9A84C] shrink-0 mt-0.5 flex items-center justify-center text-transparent hover:text-[#9B7A2F] hover:bg-[#C9A84C]/10 transition-colors"
+                      aria-label={`סמן את ${item.text} כבוצעה`}
+                      title="סמן כבוצעה"
+                    >
+                      <CheckCircle size={18} />
+                    </button>
+                  ) : (
+                    <span className="w-7 h-7 rounded-full border-2 border-[#C9A84C]/30 shrink-0 mt-0.5" />
+                  )}
                   <div className="min-w-0 flex-1">
                     <div className="text-sm font-bold text-[#0D1B2A] leading-snug">{item.text}</div>
                     <div className="flex flex-wrap items-center gap-1.5 mt-1 text-[10px] text-gray-400">
