@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAppStore } from '../store/AppContext';
-import { Plus, Users, Calendar, AlertTriangle, CheckCircle, ChevronLeft, Pencil, X, CalendarDays, MessageSquare, ClipboardList } from 'lucide-react';
+import { Plus, Users, Calendar, AlertTriangle, CheckCircle, ChevronLeft, Pencil, X, CalendarDays, MessageSquare, ClipboardList, Copy, Download } from 'lucide-react';
 import { ProfileModal } from './ProfileModal';
 import { HolidayModal } from './HolidayModal';
 import { DateConverterModal } from './DateConverterModal';
@@ -24,11 +24,12 @@ import { projectProgress, projectPurposeTags } from '../lib/projects';
 import { sumBudgetLines } from '../lib/holidayEvents';
 import { DonationDashboardPeriod, filterDonationsForDashboard, recentDonationsFirst } from '../lib/donationFilter';
 import { logAction } from '../lib/score';
+import { emptyFinanceData, normalizeFinanceData, summarizeFinance } from '../lib/finance';
 
 const FAILURE_WINDOW_DAYS = 30;
 
 export function HomeTab({ setTab, onDonationClick, onQuickAdd }: { setTab: (t: string) => void, onDonationClick: () => void, onQuickAdd: (tab: string) => void }) {
-  const { summary, effectiveSummary, donations, failures, hk, rebbeDate, crm, visibleDonors, shabbat, holidays, hebrewDate, updateRebbeDate, holidayExtras, updateHolidayExtras, eventsData, updateEventsData, settings, projects, updateProjects } = useAppStore();
+  const { summary, effectiveSummary, donations, failures, hk, rebbeDate, crm, visibleDonors, shabbat, holidays, hebrewDate, updateRebbeDate, holidayExtras, updateHolidayExtras, eventsData, updateEventsData, settings, projects, updateProjects, financeData, homeVisits } = useAppStore();
   const [selectedDonor, setSelectedDonor] = useState<string | null>(null);
   const [selectedHoliday, setSelectedHoliday] = useState<any | null>(null);
   const [isRebbeEditOpen, setIsRebbeEditOpen] = useState(false);
@@ -38,6 +39,12 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd }: { setTab: (t: s
   const [letterInfo, setLetterInfo] = useState<{name: string, amount: number, date: string, phone: string} | null>(null);
   const [isHkOpen, setIsHkOpen] = useState(false);
   const [isTasksSummaryOpen, setIsTasksSummaryOpen] = useState(false);
+  const [rebbeReportFrom, setRebbeReportFrom] = useState(() => rebbeDate
+    ? rebbeDate.toISOString().slice(0, 10)
+    : `${new Date().getFullYear()}-01-01`);
+  const [rebbeReportTo, setRebbeReportTo] = useState(() => new Date().toISOString().slice(0, 10));
+  const [rebbeReportText, setRebbeReportText] = useState('');
+  const [rebbeReportCopied, setRebbeReportCopied] = useState(false);
   const [hkReminderDismissed, setHkReminderDismissed] = useState(isMonthlyReminderReviewed());
   const [donationPeriod, setDonationPeriod] = useState<DonationDashboardPeriod>('month');
   const [specificDonationDate, setSpecificDonationDate] = useState(() => {
@@ -78,6 +85,71 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd }: { setTab: (t: s
     const date = fd.get('date') as string;
     if (date) updateRebbeDate(new Date(date));
     setIsRebbeEditOpen(false);
+  };
+
+  const buildRebbeReport = () => {
+    const from = new Date(`${rebbeReportFrom}T00:00:00`);
+    const to = new Date(`${rebbeReportTo}T23:59:59`);
+    const taskRows: { text: string; context: string; done: boolean; doneAt?: string }[] = [];
+    const addTasks = (tasks: any[] = [], context: string) => tasks.forEach(task => taskRows.push({
+      text: task.text || 'משימה ללא כותרת', context, done: Boolean(task.done), doneAt: task.doneAt,
+    }));
+
+    Object.entries(holidayExtras || {}).forEach(([id, extra]: [string, any]) => {
+      if (id === PERSONAL_DATE_EXTRAS_ID) return;
+      addTasks(extra?.tasks || [], id === STANDALONE_TASKS_ID ? 'כללי' : `חג: ${id}`);
+    });
+    eventsData.forEach((event: any) => addTasks(event.tasks || [], `פעילות: ${event.name || 'ללא שם'}`));
+    projects.forEach(project => addTasks(project.tasks || [], `קמפיין: ${project.name || 'ללא שם'}`));
+    (homeVisits?.rounds || []).forEach((round: any) => addTasks(round.prepTasks || [], `ביקורי בית: ${round.purpose || 'מערך ביקורים'}`));
+
+    const completed = taskRows.filter(task => {
+      if (!task.done) return false;
+      if (!task.doneAt) return true;
+      const date = new Date(task.doneAt);
+      return date >= from && date <= to;
+    });
+    const open = taskRows.filter(task => !task.done);
+    const donationDate = (value: string) => parseDdMmYyyy(value) || new Date(`${value}T12:00:00`);
+    const periodDonations = donations.filter(donation => {
+      const date = donationDate(donation.date);
+      return !Number.isNaN(date.getTime()) && date >= from && date <= to;
+    });
+    const donationTotal = periodDonations.reduce((sum, donation) => sum + (Number(donation.amount) || 0), 0);
+    const financial = summarizeFinance(normalizeFinanceData(financeData || emptyFinanceData()), donations, hk);
+    const money = (amount: number) => `₪${Math.round(amount || 0).toLocaleString('he-IL')}`;
+    const dateLabel = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString('he-IL');
+    const lines = [
+      'דו״ח פעילות לבית חב״ד',
+      `לתקופה: ${dateLabel(rebbeReportFrom)}–${dateLabel(rebbeReportTo)}`,
+      '',
+      `מה בוצע (${completed.length})`,
+      ...(completed.length ? completed.map(task => `• ${task.text} — ${task.context}${task.doneAt ? ` (${new Date(task.doneAt).toLocaleDateString('he-IL')})` : ''}`) : ['• לא תועדו משימות שהושלמו בתקופה']),
+      '',
+      `מה עדיין צריך לבצע (${open.length})`,
+      ...(open.length ? open.map(task => `• ${task.text} — ${task.context}`) : ['• אין משימות פתוחות']),
+      '',
+      `תרומות שהתקבלו (${periodDonations.length}) — סה״כ ${money(donationTotal)}`,
+      ...(periodDonations.length ? periodDonations.map(donation => `• ${donation.name || 'ללא שם'} — ${money(Number(donation.amount) || 0)} — ${donation.date}${donation.purpose ? ` — ${donation.purpose}` : ''}`) : ['• לא נמצאו תרומות בתקופה']),
+      '',
+      'מצב כספי נוכחי — לפי הנתונים שהוזנו באפליקציה',
+      `• יתרה זמינה כרגע: ${money(financial.currentBalance)}`,
+      `• הכנסות בפועל: ${money(financial.actualIncome)}`,
+      `• הוצאות בפועל: ${money(financial.actualExpense)}`,
+      `• התחייבויות שעדיין צריכות לצאת: ${money(financial.committedExpense)}`,
+      financial.shortfall > 0 ? `• חסרים לכיסוי הסכום המוגן: ${money(financial.shortfall)}` : `• בטוח לשימוש: ${money(financial.safeToUse)}`,
+      financial.personalBalance > 0 ? `• החזר שמגיע לי עבור הוצאות פרטיות: ${money(financial.personalBalance)}` : '• אין כרגע החזר פתוח עבור הוצאות פרטיות',
+    ];
+    setRebbeReportText(lines.join('\n'));
+    setRebbeReportCopied(false);
+  };
+
+  const downloadRebbeReport = () => {
+    const blob = new Blob([rebbeReportText], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url; link.download = `דוח-כתיבה-לרבי-${rebbeReportTo}.txt`; link.click();
+    URL.revokeObjectURL(url);
   };
 
   // תקציר משימות לדשבורד: כמה משימות חג/אירוע פתוחות + כמה ימי הולדת/יארצייט
@@ -968,19 +1040,41 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd }: { setTab: (t: s
 
       {isRebbeEditOpen && (
         <div className="fixed inset-0 bg-black/50 z-[200] flex items-end md:items-center justify-center p-0 md:p-4" onClick={(e) => e.target === e.currentTarget && setIsRebbeEditOpen(false)}>
-          <div className="bg-[#FAF6EE] rounded-t-3xl md:rounded-3xl p-5 pb-10 md:pb-5 w-full max-w-[430px] md:max-w-sm animate-in slide-in-from-bottom duration-300">
+          <div className="bg-[#FAF6EE] rounded-t-3xl md:rounded-3xl p-5 pb-10 md:pb-5 w-full max-w-[760px] max-h-[92vh] overflow-y-auto animate-in slide-in-from-bottom duration-300">
             <div className="w-10 h-1 bg-gray-300 rounded-full mx-auto mb-5 md:hidden" />
-            <h2 className="font-['Frank_Ruhl_Libre'] text-xl font-bold text-[#0D1B2A] mb-5">✉️ תאריך כתיבה לרבי</h2>
-            <form onSubmit={handleRebbeSave}>
-              <div className="mb-4">
+            <div className="flex items-center justify-between gap-3 mb-5">
+              <h2 className="font-['Frank_Ruhl_Libre'] text-xl font-bold text-[#0D1B2A]">✉️ כתיבה לרבי ודו״ח פעילות</h2>
+              <button onClick={() => setIsRebbeEditOpen(false)} className="p-2 bg-white rounded-full shadow-sm" aria-label="סגור"><X size={16} /></button>
+            </div>
+            <form onSubmit={handleRebbeSave} className="bg-white rounded-2xl border border-[#EDE6D6] p-4 mb-4">
+              <div className="flex flex-col sm:flex-row sm:items-end gap-3">
+                <div className="flex-1">
                 <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">תאריך הוצאת מכתב או מייל</label>
                 <input type="date" name="date" required defaultValue={rebbeDate?.toISOString().split('T')[0]}
                   className="w-full bg-white border-[1.5px] border-[#EDE6D6] rounded-xl px-3 py-2.5 text-sm text-[#0D1B2A] outline-none focus:border-[#C9A84C]" />
+                </div>
+                <button type="submit" className="bg-gradient-to-br from-[#C9A84C] to-[#9B7A2F] text-white rounded-xl px-5 py-2.5 font-bold shadow-md active:scale-95 transition-transform">
+                  שמור כתאריך האחרון
+                </button>
               </div>
-              <button type="submit" className="w-full bg-gradient-to-br from-[#C9A84C] to-[#9B7A2F] text-white rounded-xl p-3.5 font-['Frank_Ruhl_Libre'] text-lg font-bold shadow-md active:scale-95 transition-transform">
-                עדכן תאריך
-              </button>
             </form>
+
+            <div className="bg-white rounded-2xl border border-[#EDE6D6] p-4">
+              <h3 className="font-bold text-[#0D1B2A]">יצירת דו״ח לכתיבה</h3>
+              <p className="text-[11px] text-gray-500 mt-1 mb-3">מרכז את המשימות שבוצעו, המשימות הפתוחות, התרומות ומצב החשבון. אפשר לערוך את המלל לפני ההורדה.</p>
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                <label className="text-[11px] font-bold text-gray-500">מתאריך<input type="date" value={rebbeReportFrom} onChange={e => setRebbeReportFrom(e.target.value)} className="mt-1 w-full border border-[#EDE6D6] rounded-xl px-3 py-2 text-sm" /></label>
+                <label className="text-[11px] font-bold text-gray-500">עד תאריך<input type="date" value={rebbeReportTo} onChange={e => setRebbeReportTo(e.target.value)} className="mt-1 w-full border border-[#EDE6D6] rounded-xl px-3 py-2 text-sm" /></label>
+              </div>
+              <button onClick={buildRebbeReport} className="w-full bg-[#0D1B2A] text-white rounded-xl py-3 text-sm font-bold">צור דו״ח מהנתונים</button>
+              {rebbeReportText && <>
+                <textarea value={rebbeReportText} onChange={e => setRebbeReportText(e.target.value)} rows={18} dir="rtl" className="mt-3 w-full bg-[#FAF6EE] border border-[#EDE6D6] rounded-xl p-3 text-sm leading-relaxed outline-none focus:border-[#C9A84C]" />
+                <div className="grid grid-cols-2 gap-2 mt-2">
+                  <button onClick={async () => { await navigator.clipboard.writeText(rebbeReportText); setRebbeReportCopied(true); }} className="flex items-center justify-center gap-2 border border-[#C9A84C] text-[#9B7A2F] rounded-xl py-2.5 text-sm font-bold"><Copy size={15} /> {rebbeReportCopied ? 'הועתק' : 'העתק'}</button>
+                  <button onClick={downloadRebbeReport} className="flex items-center justify-center gap-2 bg-[#C9A84C] text-white rounded-xl py-2.5 text-sm font-bold"><Download size={15} /> הורד דו״ח</button>
+                </div>
+              </>}
+            </div>
           </div>
         </div>
       )}
