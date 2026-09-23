@@ -1045,9 +1045,9 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd, onOpenSearch, onO
       </button>
     );
     return (
-      <div className="relative">
-        <button onClick={() => toggleDashboardCard(id)} className="absolute -top-2 left-2 z-20 w-7 h-7 bg-white border border-[#EDE6D6] shadow-sm rounded-full flex items-center justify-center text-gray-400 hover:text-[#9B7A2F]" title={`כווץ ${meta?.label || ''}`} aria-label={`כווץ ${meta?.label || id}`}>
-          <ChevronUp size={14} />
+      <div className="relative group/dashboard-card">
+        <button onClick={() => toggleDashboardCard(id)} className="absolute top-2 left-2 z-20 h-7 bg-white/90 border border-[#EDE6D6] rounded-lg px-2 flex items-center gap-1 text-[10px] font-bold text-gray-400 hover:text-[#9B7A2F] hover:border-[#C9A84C]/40 transition-all md:opacity-0 md:pointer-events-none md:group-hover/dashboard-card:opacity-100 md:group-hover/dashboard-card:pointer-events-auto focus:opacity-100 focus:pointer-events-auto" title={`כווץ ${meta?.label || ''}`} aria-label={`כווץ ${meta?.label || id}`}>
+          <ChevronUp size={12} /> <span>כווץ</span>
         </button>
         {content}
       </div>
