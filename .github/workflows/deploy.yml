@@ -13,83 +13,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: main
-          fetch-depth: 0
-
-      - name: Add standing-order drilldown by month
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path('src/components/FinanceTab.tsx')
-          text = path.read_text(encoding='utf-8')
-          original = text
-
-          def replace_once(old, new, label):
-              global text
-              if old not in text:
-                  raise SystemExit(f'Missing patch target: {label}')
-              text = text.replace(old, new, 1)
-
-          replace_once(
-              "  const [showFilters, setShowFilters] = useState(false);\n  const [sort, setSort] = usePersistentListSort('kehila:list-sort:finance-transactions');",
-              "  const [showFilters, setShowFilters] = useState(false);\n  const [expandedHkMonth, setExpandedHkMonth] = useState('');\n  const [sort, setSort] = usePersistentListSort('kehila:list-sort:finance-transactions');",
-              'transaction expanded month state',
-          )
-
-          replace_once(
-              "    const byMonth = new Map(incoming.map(entry => [entry.month, { ...entry, outgoing: 0, otherIncome: 0 }]));",
-              "    const byMonth = new Map(incoming.map(entry => [entry.month, { ...entry, outgoing: 0, otherIncome: 0, charges: charges.filter(charge => charge.date.slice(0, 7) === entry.month) }]));",
-              'month entries include charges',
-          )
-
-          replace_once(
-              "      const entry = byMonth.get(month) || { month, amount: 0, count: 0, outgoing: 0, otherIncome: 0 };",
-              "      const entry = byMonth.get(month) || { month, amount: 0, count: 0, outgoing: 0, otherIncome: 0, charges: [] };",
-              'fallback month charges',
-          )
-
-          replace_once(
-              "        return <div key={month.month} className=\"grid grid-cols-4 gap-2 px-4 py-3 text-xs text-right\">\n          <b>{new Date(`${month.month}-15T12:00:00`).toLocaleDateString('he-IL', { month: 'long', year: 'numeric' })}</b>\n          <span className=\"text-emerald-700\">{money(month.amount)}{month.count ? <small className=\"text-gray-400\"> · {month.count}</small> : null}</span>\n          <span className=\"text-red-600\">{money(month.outgoing)}</span>\n          <b className={net >= 0 ? 'text-[#0D1B2A]' : 'text-red-600'}>{money(net)}</b>\n        </div>;",
-              "        return <React.Fragment key={month.month}>\n          <div className=\"grid grid-cols-4 gap-2 px-4 py-3 text-xs text-right\">\n            <b>{new Date(`${month.month}-15T12:00:00`).toLocaleDateString('he-IL', { month: 'long', year: 'numeric' })}</b>\n            <button\n              type=\"button\"\n              disabled={!month.count}\n              onClick={() => setExpandedHkMonth(current => current === month.month ? '' : month.month)}\n              className={`text-right text-emerald-700 font-bold ${month.count ? 'underline decoration-dotted underline-offset-2' : 'cursor-default'}`}\n            >\n              {money(month.amount)}{month.count ? <small className=\"text-gray-400\"> · {month.count} · פירוט</small> : null}\n            </button>\n            <span className=\"text-red-600\">{money(month.outgoing)}</span>\n            <b className={net >= 0 ? 'text-[#0D1B2A]' : 'text-red-600'}>{money(net)}</b>\n          </div>\n          {expandedHkMonth === month.month && month.charges.length > 0 && <div className=\"bg-emerald-50/60 px-4 py-3 border-t border-emerald-100\">\n            <div className=\"flex items-center justify-between gap-3 mb-2 text-xs\">\n              <b className=\"text-emerald-900\">הוראות הקבע הצפויות בחודש הזה</b>\n              <b className=\"text-emerald-800\">{money(month.amount)}</b>\n            </div>\n            <div className=\"divide-y divide-emerald-100\">\n              {month.charges.map((charge, index) => <div key={`${charge.hkId}-${charge.date}-${index}`} className=\"flex items-center justify-between gap-3 py-2 text-xs\">\n                <span className=\"min-w-0\"><b className=\"block text-[#0D1B2A] truncate\">{charge.name}</b><small className=\"text-gray-500\">{dateLabel(charge.date)}</small></span>\n                <b className=\"text-emerald-700 shrink-0\">{money(charge.amount)}</b>\n              </div>)}\n            </div>\n          </div>}\n        </React.Fragment>;",
-              'future month drilldown row',
-          )
-
-          replace_once(
-              "    <p className=\"px-4 py-3 text-[11px] text-gray-500 bg-[#FAF6EE] border-t border-[#EDE6D6]\">הוראת קבע יכולה להיכשל, ולכן הסכומים כאן נחשבים „צפוי” ולא „מובטח”. הם משפרים את התמונה האופטימית ואינם נכנסים לתחזית הבטוחה.</p>",
-              "    <p className=\"px-4 py-3 text-[11px] text-gray-500 bg-[#FAF6EE] border-t border-[#EDE6D6]\">הוראת קבע יכולה להיכשל, ולכן היא עדיין מסומנת „צפוי”. לצורך התכנון היא כן נלקחת בחשבון ב„מה בטוח להוציא”, עד שהחיוב נכנס בפועל.</p>",
-              'standing order forecast explanation',
-          )
-
-          replace_once(
-              "}) {\n  const unresolved = useMemo(() => unresolvedCashDonations(data, donations), [data, donations]);",
-              "}) {\n  const { hk } = useAppStore();\n  const [showStandingOrders, setShowStandingOrders] = useState(false);\n  const unresolved = useMemo(() => unresolvedCashDonations(data, donations), [data, donations]);",
-              'metric detail standing order state',
-          )
-
-          replace_once(
-              "  const horizon = end.toISOString().slice(0, 10);\n  const currentRows = rows.filter(row => row.status === 'actual' && row.includedAfterOpening && (row.currentBalanceEffect !== 0 || row.source === 'donation'));",
-              "  const horizon = end.toISOString().slice(0, 10);\n  const projectedStandingOrders = useMemo(() => projectStandingOrderCharges(hk, todayIso(), horizon), [hk, horizon]);\n  const standingOrdersByMonth = useMemo(() => {\n    const grouped = new Map<string, typeof projectedStandingOrders>();\n    projectedStandingOrders.forEach(charge => {\n      const month = charge.date.slice(0, 7);\n      grouped.set(month, [...(grouped.get(month) || []), charge]);\n    });\n    return [...grouped.entries()].sort(([a], [b]) => a.localeCompare(b));\n  }, [projectedStandingOrders]);\n  const currentRows = rows.filter(row => row.status === 'actual' && row.includedAfterOpening && (row.currentBalanceEffect !== 0 || row.source === 'donation'));",
-              'metric detail standing order grouping',
-          )
-
-          replace_once(
-              "        <DetailLine label=\"הוראות קבע צפויות\" value={summary.standingOrderIncome} />",
-              "        <DetailLine label={`הוראות קבע צפויות · ${projectedStandingOrders.length} חיובים · לחץ לפירוט`} value={summary.standingOrderIncome} onClick={() => setShowStandingOrders(value => !value)} />\n        {showStandingOrders && <div className=\"border border-emerald-100 bg-emerald-50/50 rounded-xl overflow-hidden my-2\">\n          {standingOrdersByMonth.length === 0 ? <p className=\"p-3 text-xs text-gray-500 text-center\">אין הוראות קבע צפויות בטווח החישוב.</p> : standingOrdersByMonth.map(([month, charges]) => {\n            const total = charges.reduce((sum, charge) => sum + charge.amount, 0);\n            const label = new Date(`${month}-15T12:00:00`).toLocaleDateString('he-IL', { month: 'long', year: 'numeric' });\n            return <div key={month} className=\"border-b last:border-b-0 border-emerald-100\">\n              <div className=\"flex items-center justify-between gap-3 px-3 py-2 bg-emerald-50\"><b className=\"text-xs text-emerald-900\">{label} · {charges.length} חיובים</b><b className=\"text-xs text-emerald-800\">{money(total)}</b></div>\n              <div className=\"divide-y divide-emerald-100 px-3\">{charges.map((charge, index) => <div key={`${charge.hkId}-${charge.date}-${index}`} className=\"flex items-center justify-between gap-3 py-2 text-xs\"><span className=\"min-w-0\"><b className=\"block text-[#0D1B2A] truncate\">{charge.name}</b><small className=\"text-gray-500\">{dateLabel(charge.date)}</small></span><b className=\"text-emerald-700 shrink-0\">{money(charge.amount)}</b></div>)}</div>\n            </div>;\n          })}\n        </div>}",
-              'safe detail standing order drilldown',
-          )
-
-          replace_once(
-              "function DetailLine({ label, value }: { label: string; value: number }) {\n  return <div className=\"flex items-center justify-between gap-3 py-2 text-xs\"><span className=\"text-gray-600\">{label}</span><b className={value < 0 ? 'text-red-600 shrink-0' : 'text-emerald-700 shrink-0'}>{value > 0 ? '+' : value < 0 ? '−' : ''}{money(Math.abs(value))}</b></div>;\n}",
-              "function DetailLine({ label, value, onClick }: { label: string; value: number; onClick?: () => void }) {\n  const content = <><span className={onClick ? 'text-[#0D1B2A] font-bold' : 'text-gray-600'}>{label}</span><b className={value < 0 ? 'text-red-600 shrink-0' : 'text-emerald-700 shrink-0'}>{value > 0 ? '+' : value < 0 ? '−' : ''}{money(Math.abs(value))}</b></>;\n  return onClick\n    ? <button type=\"button\" onClick={onClick} className=\"w-full flex items-center justify-between gap-3 py-2 text-xs text-right hover:bg-emerald-50 rounded-lg px-1\">{content}</button>\n    : <div className=\"flex items-center justify-between gap-3 py-2 text-xs\">{content}</div>;\n}",
-              'clickable detail line',
-          )
-
-          if text == original:
-              raise SystemExit('Patch made no changes')
-          path.write_text(text, encoding='utf-8')
-          PY
 
       - uses: actions/setup-node@v4
         with:
@@ -102,18 +25,15 @@ jobs:
         env:
           VITE_BASE_PATH: /${{ github.event.repository.name }}/
           GITHUB_SHA: ${{ github.sha }}
+          # מזהה OAuth לכניסה עם גוגל. אינו סוד — מזהה כזה נועד להיות גלוי
+          # בקוד צד-לקוח. מוגדר ב-Settings ← Secrets and variables ← Actions
+          # ← Variables בשם GOOGLE_CLIENT_ID. אם לא הוגדר, כפתור הכניסה
+          # פשוט לא מוצג והאפליקציה עובדת בהגדרה ידנית.
           VITE_GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
 
-      - name: Commit standing-order drilldown after successful build
-        run: |
-          if ! git diff --quiet -- src/components/FinanceTab.tsx; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add src/components/FinanceTab.tsx
-            git commit -m "Show standing order details by month"
-            git push origin main
-          fi
-
+      # GitHub Pages עשוי להגיש index.html ישן מהמטמון במשך כמה דקות אחרי
+      # פריסה. שומרים רק את קובצי הכניסה שאליהם הפנו שמונה הפריסות האחרונות,
+      # כדי שהמטמון הישן לא יקבל 404 — בלי לצבור את כל ההיסטוריה לנצח.
       - name: Preserve recent entry assets
         shell: bash
         run: |
