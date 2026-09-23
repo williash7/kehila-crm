@@ -2665,31 +2665,41 @@ function renameContact_(body) {
     { sheet: SH.FAILURES, field: 'שם' },
   ];
 
-  // לא דורסים איש קשר קיים. במקרה כזה הפעולה הנכונה היא מיזוג.
+  // קוראים כל לשונית פעם אחת בלבד. קודם הקוד קרא כל לשונית פעמיים ואז
+  // ביצע setValue נפרד לכל תרומה — עשרות/מאות פניות לגוגל עבור שינוי שם.
+  var plans = [];
   for (var s = 0; s < sources.length; s++) {
-    var check = table_(sources[s].sheet);
-    var checkCol = check.col(sources[s].field);
-    if (checkCol < 0) continue;
-    for (var c = 0; c < check.rows.length; c++) {
-      if (standardName(check.rows[c][checkCol]) === newName) {
+    var source = sources[s];
+    var t = table_(source.sheet);
+    if (!t.sheet) continue;
+    var col = t.col(source.field);
+    if (col < 0) continue;
+    var values = t.sheet.getDataRange().getValues();
+    var hits = 0;
+    for (var row = 1; row < values.length; row++) {
+      var rowName = standardName(values[row][col]);
+      // לא דורסים איש קשר קיים. במקרה כזה הפעולה הנכונה היא מיזוג.
+      if (rowName === newName) {
         return { success: false, error: 'כבר קיים איש קשר בשם החדש; יש להשתמש במיזוג אנשי קשר' };
       }
+      if (rowName === oldName) {
+        values[row][col] = newName;
+        hits++;
+      }
     }
+    plans.push({ source: source, table: t, col: col, values: values, hits: hits });
   }
 
   var changed = 0;
-  sources.forEach(function (source) {
-    var t = table_(source.sheet);
-    if (!t.sheet) return;
-    var col = t.col(source.field);
-    if (col < 0) return;
-    var values = t.sheet.getDataRange().getValues();
-    for (var row = 1; row < values.length; row++) {
-      if (standardName(values[row][col]) !== oldName) continue;
-      t.sheet.getRange(row + 1, col + 1).setValue(newName);
-      changed++;
-    }
-    invalidateTable_(source.sheet);
+  plans.forEach(function (plan) {
+    if (!plan.hits || plan.values.length <= 1) return;
+    // כותבים את כל עמודת השמות בפעולה מרוכזת אחת. ערכים שלא השתנו נשמרים
+    // בדיוק כפי שנקראו, ורק השם הנבחר מוחלף.
+    var column = [];
+    for (var row = 1; row < plan.values.length; row++) column.push([plan.values[row][plan.col]]);
+    plan.table.sheet.getRange(2, plan.col + 1, column.length, 1).setValues(column);
+    changed += plan.hits;
+    invalidateTable_(plan.source.sheet);
   });
 
   var one = {};
