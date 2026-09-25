@@ -161,6 +161,30 @@ export function withCity(address: string): string {
 }
 
 /**
+ * מחזיר את התאריך האזרחי הנוכחי לפי אזור הזמן של הארגון.
+ * חשוב במיוחד לזמני שבת: הדפדפן יכול להיות באזור זמן שונה מהמקום עצמו.
+ */
+function localDateParts(tzid: string): { year: number; month: number; day: number } {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: tzid,
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric',
+    }).formatToParts(new Date());
+    const value = (type: string) => Number(parts.find(part => part.type === type)?.value || 0);
+    const year = value('year');
+    const month = value('month');
+    const day = value('day');
+    if (year && month && day) return { year, month, day };
+  } catch {
+    // fallback למטה
+  }
+  const now = new Date();
+  return { year: now.getFullYear(), month: now.getMonth() + 1, day: now.getDate() };
+}
+
+/**
  * בונה כתובת URL ל-Hebcal לפי מיקום הארגון.
  * endpoint: 'shabbat' | 'hebcal' | 'converter'
  */
@@ -175,6 +199,19 @@ export function hebcalUrl(endpoint: string, extra: Record<string, string | numbe
     b: o.candleMinutes,
     ...extra,
   };
+
+  // ל-Shabbat API של Hebcal יש חלון שבועי מתגלגל. בשבוע שיש בו חג הוא עלול
+  // להחזיר גם הבדלה של החג הקודם (למשל יום כיפור) וגם הדלקת נרות של
+  // השבת/החג הקרובים. אם הקוד לוקח את הפריט הראשון מכל סוג מתקבל פוסטר
+  // שמערבב בין שני מועדים. Hebcal תומך בתאריך מדויק (gy/gm/gd), ולכן אנו
+  // מעגנים כל בקשת shabbat לתאריך המקומי של הארגון ומקבלים חלון אחד עקבי.
+  if (endpoint === 'shabbat' && params.gy == null && params.gm == null && params.gd == null) {
+    const local = localDateParts(o.tzid);
+    params.gy = local.year;
+    params.gm = local.month;
+    params.gd = local.day;
+  }
+
   if (o.havdalahMinutes == null) params.M = 'on';
   else params.m = o.havdalahMinutes;
   if (o.israelHolidays) params.i = 'on';
