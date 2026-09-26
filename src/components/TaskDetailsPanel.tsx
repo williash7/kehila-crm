@@ -1,9 +1,16 @@
 import React, { useState } from 'react';
-import { ChevronDown, ChevronUp, X, Plus, Check, MapPin, Clock, CalendarDays } from 'lucide-react';
+import { ChevronDown, ChevronUp, X, Plus, Check, MapPin, Clock, CalendarDays, BellRing, Repeat2 } from 'lucide-react';
 import {
   TaskItem, EisenhowerQuadrant, EISENHOWER_META, hasEisenhowerRating, eisenhowerQuadrant,
   addSubtask, toggleSubtask, removeSubtask,
 } from '../lib/tasks';
+import {
+  ReminderPreset,
+  ReminderTask,
+  customReminderLocalValue,
+  reminderOffsetForPreset,
+  reminderOffsetFromCustom,
+} from '../lib/taskReminders';
 
 const QUADRANTS: { key: EisenhowerQuadrant; urgent: boolean; important: boolean }[] = [
   { key: 'do', urgent: true, important: true },
@@ -12,15 +19,40 @@ const QUADRANTS: { key: EisenhowerQuadrant; urgent: boolean; important: boolean 
   { key: 'eliminate', urgent: false, important: false },
 ];
 
+function inferredReminderPreset(task: ReminderTask): ReminderPreset {
+  if (task.reminderPreset) return task.reminderPreset;
+  if (task.reminderOffsetMinutes === 7 * 24 * 60) return 'week_before';
+  if (task.reminderOffsetMinutes === 24 * 60) return 'day_before';
+  if (!task.reminderOffsetMinutes) return 'at_time';
+  return 'custom';
+}
+
 // פאנל פרטים נוסף — משותף לכל סוגי המשימות (חג/אירוע/חד-פעמית/ביקור בית וכו').
 // מנהל את מצב הפתיחה/סגירה שלו בעצמו, כך שכל קריאה ל-<TaskDetailsPanel> היא
 // self-contained ולא דורשת ניהול state נוסף מהרכיב הקורא.
-export function TaskDetailsPanel({ task, onPatch }: { task: TaskItem; onPatch: (patch: Partial<TaskItem>) => void }) {
+export function TaskDetailsPanel({ task, onPatch }: { task: TaskItem; onPatch: (patch: Partial<TaskItem> & Record<string, any>) => void }) {
   const [expanded, setExpanded] = useState(false);
   const [subtaskText, setSubtaskText] = useState('');
+  const reminderTask = task as ReminderTask;
+  const reminderPreset = inferredReminderPreset(reminderTask);
 
   const rated = hasEisenhowerRating(task);
-  const hasDetails = !!(task.dueDate || task.time || task.location || task.endTime || task.notes || task.subtasks?.length || rated);
+  const hasDetails = !!(
+    task.dueDate || task.time || task.location || task.endTime || task.notes || task.subtasks?.length || rated
+    || reminderTask.recurrence || reminderTask.reminderPreset || reminderTask.reminderOffsetMinutes
+  );
+
+  const changeReminderPreset = (preset: ReminderPreset) => {
+    if (preset === 'custom') {
+      onPatch({ reminderPreset: preset, snoozedUntil: undefined });
+      return;
+    }
+    onPatch({
+      reminderPreset: preset,
+      reminderOffsetMinutes: reminderOffsetForPreset(preset),
+      snoozedUntil: undefined,
+    });
+  };
 
   return (
     <div className="mt-1.5">
@@ -55,11 +87,15 @@ export function TaskDetailsPanel({ task, onPatch }: { task: TaskItem; onPatch: (
 
           <div className="grid grid-cols-2 gap-2">
             <label className="text-[10px] text-gray-500 flex flex-col gap-1">
-              <span className="flex items-center gap-1"><CalendarDays size={10} /> תאריך</span>
+              <span className="flex items-center gap-1"><CalendarDays size={10} /> תאריך ביצוע</span>
               <input
                 type="date"
                 value={task.dueDate || ''}
-                onChange={e => onPatch({ dueDate: e.target.value })}
+                onChange={e => onPatch({
+                  dueDate: e.target.value,
+                  ...(reminderTask.recurrence ? { recurrenceAnchorDate: e.target.value } : {}),
+                  snoozedUntil: undefined,
+                })}
                 className="bg-white border border-[#EDE6D6] rounded-md px-2 py-1 text-xs outline-none focus:border-[#C9A84C]"
               />
             </label>
@@ -68,7 +104,7 @@ export function TaskDetailsPanel({ task, onPatch }: { task: TaskItem; onPatch: (
               <input
                 type="time"
                 value={task.time || ''}
-                onChange={e => onPatch({ time: e.target.value })}
+                onChange={e => onPatch({ time: e.target.value, snoozedUntil: undefined })}
                 className="bg-white border border-[#EDE6D6] rounded-md px-2 py-1 text-xs outline-none focus:border-[#C9A84C]"
               />
             </label>
@@ -92,6 +128,69 @@ export function TaskDetailsPanel({ task, onPatch }: { task: TaskItem; onPatch: (
               />
             </label>
           </div>
+
+          <div className="grid grid-cols-2 gap-2 pt-1 border-t border-[#EDE6D6]">
+            <label className="text-[10px] text-gray-500 flex flex-col gap-1">
+              <span className="flex items-center gap-1"><Repeat2 size={10} /> חזרה</span>
+              <select
+                value={reminderTask.recurrence || ''}
+                onChange={e => {
+                  const recurrence = e.target.value || undefined;
+                  onPatch({
+                    recurrence,
+                    recurrenceAnchorDate: recurrence ? (task.dueDate || reminderTask.recurrenceAnchorDate) : undefined,
+                  });
+                }}
+                className="bg-white border border-[#EDE6D6] rounded-md px-2 py-1 text-xs outline-none focus:border-[#C9A84C]"
+              >
+                <option value="">חד-פעמית</option>
+                <option value="weekly">כל שבוע</option>
+                <option value="biweekly">כל שבועיים</option>
+                <option value="monthly">כל חודש</option>
+              </select>
+            </label>
+
+            <label className="text-[10px] text-gray-500 flex flex-col gap-1">
+              <span className="flex items-center gap-1"><BellRing size={10} /> מתי להזכיר</span>
+              <select
+                value={reminderPreset}
+                onChange={e => changeReminderPreset(e.target.value as ReminderPreset)}
+                disabled={!task.dueDate}
+                className="bg-white border border-[#EDE6D6] rounded-md px-2 py-1 text-xs outline-none focus:border-[#C9A84C] disabled:opacity-50"
+              >
+                <option value="at_time">בזמן המשימה</option>
+                <option value="day_before">יום לפני</option>
+                <option value="week_before">שבוע לפני</option>
+                <option value="custom">בחירה אישית</option>
+              </select>
+            </label>
+          </div>
+
+          {reminderPreset === 'custom' && (
+            <label className="text-[10px] text-gray-500 flex flex-col gap-1">
+              <span>תאריך ושעת התזכורת</span>
+              <input
+                type="datetime-local"
+                value={customReminderLocalValue(reminderTask)}
+                disabled={!task.dueDate}
+                onChange={e => {
+                  const offset = reminderOffsetFromCustom(reminderTask, e.target.value);
+                  if (offset === null) return;
+                  onPatch({ reminderPreset: 'custom', reminderOffsetMinutes: offset, snoozedUntil: undefined });
+                }}
+                className="bg-white border border-[#EDE6D6] rounded-md px-2 py-1 text-xs outline-none focus:border-[#C9A84C] disabled:opacity-50"
+              />
+              <span className="text-[9px] text-gray-400">במשימה חוזרת נשמר אותו מרווח גם למחזור הבא.</span>
+            </label>
+          )}
+
+          {reminderTask.recurrence && !task.dueDate && (
+            <div className="text-[10px] text-amber-700 bg-amber-50 rounded-md px-2 py-1.5">כדי שמשימה חוזרת תתחדש אוטומטית צריך לבחור לה תאריך ראשון.</div>
+          )}
+
+          {!!reminderTask.occurrenceHistory?.length && (
+            <div className="text-[10px] text-gray-400">נשמרו {reminderTask.occurrenceHistory.length} מחזורים קודמים למשימה הזאת.</div>
+          )}
 
           <textarea
             value={task.notes || ''}
