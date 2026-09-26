@@ -30,10 +30,10 @@ jobs:
       - name: Focused daily recurrence test
         shell: bash
         run: |
-          mkdir -p "$RUNNER_TEMP/daily-tests"
-          cat > "$RUNNER_TEMP/daily-tests/test_daily.cjs" <<'EOF'
+          npx esbuild src/lib/activities.ts --bundle --platform=node --format=cjs --outfile="$RUNNER_TEMP/activities.js"
+          ACTIVITY_BUNDLE="$RUNNER_TEMP/activities.js" node <<'EOF'
           const assert = require('assert');
-          const A = require('/tmp/stub/activities.js');
+          const A = require(process.env.ACTIVITY_BUNDLE);
           const daily = A.normalizeActivity({
             id: 'daily', name: 'מקבץ דיור', activityKind: 'recurring', freq: 'daily',
             repeatCount: 5, date: '2026-09-27', time: '10:30'
@@ -46,7 +46,6 @@ jobs:
           assert.strictEqual(next('2026-10-01T11:00:00'), null);
           console.log('✓ daily recurrence stops after repeatCount');
           EOF
-          TESTS_DIR="$RUNNER_TEMP/daily-tests" node scripts/run-tests.mjs
       - name: Commit patched source
         shell: bash
         run: |
