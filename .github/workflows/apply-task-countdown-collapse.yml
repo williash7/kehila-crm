@@ -1,0 +1,56 @@
+name: Apply task countdown and collapse
+
+on:
+  push:
+    paths:
+      - 'scripts/apply-task-countdown-collapse.mjs'
+      - '.github/workflows/apply-task-countdown-collapse.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Apply patch
+        run: node scripts/apply-task-countdown-collapse.mjs
+      - name: Install dependencies
+        run: npm ci
+      - name: Typecheck
+        run: npm run lint
+      - name: Build
+        run: npm run build
+      - name: Focused source checks
+        run: |
+          node - <<'EOF'
+          const fs = require('fs');
+          const assert = require('assert');
+          const tasks = fs.readFileSync('src/lib/tasks.ts', 'utf8');
+          const auto = fs.readFileSync('src/lib/eventAutoTasks.ts', 'utf8');
+          const activities = fs.readFileSync('src/lib/activities.ts', 'utf8');
+          const ui = fs.readFileSync('src/components/TasksTab.tsx', 'utf8');
+          assert.ok(tasks.includes('occurrenceTime?: string'));
+          assert.ok(auto.includes('occurrenceTime: ev.time || undefined'));
+          assert.ok(activities.includes("task?.kind === 'eventReminder' && !task.time && raw?.time"));
+          assert.ok(ui.includes("collapseLabel: `🗓️ ${g.id}`"));
+          assert.ok(ui.includes("'כווץ'} חגים"));
+          assert.ok(ui.includes("'כווץ'} ביקורי בית"));
+          assert.ok(ui.includes('flatDisplayGroups.map'));
+          console.log('focused checks passed');
+          EOF
+      - name: Commit source changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/lib/tasks.ts src/lib/eventAutoTasks.ts src/lib/activities.ts src/store/AppContext.tsx src/components/TasksTab.tsx
+          git diff --cached --quiet && exit 0
+          git commit -m "Fix event reminder countdown and add flat task collapse"
+          git push
