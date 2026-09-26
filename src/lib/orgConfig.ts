@@ -184,6 +184,28 @@ function localDateParts(tzid: string): { year: number; month: number; day: numbe
   return { year: now.getFullYear(), month: now.getMonth() + 1, day: now.getDate() };
 }
 
+function isoDateUtc(date: Date): string {
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
+}
+
+/**
+ * חלון מדויק של סוף השבוע הרלוונטי לפוסטר: שישי + שבת בלבד.
+ * בשבת עצמה ממשיכים להציג את השבת הנוכחית; מיום ראשון עוברים לשישי הבא.
+ */
+function currentShabbatWindow(tzid: string): { start: string; end: string } {
+  const local = localDateParts(tzid);
+  const today = new Date(Date.UTC(local.year, local.month - 1, local.day));
+  const weekday = today.getUTCDay();
+
+  let offsetToFriday: number;
+  if (weekday === 6) offsetToFriday = -1; // שבת: השישי של אתמול
+  else offsetToFriday = (5 - weekday + 7) % 7;
+
+  const friday = new Date(today.getTime() + offsetToFriday * 86400000);
+  const saturday = new Date(friday.getTime() + 86400000);
+  return { start: isoDateUtc(friday), end: isoDateUtc(saturday) };
+}
+
 /**
  * בונה כתובת URL ל-Hebcal לפי מיקום הארגון.
  * endpoint: 'shabbat' | 'hebcal' | 'converter'
@@ -200,16 +222,25 @@ export function hebcalUrl(endpoint: string, extra: Record<string, string | numbe
     ...extra,
   };
 
-  // ל-Shabbat API של Hebcal יש חלון שבועי מתגלגל. בשבוע שיש בו חג הוא עלול
-  // להחזיר גם הבדלה של החג הקודם (למשל יום כיפור) וגם הדלקת נרות של
-  // השבת/החג הקרובים. אם הקוד לוקח את הפריט הראשון מכל סוג מתקבל פוסטר
-  // שמערבב בין שני מועדים. Hebcal תומך בתאריך מדויק (gy/gm/gd), ולכן אנו
-  // מעגנים כל בקשת shabbat לתאריך המקומי של הארגון ומקבלים חלון אחד עקבי.
-  if (endpoint === 'shabbat' && params.gy == null && params.gm == null && params.gd == null) {
-    const local = localDateParts(o.tzid);
-    params.gy = local.year;
-    params.gm = local.month;
-    params.gd = local.day;
+  let actualEndpoint = endpoint;
+
+  // ה-/shabbat endpoint מחזיר לפעמים, בשבוע שיש בו חג, הבדלה ממועד קודם
+  // יחד עם הדלקת הנרות של סוף השבוע הבא. המחולל לקח את הפריט הראשון מכל
+  // סוג ולכן חיבר למשל את הדלקת הנרות של סוכות עם תאריך יום כיפור.
+  // במקום לנסות לנחש מתוך רשימה מעורבת, עבור הפוסטר אנחנו מבקשים מה-calendar
+  // endpoint *רק* את שישי ושבת הרלוונטיים. כך אין בכלל אירוע ישן שאפשר לבחור.
+  if (endpoint === 'shabbat') {
+    const window = currentShabbatWindow(o.tzid);
+    actualEndpoint = 'hebcal';
+    params.v = 1;
+    params.start = window.start;
+    params.end = window.end;
+    params.c = 'on';
+    params.s = 'on';
+    params.maj = 'on';
+    params.ss = 'on';
+    params.mf = 'on';
+    params.nx = 'on';
   }
 
   if (o.havdalahMinutes == null) params.M = 'on';
@@ -219,5 +250,5 @@ export function hebcalUrl(endpoint: string, extra: Record<string, string | numbe
   const qs = Object.entries(params)
     .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`)
     .join('&');
-  return `https://www.hebcal.com/${endpoint}?${qs}`;
+  return `https://www.hebcal.com/${actualEndpoint}?${qs}`;
 }
