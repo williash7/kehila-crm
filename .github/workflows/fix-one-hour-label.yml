@@ -1,0 +1,42 @@
+name: Fix one hour label
+
+on:
+  push:
+    paths:
+      - '.github/workflows/fix-one-hour-label.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Fix singular hour wording
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('src/lib/tasks.ts')
+          s = p.read_text()
+          old = "  if (hours > 0) return `נותרו ${hours} שעות`;"
+          new = "  if (hours === 1) return 'נותרה שעה';\n  if (hours > 1) return `נותרו ${hours} שעות`;"
+          assert s.count(old) == 1, s.count(old)
+          p.write_text(s.replace(old, new))
+          PY
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/lib/tasks.ts
+          git commit -m "Fix singular hour wording in task countdown"
+          git push
