@@ -3,6 +3,7 @@ import { useAppStore } from '../store/AppContext';
 import { computeReminderCounts, localDateKey, reminderBody, shouldSendDailyReminder } from '../lib/dailyReminder';
 import { TaskDecisionGate } from './TaskDecisionGate';
 import { TaskCreationReminderSetup } from './TaskCreationReminderSetup';
+import { WebsiteEventSyncAgent } from './WebsiteEventSyncAgent';
 
 const LAST_SENT_KEY = 'daily_reminder_last_sent_v1';
 
@@ -39,6 +40,7 @@ export function DailyReminderAgent() {
   }, [settings.dailyReminderEnabled, settings.dailyReminderTime, settings.hkExpiringThreshold, failures, hk, holidayExtras, eventsData, projects]);
 
   return <>
+    <WebsiteEventSyncAgent />
     <TaskCreationReminderSetup />
     <TaskDecisionGate />
   </>;
