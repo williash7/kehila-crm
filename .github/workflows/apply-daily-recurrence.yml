@@ -1,0 +1,58 @@
+name: Apply daily activity recurrence
+
+on:
+  push:
+    paths:
+      - 'scripts/apply-daily-recurrence.mjs'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Patch daily recurrence support
+        run: node scripts/apply-daily-recurrence.mjs
+      - name: Install dependencies
+        run: npm ci
+      - name: Typecheck
+        run: npm run lint
+      - name: Build
+        run: npm run build
+      - name: Focused daily recurrence test
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/daily-tests"
+          cat > "$RUNNER_TEMP/daily-tests/test_daily.cjs" <<'EOF'
+          const assert = require('assert');
+          const A = require('/tmp/stub/activities.js');
+          const daily = A.normalizeActivity({
+            id: 'daily', name: 'מקבץ דיור', activityKind: 'recurring', freq: 'daily',
+            repeatCount: 5, date: '2026-09-27', time: '10:30'
+          });
+          assert.strictEqual(daily.freq, 'daily');
+          assert.strictEqual(daily.repeatCount, 5);
+          const next = (from) => A.upcomingActivities([daily], new Date(from), 10)[0]?.date?.toISOString().slice(0, 10) || null;
+          assert.strictEqual(next('2026-09-27T11:00:00'), '2026-09-28');
+          assert.strictEqual(next('2026-10-01T09:00:00'), '2026-10-01');
+          assert.strictEqual(next('2026-10-01T11:00:00'), null);
+          console.log('✓ daily recurrence stops after repeatCount');
+          EOF
+          TESTS_DIR="$RUNNER_TEMP/daily-tests" node scripts/run-tests.mjs
+      - name: Commit patched source
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/lib/tasks.ts src/lib/activities.ts src/components/EventsTab.tsx
+          git diff --cached --quiet && exit 0
+          git commit -m "Add finite daily recurrence to activities"
+          git push
