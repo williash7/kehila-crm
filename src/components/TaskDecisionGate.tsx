@@ -256,6 +256,43 @@ export function TaskDecisionGate() {
     snoozedUntil: undefined,
   });
 
+  const currentEventOccurrenceOpenCount = React.useMemo(() => {
+    if (!current || current.source !== 'event') return 0;
+    const ev = (eventsData as any[]).find(row => row.id === current.parentId);
+    if (!ev) return 0;
+    return (ev.tasks || []).filter((task: ReminderTask) => {
+      if (task.done || task.skipped) return false;
+      return current.task.dueDate ? task.dueDate === current.task.dueDate : !task.dueDate;
+    }).length;
+  }, [current, eventsData]);
+
+  const skipCurrentEventOccurrence = () => {
+    if (!current || current.source !== 'event') return;
+    const openCount = currentEventOccurrenceOpenCount;
+    if (openCount === 0) return;
+    const dateLabel = current.task.dueDate ? ` בתאריך ${current.task.dueDate}` : '';
+    if (!window.confirm(`לדלג על כל המופע של "${current.parentLabel}"${dateLabel}? ${openCount} משימות פתוחות יסומנו כמדולגות, והמופע הבא יישאר כרגיל.`)) return;
+
+    const resolvedAt = new Date().toISOString();
+    const occurrenceDate = current.task.dueDate;
+    updateEventsData((eventsData as any[]).map(ev => {
+      if (ev.id !== current.parentId) return ev;
+      const tasks = (ev.tasks || []).map((task: ReminderTask) => {
+        if (task.done || task.skipped) return task;
+        const sameOccurrence = occurrenceDate ? task.dueDate === occurrenceDate : !task.dueDate;
+        if (!sameOccurrence) return task;
+        return {
+          ...task,
+          done: true,
+          skipped: true,
+          doneAt: resolvedAt,
+          snoozedUntil: undefined,
+        };
+      });
+      return { ...ev, tasks };
+    }));
+  };
+
   const snoozeHours = (hours: number) => {
     const d = new Date();
     d.setHours(d.getHours() + hours);
@@ -307,9 +344,18 @@ export function TaskDecisionGate() {
               <Check size={18} /> בוצע
             </button>
             <button onClick={() => finish(true)} className="rounded-2xl bg-white border border-red-200 text-red-600 py-3 px-3 font-bold text-sm flex items-center justify-center gap-2 shadow-sm">
-              <Ban size={18} /> לא יבוצע
+              <Ban size={18} /> {current.source === 'event' ? 'דלג על המשימה' : 'לא יבוצע'}
             </button>
           </div>
+
+          {current.source === 'event' && currentEventOccurrenceOpenCount > 0 && (
+            <button
+              onClick={skipCurrentEventOccurrence}
+              className="w-full rounded-2xl bg-red-50 border border-red-200 text-red-700 py-3 px-4 font-bold text-sm flex items-center justify-center gap-2"
+            >
+              <Ban size={18} /> לא מתקיים הפעם — דלג על כל המופע ({currentEventOccurrenceOpenCount} משימות)
+            </button>
+          )}
 
           <div className="bg-white border border-[#EDE6D6] rounded-2xl p-3">
             <div className="text-xs font-bold text-[#0D1B2A] flex items-center gap-1.5 mb-2"><Clock3 size={14} /> הזכר לי מאוחר יותר</div>
@@ -335,7 +381,7 @@ export function TaskDecisionGate() {
             {copied ? 'הפרומפט הועתק — החלון נשאר פתוח עד שתחליט' : 'עזור לי להחליט עם בינה מלאכותית'}
           </button>
 
-          <div className="text-[10px] text-gray-400 text-center">אין כפתור סגירה בכוונה. במשימה חוזרת „לא יבוצע” סוגר רק את המופע הנוכחי; המחזור הבא ייווצר כרגיל.</div>
+          <div className="text-[10px] text-gray-400 text-center">אין כפתור סגירה בכוונה. במשימה חוזרת „דלג” סוגר רק את המופע הנוכחי; המחזור הבא ייווצר כרגיל.</div>
         </div>
       </div>
     </div>
