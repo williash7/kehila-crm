@@ -20,8 +20,6 @@ type TaskRef = {
   inheritedRecurrence?: TaskRecurrence;
 };
 
-type LocalPreset = ReminderPreset | 'none';
-
 const AUTO_KINDS = new Set(['homeVisit', 'thankYou', 'holidayReminder', 'eventReminder']);
 const RECURRENCES = new Set<TaskRecurrence>(['weekly', 'biweekly', 'monthly']);
 
@@ -53,7 +51,7 @@ export function TaskCreationReminderSetup() {
   const [dueDate, setDueDate] = React.useState('');
   const [time, setTime] = React.useState('');
   const [recurrence, setRecurrence] = React.useState<TaskRecurrence | ''>('');
-  const [preset, setPreset] = React.useState<LocalPreset>('at_time');
+  const [preset, setPreset] = React.useState<ReminderPreset>('at_time');
   const [customReminder, setCustomReminder] = React.useState('');
   const [error, setError] = React.useState('');
 
@@ -152,23 +150,20 @@ export function TaskCreationReminderSetup() {
 
   const save = () => {
     if (!current) return;
-    if (preset !== 'none' && !dueDate) {
+    if (!dueDate) {
       setError('כדי לקבוע תזכורת צריך לבחור תאריך למשימה.');
       return;
     }
 
     const patch: Partial<ReminderTask> = {
-      dueDate: dueDate || undefined,
+      dueDate,
       time: time || undefined,
       recurrence: recurrence || undefined,
-      recurrenceAnchorDate: recurrence && dueDate ? dueDate : undefined,
+      recurrenceAnchorDate: recurrence ? dueDate : undefined,
       snoozedUntil: undefined,
     };
 
-    if (preset === 'none') {
-      patch.reminderPreset = undefined;
-      patch.reminderOffsetMinutes = undefined;
-    } else if (preset === 'custom') {
+    if (preset === 'custom') {
       if (!customReminder) {
         setError('בחר תאריך ושעה לתזכורת האישית.');
         return;
@@ -201,7 +196,7 @@ export function TaskCreationReminderSetup() {
               <h2 className="font-['Frank_Ruhl_Libre'] text-xl font-bold text-[#0D1B2A] mt-0.5">{current.task.text}</h2>
               <div className="text-[11px] text-gray-400 mt-1">{current.parentLabel}</div>
             </div>
-            <button onClick={next} className="p-1.5 text-gray-400 hover:text-gray-600" title="דלג על הגדרת תזכורת כרגע"><X size={18} /></button>
+            <button onClick={next} className="p-1.5 text-gray-400 hover:text-gray-600" title="דלג על הגדרת התזכורת כרגע"><X size={18} /></button>
           </div>
         </div>
 
@@ -230,12 +225,11 @@ export function TaskCreationReminderSetup() {
 
           <label className="text-[11px] text-gray-500 flex flex-col gap-1">
             <span className="flex items-center gap-1"><BellRing size={12} /> מתי התזכורת תקפוץ</span>
-            <select value={preset} onChange={e => { setPreset(e.target.value as LocalPreset); setError(''); }} className="border border-[#EDE6D6] rounded-xl px-3 py-2 text-sm outline-none focus:border-[#C9A84C] bg-white">
+            <select value={preset} onChange={e => { setPreset(e.target.value as ReminderPreset); setError(''); }} className="border border-[#EDE6D6] rounded-xl px-3 py-2 text-sm outline-none focus:border-[#C9A84C] bg-white">
               <option value="at_time">בזמן המשימה</option>
               <option value="day_before">יום לפני</option>
               <option value="week_before">שבוע לפני</option>
               <option value="custom">בחירה אישית</option>
-              <option value="none">בלי תזכורת</option>
             </select>
           </label>
 
