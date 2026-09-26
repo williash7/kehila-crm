@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 
+// Wrapper used only to make the one-time source patch match the current EventsTab text exactly.
 const path = 'src/components/EventsTab.tsx';
 let text = readFileSync(path, 'utf8').replace(/\r\n/g, '\n');
 const original = "                   `מסגרת: ${ACTIVITY_KIND_LABEL[currentTasksEvent.activityKind as ActivityKind]}, תוכן: ${typeLabels[currentTasksEvent.type] || currentTasksEvent.type}, תדירות: ${freqLabels[currentTasksEvent.freq] || currentTasksEvent.freq}`,";
