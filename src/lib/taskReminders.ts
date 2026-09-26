@@ -11,6 +11,15 @@ export interface TaskOccurrenceHistoryEntry {
   archivedAt: string;
 }
 
+export type ReminderTask = TaskItem & {
+  recurrence?: TaskRecurrence;
+  recurrenceAnchorDate?: string;
+  reminderPreset?: ReminderPreset;
+  reminderOffsetMinutes?: number;
+  snoozedUntil?: string;
+  occurrenceHistory?: TaskOccurrenceHistoryEntry[];
+};
+
 export const REMINDER_PRESET_MINUTES: Record<Exclude<ReminderPreset, 'custom'>, number> = {
   at_time: 0,
   day_before: 24 * 60,
@@ -78,7 +87,7 @@ export function taskDueDateTime(task: Pick<TaskItem, 'dueDate' | 'time'>): Date 
   return date;
 }
 
-export function taskReminderDateTime(task: TaskItem): Date | null {
+export function taskReminderDateTime(task: ReminderTask): Date | null {
   if (task.snoozedUntil) {
     const snoozed = new Date(task.snoozedUntil);
     if (!Number.isNaN(snoozed.getTime())) return snoozed;
@@ -89,7 +98,7 @@ export function taskReminderDateTime(task: TaskItem): Date | null {
   return new Date(due.getTime() - offset * 60_000);
 }
 
-export function isTaskReminderDue(task: TaskItem, now = new Date()): boolean {
+export function isTaskReminderDue(task: ReminderTask, now = new Date()): boolean {
   if (!task || task.done || task.skipped) return false;
   const reminderAt = taskReminderDateTime(task);
   return !!reminderAt && reminderAt.getTime() <= now.getTime();
@@ -99,14 +108,14 @@ export function reminderOffsetForPreset(preset: ReminderPreset): number | undefi
   return preset === 'custom' ? undefined : REMINDER_PRESET_MINUTES[preset];
 }
 
-export function reminderOffsetFromCustom(task: TaskItem, localDateTime: string): number | null {
+export function reminderOffsetFromCustom(task: ReminderTask, localDateTime: string): number | null {
   const due = taskDueDateTime(task);
   const custom = new Date(localDateTime);
   if (!due || Number.isNaN(custom.getTime())) return null;
   return Math.max(0, Math.round((due.getTime() - custom.getTime()) / 60_000));
 }
 
-export function customReminderLocalValue(task: TaskItem): string {
+export function customReminderLocalValue(task: ReminderTask): string {
   const reminder = taskReminderDateTime({ ...task, snoozedUntil: undefined });
   if (!reminder) return '';
   const y = reminder.getFullYear();
@@ -117,7 +126,7 @@ export function customReminderLocalValue(task: TaskItem): string {
   return `${y}-${m}-${d}T${h}:${min}`;
 }
 
-function historyEntryFor(task: TaskItem, now: Date): TaskOccurrenceHistoryEntry | null {
+function historyEntryFor(task: ReminderTask, now: Date): TaskOccurrenceHistoryEntry | null {
   if (!task.dueDate) return null;
   const outcome: TaskOccurrenceHistoryEntry['outcome'] = task.skipped ? 'skipped' : task.done ? 'done' : 'open';
   return {
@@ -130,11 +139,11 @@ function historyEntryFor(task: TaskItem, now: Date): TaskOccurrenceHistoryEntry 
 }
 
 export function normalizeRecurringTask(
-  task: TaskItem,
+  task: ReminderTask,
   recurrence: TaskRecurrence | undefined,
   fallbackAnchorDate: string | undefined,
   now = new Date(),
-): TaskItem {
+): ReminderTask {
   if (!recurrence) return task;
 
   const anchor = task.recurrenceAnchorDate || task.dueDate || fallbackAnchorDate;
@@ -142,7 +151,7 @@ export function normalizeRecurringTask(
   const targetDue = nextRecurringDateOnOrAfter(anchor, recurrence, now);
   if (!targetDue) return { ...task, recurrence, recurrenceAnchorDate: anchor };
 
-  const base: TaskItem = {
+  const base: ReminderTask = {
     ...task,
     recurrence,
     recurrenceAnchorDate: anchor,
@@ -170,7 +179,7 @@ export function normalizeRecurringTask(
   };
 }
 
-export function taskDecisionPrompt(task: TaskItem, contextLabel?: string): string {
+export function taskDecisionPrompt(task: ReminderTask, contextLabel?: string): string {
   const dueBits = [task.dueDate, task.time].filter(Boolean).join(' ');
   const context = contextLabel ? `\nהקשר: ${contextLabel}.` : '';
   return `יש לי משימה שדורשת החלטה עכשיו: "${task.text}".${context}${dueBits ? `\nמועד המשימה: ${dueBits}.` : ''}\nעזור לי להחליט עכשיו בין שלוש אפשרויות: לבצע עכשיו, לדחות לזמן מוגדר, או לוותר על המופע הנוכחי. שאל רק שאלה אחת אם היא באמת הכרחית; אחרת תן לי המלצה מעשית וצעד אחד לביצוע.`;
