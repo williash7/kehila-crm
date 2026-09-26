@@ -35,7 +35,6 @@ type WebsiteLinkedActivity = Activity & {
   siteUrl?: string;
   siteTitleRu?: string;
   siteDetailsRu?: string;
-  siteSyncedAt?: string;
 };
 
 function cleanBaseUrl(value: string): string {
@@ -127,7 +126,6 @@ function mappedActivity(event: WebsiteEvent): WebsiteLinkedActivity | null {
     siteUrl: event.url || '',
     siteTitleRu: event.titleRu || '',
     siteDetailsRu: event.detailsRu || '',
-    siteSyncedAt: new Date().toISOString(),
   }) as WebsiteLinkedActivity;
 }
 
