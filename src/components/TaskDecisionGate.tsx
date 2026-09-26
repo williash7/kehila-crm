@@ -6,7 +6,6 @@ import {
   ReminderTask,
   TaskRecurrence,
   isTaskReminderDue,
-  localIsoDate,
   nextFridayOnOrAfter,
   normalizeRecurringTask,
   parseLocalDate,
@@ -97,9 +96,11 @@ export function TaskDecisionGate() {
 
   // מנרמל מחזורים לפני שמציגים חלון חוסם. כך משימות מאוגוסט לא קופצות
   // כמטלה של היום; הן נשמרות occurrenceHistory והמופע הנוכחי מקבל תאריך חדש.
+  // now נמצא בתלויות כדי שגם אפליקציה שנשארה פתוחה תתקדם למחזור הבא בדיוק
+  // כשמגיע זמן התזכורת שלו, בלי לדרוש רענון או שינוי נתונים אחר.
   React.useEffect(() => {
     if (loading) return;
-    const current = new Date();
+    const current = now;
     let changed = false;
 
     Object.entries(holidayExtras || {}).forEach(([id, extra]: [string, any]) => {
@@ -169,7 +170,7 @@ export function TaskDecisionGate() {
   // update* הן פונקציות יציבות מספיק לצורך האפקט; הכנסתן לתלויות תגרום
   // לריצה בכל render כי הן נוצרות מחדש ב-AppProvider.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, holidayExtras, eventsData, projects]);
+  }, [loading, holidayExtras, eventsData, projects, now]);
 
   const dueTasks = React.useMemo<DueTaskRef[]>(() => {
     if (loading || !normalizationReady) return [];
