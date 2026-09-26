@@ -108,7 +108,8 @@ export function formatRemaining(target: Date, now: Date): string {
   const days = Math.floor(totalMinutes / (60 * 24));
   const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
   if (days > 0) return `נותרו ${days} ימים ו-${hours} שעות`;
-  if (hours > 0) return `נותרו ${hours} שעות`;
+  if (hours === 1) return 'נותרה שעה';
+  if (hours > 1) return `נותרו ${hours} שעות`;
   return 'פחות משעה';
 }
 
