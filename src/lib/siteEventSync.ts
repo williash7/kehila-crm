@@ -1,6 +1,8 @@
 import { Activity, normalizeActivity } from './activities';
 import { getOrg } from './orgConfig';
 
+const WEBSITE_SYNC_URL_KEY = 'website_sync_url_v1';
+
 export type WebsiteEvent = {
   slug: string;
   titleHe: string;
@@ -38,6 +40,38 @@ type WebsiteLinkedActivity = Activity & {
 
 function cleanBaseUrl(value: string): string {
   return value.trim().replace(/\/+$/, '');
+}
+
+/**
+ * The CRM stays generic. A specific organization can connect its public site
+ * once, without baking that site into the shared application code.
+ *
+ * Opening the app with ?websiteSync=https://example.org stores the connection
+ * locally. From then on normal app opens use the stored URL automatically.
+ */
+export function getWebsiteSyncUrl(): string {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const fromQuery = cleanBaseUrl(params.get('websiteSync') || '');
+    if (fromQuery && /^https:\/\//i.test(fromQuery)) {
+      localStorage.setItem(WEBSITE_SYNC_URL_KEY, fromQuery);
+      return fromQuery;
+    }
+    return cleanBaseUrl(localStorage.getItem(WEBSITE_SYNC_URL_KEY) || '');
+  } catch {
+    return '';
+  }
+}
+
+export function setWebsiteSyncUrl(value: string): string {
+  const normalized = cleanBaseUrl(value);
+  try {
+    if (normalized) localStorage.setItem(WEBSITE_SYNC_URL_KEY, normalized);
+    else localStorage.removeItem(WEBSITE_SYNC_URL_KEY);
+  } catch {
+    // Storage can be unavailable in private browsing. The caller can retry.
+  }
+  return normalized;
 }
 
 function dateTimeParts(iso: string, tzid: string): { date: string; time: string } | null {
@@ -98,7 +132,7 @@ function mappedActivity(event: WebsiteEvent): WebsiteLinkedActivity | null {
 }
 
 export async function fetchWebsiteEvents(): Promise<WebsiteEvent[]> {
-  const websiteUrl = cleanBaseUrl(getOrg().websiteUrl || '');
+  const websiteUrl = getWebsiteSyncUrl();
   if (!websiteUrl) return [];
   const response = await fetch(`${websiteUrl}/api/integration/events`, {
     headers: { Accept: 'application/json' },
