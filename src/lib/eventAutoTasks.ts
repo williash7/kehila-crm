@@ -9,8 +9,8 @@ export const EVENT_REMINDER_HOURS_BEFORE = 24;
 export function computeMissingEventReminders(
   events: any[],
   today: Date
-): { id: string; name: string; occurrenceDateISO: string }[] {
-  const result: { id: string; name: string; occurrenceDateISO: string }[] = [];
+): { id: string; name: string; occurrenceDateISO: string; occurrenceTime?: string }[] {
+  const result: { id: string; name: string; occurrenceDateISO: string; occurrenceTime?: string }[] = [];
   events.forEach(ev => {
     if (!ev.freq || ev.freq === 'oneoff') return;
     const next = nextEventOccurrence(ev, today);
@@ -20,7 +20,7 @@ export function computeMissingEventReminders(
     const occurrenceDateISO = next.toISOString().split('T')[0];
     const tasks: any[] = ev.tasks || [];
     const exists = tasks.some(t => t.kind === 'eventReminder' && t.dueDate === occurrenceDateISO);
-    if (!exists) result.push({ id: ev.id, name: ev.name, occurrenceDateISO });
+    if (!exists) result.push({ id: ev.id, name: ev.name, occurrenceDateISO, occurrenceTime: ev.time || undefined });
   });
   return result;
 }

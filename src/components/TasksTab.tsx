@@ -544,7 +544,18 @@ export function TasksTab({ setTab, addTrigger, openTarget, onOpenTargetConsumed 
   // תצוגה שטוחה — כל המשימות (כולל תאריכים אישיים) יחד, ממוינות רק לפי
   // sortKey, בלי חלוקה לקטגוריות (חג/אירוע/חד-פעמי). כל שורה שומרת "פירור לחם"
   // קטן שמזכיר מאיפה היא הגיעה, כדי לא לאבד לגמרי את ההקשר.
-  const flatRows: { key: string; date: Date | null; priorityObj: any; node: React.ReactNode }[] = [];
+  type FlatCollapseCategory = 'holidays' | 'events' | 'campaigns' | 'homevisits';
+  type FlatRow = {
+    key: string;
+    date: Date | null;
+    priorityObj: any;
+    node: React.ReactNode;
+    collapseKey?: string;
+    collapseLabel?: string;
+    collapseCategory?: FlatCollapseCategory;
+    groupOpen?: () => void;
+  };
+  const flatRows: FlatRow[] = [];
 
   sortedPersonalDates.forEach(c => {
     const extra = personalDateExtras[c.key] || {};
@@ -576,11 +587,12 @@ export function TasksTab({ setTab, addTrigger, openTarget, onOpenTargetConsumed 
         key: `h-${g.id}-${idx}`,
         date,
         priorityObj: t,
+        collapseKey: `h-${g.id}`,
+        collapseLabel: `🗓️ ${g.id}`,
+        collapseCategory: 'holidays',
+        groupOpen: () => openHolidayFull(g.id),
         node: (
           <div key={`h-${g.id}-${idx}`}>
-            <button onClick={() => openHolidayFull(g.id)} className="text-[10px] text-[#9B7A2F] font-bold mb-1 hover:underline flex items-center gap-1">
-              🗓️ {g.id} <ChevronLeft size={10} />
-            </button>
             {renderTaskItem(t, () => toggleHolidayTask(g.id, idx), () => deleteHolidayTask(g.id, idx), p => toggleHolidayInvitePerson(g.id, idx, p), patch => patchHolidayTask(g.id, idx, patch), holidayExtraFor(g.id, idx, t))}
           </div>
         ),
@@ -594,11 +606,12 @@ export function TasksTab({ setTab, addTrigger, openTarget, onOpenTargetConsumed 
         key: `e-${g.id}-${idx}`,
         date,
         priorityObj: t,
+        collapseKey: `e-${g.id}`,
+        collapseLabel: `📅 ${g.name}`,
+        collapseCategory: 'events',
+        groupOpen: () => setTab('events'),
         node: (
           <div key={`e-${g.id}-${idx}`}>
-            <button onClick={() => setTab('events')} className="text-[10px] text-[#9B7A2F] font-bold mb-1 hover:underline flex items-center gap-1">
-              📅 {g.name} <ChevronLeft size={10} />
-            </button>
             {renderTaskItem(t, () => toggleEventTask(g.id, idx), () => deleteEventTask(g.id, idx), p => toggleEventInvitePerson(g.id, idx, p), patch => patchEventTask(g.id, idx, patch))}
           </div>
         ),
@@ -612,11 +625,12 @@ export function TasksTab({ setTab, addTrigger, openTarget, onOpenTargetConsumed 
         key: `c-${group.id}-${idx}`,
         date,
         priorityObj: t,
+        collapseKey: `c-${group.id}`,
+        collapseLabel: `🎯 ${group.name}`,
+        collapseCategory: 'campaigns',
+        groupOpen: () => setTab('projects'),
         node: (
           <div key={`c-${group.id}-${idx}`}>
-            <button onClick={() => setTab('projects')} className="text-[10px] text-[#9B7A2F] font-bold mb-1 hover:underline flex items-center gap-1">
-              🎯 {group.name} <ChevronLeft size={10} />
-            </button>
             {renderTaskItem(t, () => toggleCampaignTask(group.id, idx), () => deleteCampaignTask(group.id, idx), () => {}, patch => patchCampaignTask(group.id, idx, patch))}
           </div>
         ),
@@ -629,9 +643,12 @@ export function TasksTab({ setTab, addTrigger, openTarget, onOpenTargetConsumed 
       key: `prep-${pt.roundId}-${pt.idx}`,
       date: null,
       priorityObj: {},
+      collapseKey: 'hv-tasks',
+      collapseLabel: '🏠 ביקורי בית',
+      collapseCategory: 'homevisits',
+      groupOpen: () => setTab('homevisits'),
       node: (
         <div key={`prep-${pt.roundId}-${pt.idx}`}>
-          <div className="text-[10px] text-[#9B7A2F] font-bold mb-1">🏠 הכנה לביקורי בית{pt.purpose ? ` — ${pt.purpose}` : ''}</div>
           <div className="bg-[#FAF6EE] rounded-xl p-3 shadow-sm border border-[#EDE6D6] flex items-center gap-3">
             <div onClick={() => togglePrepTask(pt.roundId, pt.idx)} className="w-5 h-5 rounded-md border-2 border-gray-300 flex items-center justify-center shrink-0 cursor-pointer">
             </div>
@@ -649,9 +666,13 @@ export function TasksTab({ setTab, addTrigger, openTarget, onOpenTargetConsumed 
       key: `s-${idx}`,
       date,
       priorityObj: t,
+      collapseKey: t.kind === 'homeVisit' ? 'hv-tasks' : undefined,
+      collapseLabel: t.kind === 'homeVisit' ? '🏠 ביקורי בית' : undefined,
+      collapseCategory: t.kind === 'homeVisit' ? 'homevisits' : undefined,
+      groupOpen: t.kind === 'homeVisit' ? () => setTab('homevisits') : undefined,
       node: (
         <div key={`s-${idx}`}>
-          <div className="text-[10px] text-[#9B7A2F] font-bold mb-1">{t.kind === 'homeVisit' ? '🏠 ביקור בית' : '📌 חד-פעמית'}</div>
+          {t.kind !== 'homeVisit' && <div className="text-[10px] text-[#9B7A2F] font-bold mb-1">📌 חד-פעמית</div>}
           {renderTaskItem(
             t,
             t.kind === 'homeVisit' ? () => handleMarkHomeVisitDone(t.roundId, t.personName, t.text) : () => toggleStandaloneTask(idx),
@@ -666,6 +687,43 @@ export function TasksTab({ setTab, addTrigger, openTarget, onOpenTargetConsumed 
   });
 
   flatRows.sort((a, b) => compareTasks(a.priorityObj, b.priorityObj, sortKey, a.date, b.date));
+
+  // גם ב״רשימה אחת״ מקבצים משימות מאותו מקור תחת כותרת אחת מתקפלת.
+  // סדר הקבוצות נקבע לפי המשימה הראשונה שלהן אחרי המיון, כך שמיון לפי זמן/דחיפות
+  // עדיין קובע מה עולה למעלה — בלי לחזור על ״שמיני עצרת״ לפני כל כרטיס בנפרד.
+  type FlatDisplayGroup = {
+    key: string;
+    collapseKey?: string;
+    label?: string;
+    category?: FlatCollapseCategory;
+    groupOpen?: () => void;
+    rows: FlatRow[];
+  };
+  const flatDisplayGroups: FlatDisplayGroup[] = [];
+  const flatDisplayMap = new Map<string, FlatDisplayGroup>();
+  flatRows.forEach(row => {
+    const key = row.collapseKey || `row-${row.key}`;
+    let group = flatDisplayMap.get(key);
+    if (!group) {
+      group = { key, collapseKey: row.collapseKey, label: row.collapseLabel, category: row.collapseCategory, groupOpen: row.groupOpen, rows: [] };
+      flatDisplayMap.set(key, group);
+      flatDisplayGroups.push(group);
+    }
+    group.rows.push(row);
+  });
+
+  const flatHolidayKeys = Array.from(new Set(flatRows.filter(r => r.collapseCategory === 'holidays' && r.collapseKey).map(r => r.collapseKey!)));
+  const flatHomeVisitKeys = Array.from(new Set(flatRows.filter(r => r.collapseCategory === 'homevisits' && r.collapseKey).map(r => r.collapseKey!)));
+  const flatAllCollapseKeys = Array.from(new Set(flatRows.filter(r => r.collapseKey).map(r => r.collapseKey!)));
+  const toggleGroupSet = (keys: string[]) => {
+    if (!keys.length) return;
+    setCollapsedGroups(prev => {
+      const next = new Set(prev);
+      const collapse = keys.some(key => !next.has(key));
+      keys.forEach(key => collapse ? next.add(key) : next.delete(key));
+      return next;
+    });
+  };
 
   // תצוגת לוח שנה — כמו flatRows, אבל התאריך כאן הוא תאריך "אמיתי" בלבד
   // (dueDate מפורש, או תאריך ההקשר של חג/אירוע) בלי נפילה חזרה ל-createdAt,
@@ -834,7 +892,45 @@ export function TasksTab({ setTab, addTrigger, openTarget, onOpenTargetConsumed 
           {flatRows.length === 0 ? (
             <div className="bg-white rounded-xl p-4 text-center text-gray-500 shadow-sm text-sm border border-[#EDE6D6]">אין משימות פתוחות</div>
           ) : (
-            <div className="space-y-3">{flatRows.map(r => r.node)}</div>
+            <>
+              <div className="flex items-center gap-2 flex-wrap mb-3">
+                {flatHolidayKeys.length > 0 && (
+                  <button onClick={() => toggleGroupSet(flatHolidayKeys)} className="text-[11px] px-2.5 py-1 rounded-full border bg-white text-gray-600 border-[#EDE6D6]">
+                    🗓️ {flatHolidayKeys.every(k => collapsedGroups.has(k)) ? 'פתח' : 'כווץ'} חגים
+                  </button>
+                )}
+                {flatHomeVisitKeys.length > 0 && (
+                  <button onClick={() => toggleGroupSet(flatHomeVisitKeys)} className="text-[11px] px-2.5 py-1 rounded-full border bg-white text-gray-600 border-[#EDE6D6]">
+                    🏠 {flatHomeVisitKeys.every(k => collapsedGroups.has(k)) ? 'פתח' : 'כווץ'} ביקורי בית
+                  </button>
+                )}
+                {flatAllCollapseKeys.length > 1 && (
+                  <button onClick={() => toggleGroupSet(flatAllCollapseKeys)} className="text-[11px] px-2.5 py-1 rounded-full border bg-white text-gray-600 border-[#EDE6D6]">
+                    {flatAllCollapseKeys.every(k => collapsedGroups.has(k)) ? 'פתח הכול' : 'כווץ הכול'}
+                  </button>
+                )}
+              </div>
+              <div className="space-y-4">
+                {flatDisplayGroups.map(group => {
+                  const collapsed = !!group.collapseKey && collapsedGroups.has(group.collapseKey);
+                  return (
+                    <div key={group.key}>
+                      {group.collapseKey && (
+                        <div className="flex items-center justify-between mb-1">
+                          <button onClick={group.groupOpen} className="text-[11px] text-[#9B7A2F] font-bold hover:underline flex items-center gap-1">
+                            {group.label} {group.groupOpen && <ChevronLeft size={10} />}
+                          </button>
+                          <button onClick={() => toggleGroupCollapse(group.collapseKey!)} className="flex items-center gap-1 text-[10px] text-gray-400 px-1.5 py-0.5 rounded hover:bg-[#FAF6EE] transition-colors">
+                            {group.rows.length} משימות <ChevronDown size={12} className={`transition-transform ${collapsed ? '' : 'rotate-180'}`} />
+                          </button>
+                        </div>
+                      )}
+                      {!collapsed && <div className="space-y-3">{group.rows.map(r => r.node)}</div>}
+                    </div>
+                  );
+                })}
+              </div>
+            </>
           )}
         </div>
       ) : viewMode === 'calendar' ? (

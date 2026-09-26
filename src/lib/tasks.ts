@@ -181,8 +181,14 @@ export function createHomeVisitTask(personName: string, roundId: string): TaskIt
 // תזכורת יום לפני מופע של אירוע חוזר (ראה eventAutoTasks.ts) — dueDate הוא תאריך
 // המופע עצמו (YYYY-MM-DD), ומשמש גם כמזהה המופע כדי לא ליצור תזכורת כפולה לו,
 // וגם להצגת "כמה זמן נותר" (renderTaskItem הקיים כבר יודע להציג dueDate).
-export function createEventReminderTask(eventName: string, occurrenceDateISO: string): TaskItem {
-  return stampCreated({ text: `🔔 מחר — ${eventName}`, done: false, kind: 'eventReminder' as const, dueDate: occurrenceDateISO });
+export function createEventReminderTask(eventName: string, occurrenceDateISO: string, occurrenceTime?: string): TaskItem {
+  return stampCreated({
+    text: `🔔 מחר — ${eventName}`,
+    done: false,
+    kind: 'eventReminder' as const,
+    dueDate: occurrenceDateISO,
+    ...(occurrenceTime ? { time: occurrenceTime } : {}),
+  });
 }
 
 export const THANKYOU_BACKFILL_DAYS = 10;

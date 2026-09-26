@@ -69,7 +69,13 @@ export function normalizeActivity(raw: any): Activity {
     purposeTags: activityPurposeTags({ ...raw, name } as Activity),
     attendance: raw?.attendance || {},
     participants: raw?.participants || {},
-    tasks: raw?.tasks || [],
+    // תזכורת אוטומטית של פעילות סופרת עד שעת הפעילות, לא עד 00:00.
+    // כך גם תזכורות ישנות שנוצרו לפני שנשמרה בהן שעה מקבלות את השעה מההורה.
+    tasks: (raw?.tasks || []).map((task: any) =>
+      task?.kind === 'eventReminder' && !task.time && raw?.time
+        ? { ...task, time: String(raw.time) }
+        : task
+    ),
     performers: raw?.performers || [],
     budget: raw?.budget || { expenses: [], income: [] },
   };

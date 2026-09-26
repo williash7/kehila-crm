@@ -1002,7 +1002,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const next = prev.map((ev: any) => {
         const m = missing.find(x => x.id === ev.id);
         if (!m) return ev;
-        return { ...ev, tasks: [...(ev.tasks || []), createEventReminderTask(m.name, m.occurrenceDateISO)] };
+        return { ...ev, tasks: [...(ev.tasks || []), createEventReminderTask(m.name, m.occurrenceDateISO, m.occurrenceTime)] };
       });
       saveEventsDataCloud(next);
       return next;
