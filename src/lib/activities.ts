@@ -19,6 +19,8 @@ export interface Activity {
   freq: string;
   date: string;
   time?: string;
+  /** מספר המופעים הכולל לפעילות יומית, כולל תאריך הבסיס. */
+  repeatCount?: number;
   location?: string;
   holidayId?: string;
   /** כל ערכי הייעוד שמקשרים תרומה לפעילות. הראשון נשמר גם ב-purposeTag לתאימות. */
@@ -57,7 +59,7 @@ export function normalizeActivity(raw: any): Activity {
     name,
     activityKind,
     type: String(raw?.type || 'other'),
-    freq: activityKind === 'recurring' && ['weekly', 'biweekly', 'monthly'].includes(String(raw?.freq || ''))
+    freq: activityKind === 'recurring' && ['daily', 'weekly', 'biweekly', 'monthly'].includes(String(raw?.freq || ''))
       ? String(raw.freq)
       : activityKind === 'recurring' ? 'weekly' : 'oneoff',
     date: String(raw?.date || new Date().toISOString().split('T')[0]),

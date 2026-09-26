@@ -72,12 +72,25 @@ export const STANDALONE_TASKS_ID = '__standalone__';
 export const PERSONAL_DATE_EXTRAS_ID = '__personalDates__';
 
 // מחשב את המופע הקרוב הבא של אירוע חוזר (עבור "כמה זמן נותר" למשימות אירוע)
-export function nextEventOccurrence(ev: { date?: string; freq?: string; time?: string }, from: Date): Date | null {
+export function nextEventOccurrence(ev: { date?: string; freq?: string; time?: string; repeatCount?: number }, from: Date): Date | null {
   if (!ev.date) return null;
   const base = new Date(`${ev.date}T${ev.time || '00:00'}`);
   if (isNaN(base.getTime())) return null;
   if (ev.freq === 'oneoff') return base;
   const d = new Date(base);
+
+  // תדירות יומית יכולה להיות מוגבלת למספר מופעים. repeatCount כולל את
+  // תאריך הבסיס עצמו: 5 = היום הראשון ועוד ארבעה ימים רצופים.
+  if (ev.freq === 'daily') {
+    const repeatCount = Math.max(1, Math.floor(Number(ev.repeatCount) || 1));
+    let occurrenceIndex = 0;
+    while (d.getTime() < from.getTime() && occurrenceIndex < repeatCount - 1) {
+      d.setDate(d.getDate() + 1);
+      occurrenceIndex++;
+    }
+    return d.getTime() >= from.getTime() && occurrenceIndex < repeatCount ? d : null;
+  }
+
   const stepDays = ev.freq === 'weekly' ? 7 : ev.freq === 'biweekly' ? 14 : null;
   if (stepDays) {
     while (d.getTime() < from.getTime()) d.setDate(d.getDate() + stepDays);

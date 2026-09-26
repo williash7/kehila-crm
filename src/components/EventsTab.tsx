@@ -45,6 +45,7 @@ export function EventsTab({ addTrigger, openTarget, onOpenTargetConsumed }: {
   const [evName, setEvName] = useState('');
   const [evType, setEvType] = useState('shabbat');
   const [evFreq, setEvFreq] = useState('weekly');
+  const [evRepeatCount, setEvRepeatCount] = useState('1');
   const [evDate, setEvDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [evTime, setEvTime] = useState('');
   const [evActivityKind, setEvActivityKind] = useState<ActivityKind>('recurring');
@@ -81,7 +82,7 @@ export function EventsTab({ addTrigger, openTarget, onOpenTargetConsumed }: {
 
   const typeIcons: Record<string, string> = { shabbat: '🕯️', minyan: '🙏', class: '📚', other: '📌' };
   const typeLabels: Record<string, string> = { shabbat: 'שבת', minyan: 'מניין', class: 'שיעור', other: 'אחר' };
-  const freqLabels: Record<string, string> = { weekly: 'שבועי', biweekly: 'דו-שבועי', monthly: 'חודשי', oneoff: 'חד-פעמי' };
+  const freqLabels: Record<string, string> = { daily: 'יומי', weekly: 'שבועי', biweekly: 'דו-שבועי', monthly: 'חודשי', oneoff: 'חד-פעמי' };
 
   const activeEvents = filter === 'all' ? eventsData : eventsData.filter((e: any) => e.activityKind === filter);
 
@@ -89,6 +90,7 @@ export function EventsTab({ addTrigger, openTarget, onOpenTargetConsumed }: {
     setEvName('');
     setEvType('shabbat');
     setEvFreq('weekly');
+    setEvRepeatCount('1');
     setEvDate(new Date().toISOString().split('T')[0]);
     setEvTime('');
     setEvActivityKind('recurring');
@@ -107,6 +109,7 @@ export function EventsTab({ addTrigger, openTarget, onOpenTargetConsumed }: {
     setEvName(ev.name || '');
     setEvType(ev.type || 'shabbat');
     setEvFreq(ev.freq || 'weekly');
+    setEvRepeatCount(String(ev.repeatCount || 1));
     setEvDate(ev.date || new Date().toISOString().split('T')[0]);
     setEvTime(ev.time || '');
     setEvActivityKind(ev.activityKind || (ev.holidayId ? 'holiday' : ev.freq === 'oneoff' ? 'special' : 'recurring'));
@@ -127,6 +130,7 @@ export function EventsTab({ addTrigger, openTarget, onOpenTargetConsumed }: {
         type: evType,
         activityKind: evActivityKind,
         freq: evActivityKind === 'recurring' ? evFreq : 'oneoff',
+        repeatCount: evActivityKind === 'recurring' && evFreq === 'daily' ? Math.max(1, Math.floor(Number(evRepeatCount) || 1)) : undefined,
         date: evDate,
         time: evTime,
         location: evLocation.trim(),
@@ -137,13 +141,15 @@ export function EventsTab({ addTrigger, openTarget, onOpenTargetConsumed }: {
       logAction('event_edit');
     } else {
       const effectiveFreq = evActivityKind === 'recurring' ? evFreq : 'oneoff';
-      const occ = nextEventOccurrence({ date: evDate, freq: effectiveFreq, time: evTime }, new Date());
+      const effectiveRepeatCount = effectiveFreq === 'daily' ? Math.max(1, Math.floor(Number(evRepeatCount) || 1)) : undefined;
+      const occ = nextEventOccurrence({ date: evDate, freq: effectiveFreq, time: evTime, repeatCount: effectiveRepeatCount }, new Date());
       const newEv = normalizeActivity({
         id: `ev_${Date.now()}`,
         name: evName.trim(),
         type: evType,
         activityKind: evActivityKind,
         freq: effectiveFreq,
+        repeatCount: effectiveRepeatCount,
         date: evDate,
         time: evTime,
         attendance: {},
@@ -448,7 +454,7 @@ export function EventsTab({ addTrigger, openTarget, onOpenTargetConsumed }: {
                       <div className="w-11 h-11 bg-gray-50 rounded-full flex items-center justify-center text-xl shrink-0 opacity-80">{typeIcons[ev.type] || '📌'}</div>
                       <div className="min-w-0 flex-1">
                         <div className="font-bold text-[#0D1B2A] text-[15px] leading-snug break-words">{ev.name}</div>
-                        <div className="text-[11px] text-gray-500">{ACTIVITY_KIND_LABEL[ev.activityKind as ActivityKind]} · {freqLabels[ev.freq] || ev.freq} {ev.time && `· ${ev.time}`}</div>
+                        <div className="text-[11px] text-gray-500">{ACTIVITY_KIND_LABEL[ev.activityKind as ActivityKind]} · {freqLabels[ev.freq] || ev.freq}{ev.freq === 'daily' ? ` · ${ev.repeatCount || 1} פעמים` : ''} {ev.time && `· ${ev.time}`}</div>
                         {(ev.location || ev.holidayId) && <div className="text-[10px] text-gray-400 mt-0.5">{ev.holidayId ? `חג: ${ev.holidayId}` : ''}{ev.holidayId && ev.location ? ' · ' : ''}{ev.location ? `📍 ${ev.location}` : ''}</div>}
                         {nextOcc && (
                           <div className="text-[10px] text-[#9B7A2F] flex items-center gap-1 mt-0.5"><Clock size={10}/> {formatRemaining(nextOcc, new Date())} למפגש הבא</div>
@@ -624,6 +630,21 @@ export function EventsTab({ addTrigger, openTarget, onOpenTargetConsumed }: {
                  <select value={evFreq} onChange={e => setEvFreq(e.target.value)} className="w-full bg-white border border-[#EDE6D6] rounded-xl px-3 py-2.5 text-sm font-bold text-gray-700 outline-none focus:border-[#C9A84C]">
                    {Object.keys(freqLabels).filter(f => f !== 'oneoff').map(f => <option key={f} value={f}>{freqLabels[f]}</option>)}
                  </select>
+                 {evFreq === 'daily' && (
+                   <div className="mt-3">
+                     <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">מספר חזרות</label>
+                     <input
+                       value={evRepeatCount}
+                       onChange={e => setEvRepeatCount(e.target.value)}
+                       type="number"
+                       min="1"
+                       step="1"
+                       inputMode="numeric"
+                       className="w-full bg-white border border-[#EDE6D6] rounded-xl px-3 py-2.5 text-sm outline-none focus:border-[#C9A84C]"
+                     />
+                     <div className="text-[10px] text-gray-400 mt-1">מספר המופעים הכולל, כולל תאריך הבסיס. למשל 5 = חמישה ימים רצופים.</div>
+                   </div>
+                 )}
                </div>}
                <div className="grid grid-cols-2 gap-3">
                  <div>
@@ -865,7 +886,7 @@ export function EventsTab({ addTrigger, openTarget, onOpenTargetConsumed }: {
                <AIPlanningAssistant
                  title={currentTasksEvent.name}
                  contextLines={[
-                   `מסגרת: ${ACTIVITY_KIND_LABEL[currentTasksEvent.activityKind as ActivityKind]}, תוכן: ${typeLabels[currentTasksEvent.type] || currentTasksEvent.type}, תדירות: ${freqLabels[currentTasksEvent.freq] || currentTasksEvent.freq}`,
+                   `מסגרת: ${ACTIVITY_KIND_LABEL[currentTasksEvent.activityKind as ActivityKind]}, תוכן: ${typeLabels[currentTasksEvent.type] || currentTasksEvent.type}, תדירות: ${freqLabels[currentTasksEvent.freq] || currentTasksEvent.freq}${currentTasksEvent.freq === 'daily' ? ` (${currentTasksEvent.repeatCount || 1} פעמים)` : ''}` ,
                    currentTasksEvent.location ? `מקום: ${currentTasksEvent.location}` : '',
                    Number(currentTasksEvent.entryPrice) > 0 ? `מחיר כניסה: ₪${currentTasksEvent.entryPrice}` : '',
                    ...(currentTasksEvent.tasks?.length ? [`משימות שכבר קיימות: ${currentTasksEvent.tasks.map((t: any) => t.text).join(', ')}`] : []),
