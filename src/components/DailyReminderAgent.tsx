@@ -4,6 +4,7 @@ import { computeReminderCounts, localDateKey, reminderBody, shouldSendDailyRemin
 import { TaskDecisionGate } from './TaskDecisionGate';
 import { TaskCreationReminderSetup } from './TaskCreationReminderSetup';
 import { WebsiteEventSyncAgent } from './WebsiteEventSyncAgent';
+import { EventInfoReminderAgent } from './EventInfoReminderAgent';
 
 const LAST_SENT_KEY = 'daily_reminder_last_sent_v1';
 
@@ -42,6 +43,7 @@ export function DailyReminderAgent() {
   return <>
     <WebsiteEventSyncAgent />
     <TaskCreationReminderSetup />
+    <EventInfoReminderAgent />
     <TaskDecisionGate />
   </>;
 }
