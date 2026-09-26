@@ -3,7 +3,7 @@ name: Apply daily activity recurrence
 on:
   push:
     paths:
-      - 'scripts/apply-daily-recurrence.mjs'
+      - 'scripts/apply-daily-recurrence-v2.mjs'
 
 permissions:
   contents: write
@@ -20,7 +20,7 @@ jobs:
           node-version: 20
           cache: npm
       - name: Patch daily recurrence support
-        run: node scripts/apply-daily-recurrence.mjs
+        run: node scripts/apply-daily-recurrence-v2.mjs
       - name: Install dependencies
         run: npm ci
       - name: Typecheck
