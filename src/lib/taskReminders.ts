@@ -40,11 +40,11 @@ export function parseLocalDate(iso: string | undefined): Date | null {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-function addMonthsClamped(date: Date, months: number): Date {
-  const originalDay = date.getDate();
-  const result = new Date(date.getFullYear(), date.getMonth() + months, 1);
+function monthlyOccurrence(anchor: Date, monthOffset: number): Date {
+  const wantedDay = anchor.getDate();
+  const result = new Date(anchor.getFullYear(), anchor.getMonth() + monthOffset, 1);
   const lastDay = new Date(result.getFullYear(), result.getMonth() + 1, 0).getDate();
-  result.setDate(Math.min(originalDay, lastDay));
+  result.setDate(Math.min(wantedDay, lastDay));
   return result;
 }
 
@@ -57,12 +57,18 @@ export function nextRecurringDateOnOrAfter(
   if (!anchor || !recurrence) return anchorIso || null;
 
   const target = new Date(from.getFullYear(), from.getMonth(), from.getDate());
-  let cursor = new Date(anchor);
   if (recurrence === 'weekly' || recurrence === 'biweekly') {
-    const step = recurrence === 'weekly' ? 7 : 14;
-    while (cursor.getTime() < target.getTime()) cursor.setDate(cursor.getDate() + step);
-  } else {
-    while (cursor.getTime() < target.getTime()) cursor = addMonthsClamped(cursor, 1);
+    const stepDays = recurrence === 'weekly' ? 7 : 14;
+    const cursor = new Date(anchor);
+    while (cursor.getTime() < target.getTime()) cursor.setDate(cursor.getDate() + stepDays);
+    return localIsoDate(cursor);
+  }
+
+  let monthOffset = 0;
+  let cursor = monthlyOccurrence(anchor, monthOffset);
+  while (cursor.getTime() < target.getTime()) {
+    monthOffset += 1;
+    cursor = monthlyOccurrence(anchor, monthOffset);
   }
   return localIsoDate(cursor);
 }
@@ -138,37 +144,11 @@ function historyEntryFor(task: ReminderTask, now: Date): TaskOccurrenceHistoryEn
   };
 }
 
-export function normalizeRecurringTask(
-  task: ReminderTask,
-  recurrence: TaskRecurrence | undefined,
-  fallbackAnchorDate: string | undefined,
-  now = new Date(),
-): ReminderTask {
-  if (!recurrence) return task;
-
-  const anchor = task.recurrenceAnchorDate || task.dueDate || fallbackAnchorDate;
-  if (!anchor) return { ...task, recurrence };
-  const targetDue = nextRecurringDateOnOrAfter(anchor, recurrence, now);
-  if (!targetDue) return { ...task, recurrence, recurrenceAnchorDate: anchor };
-
-  const base: ReminderTask = {
-    ...task,
-    recurrence,
-    recurrenceAnchorDate: anchor,
-  };
-
-  if (!task.dueDate) {
-    return { ...base, dueDate: targetDue };
-  }
-
-  const current = parseLocalDate(task.dueDate);
-  const target = parseLocalDate(targetDue);
-  if (!current || !target || current.getTime() >= target.getTime()) return base;
-
+function resetForOccurrence(task: ReminderTask, dueDate: string, now: Date): ReminderTask {
   const historyEntry = historyEntryFor(task, now);
   return {
-    ...base,
-    dueDate: targetDue,
+    ...task,
+    dueDate,
     done: false,
     skipped: false,
     doneAt: undefined,
@@ -177,6 +157,75 @@ export function normalizeRecurringTask(
       ? [...(task.occurrenceHistory || []), historyEntry].slice(-52)
       : (task.occurrenceHistory || []),
   };
+}
+
+export function normalizeRecurringTask(
+  task: ReminderTask,
+  recurrence: TaskRecurrence | undefined,
+  fallbackAnchorDate: string | undefined,
+  now = new Date(),
+): ReminderTask {
+  if (!recurrence) return task;
+
+  const wasManaged = !!task.recurrenceAnchorDate;
+  const anchor = task.recurrenceAnchorDate || task.dueDate || fallbackAnchorDate;
+  if (!anchor) return { ...task, recurrence };
+
+  const base: ReminderTask = {
+    ...task,
+    recurrence,
+    recurrenceAnchorDate: anchor,
+  };
+
+  const targetDue = nextRecurringDateOnOrAfter(anchor, recurrence, now);
+  if (!targetDue) return base;
+
+  // משימה חוזרת חדשה/ישנה בלי תאריך מקבלת את המופע הנוכחי ומתחילה פתוחה.
+  if (!task.dueDate) {
+    return {
+      ...base,
+      dueDate: targetDue,
+      done: false,
+      skipped: false,
+      doneAt: undefined,
+      snoozedUntil: undefined,
+    };
+  }
+
+  const currentDue = parseLocalDate(task.dueDate);
+  const target = parseLocalDate(targetDue);
+  if (!currentDue || !target) return base;
+
+  // מעבר נתונים ישנים: לפני שהשדה recurrenceAnchorDate היה קיים, משימות
+  // ישנות יכלו להיתקע חודשים. רק במעבר הראשון מותר לדלג על מופע פתוח ישן.
+  if (!wasManaged && currentDue.getTime() < target.getTime()) {
+    return resetForOccurrence(base, targetDue, now);
+  }
+
+  // מרגע שהמשימה מנוהלת על ידי המנגנון החדש, מופע פתוח לעולם לא נעלם
+  // אוטומטית. גם אם האפליקציה הייתה סגורה שבוע — הוא יחכה להחלטת המשתמש.
+  if (!task.done && !task.skipped) return base;
+
+  // מופע שכבר הוכרע נשאר בהיסטוריה עד שמגיע זמן *התזכורת* של המופע הבא.
+  // זה חשוב במיוחד ל"שבוע לפני": המופע הבא צריך להיפתח כבר ביום שבו
+  // מסתיים הנוכחי, ולא רק למחרת.
+  const afterCurrent = new Date(currentDue);
+  afterCurrent.setDate(afterCurrent.getDate() + 1);
+  const nextDue = nextRecurringDateOnOrAfter(anchor, recurrence, afterCurrent);
+  if (!nextDue || nextDue === task.dueDate) return base;
+
+  const candidate = {
+    ...base,
+    dueDate: nextDue,
+    done: false,
+    skipped: false,
+    doneAt: undefined,
+    snoozedUntil: undefined,
+  } as ReminderTask;
+  const nextReminderAt = taskReminderDateTime(candidate);
+  if (!nextReminderAt || nextReminderAt.getTime() > now.getTime()) return base;
+
+  return resetForOccurrence(base, nextDue, now);
 }
 
 export function taskDecisionPrompt(task: ReminderTask, contextLabel?: string): string {
