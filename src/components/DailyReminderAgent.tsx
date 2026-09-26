@@ -1,6 +1,7 @@
 import React from 'react';
 import { useAppStore } from '../store/AppContext';
 import { computeReminderCounts, localDateKey, reminderBody, shouldSendDailyReminder } from '../lib/dailyReminder';
+import { TaskDecisionGate } from './TaskDecisionGate';
 
 const LAST_SENT_KEY = 'daily_reminder_last_sent_v1';
 
@@ -36,5 +37,5 @@ export function DailyReminderAgent() {
     return () => window.clearInterval(timer);
   }, [settings.dailyReminderEnabled, settings.dailyReminderTime, settings.hkExpiringThreshold, failures, hk, holidayExtras, eventsData, projects]);
 
-  return null;
+  return <TaskDecisionGate />;
 }
