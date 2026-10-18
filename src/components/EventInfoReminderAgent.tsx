@@ -82,7 +82,7 @@ async function showNativeNotification(notice: EventNotice, now: Date) {
  * רשומת המשימה כטופלה מיד, ושומרים הודעת מידע נפרדת שאינה חוסמת את האפליקציה.
  */
 export function EventInfoReminderAgent() {
-  const { loading, eventsData, updateEventsData } = useAppStore();
+  const { tasksReady, eventsData, updateEventsData } = useAppStore();
   const [now, setNow] = React.useState(() => new Date());
   const [notices, setNotices] = React.useState<EventNotice[]>(() => readNotices());
 
@@ -96,7 +96,7 @@ export function EventInfoReminderAgent() {
   // layout effect בכוונה: תזכורת מידע שמגיעה עכשיו מסולקת ממסלול המשימות
   // החוסמות לפני שהדפדפן מצייר את הפריים הבא.
   React.useLayoutEffect(() => {
-    if (loading || eventsData.length === 0) return;
+    if (!tasksReady || eventsData.length === 0) return;
 
     const newlyDue: EventNotice[] = [];
     let changed = false;
@@ -135,7 +135,7 @@ export function EventInfoReminderAgent() {
     if (changed) updateEventsData(nextEvents);
   // updateEventsData נוצר מחדש ב-provider; הוספתו לתלויות תגרום לריצות מיותרות.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, eventsData, now]);
+  }, [tasksReady, eventsData, now]);
 
   const current = notices[0];
   if (!current) return null;

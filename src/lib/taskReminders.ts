@@ -209,9 +209,15 @@ export function normalizeRecurringTask(
   // מופע שכבר הוכרע נשאר בהיסטוריה עד שמגיע זמן *התזכורת* של המופע הבא.
   // זה חשוב במיוחד ל"שבוע לפני": המופע הבא צריך להיפתח כבר ביום שבו
   // מסתיים הנוכחי, ולא רק למחרת.
+  //
+  // ואם המופע שהוכרע ישן (האפליקציה לא נפתחה כמה שבועות), קופצים ישר
+  // למופע של היום והלאה. אחרת כל "בוצע" פתח את המופע החסר הבא, והחלון
+  // קפץ שוב ושוב — פעם לכל שבוע שהוחמץ.
   const afterCurrent = new Date(currentDue);
   afterCurrent.setDate(afterCurrent.getDate() + 1);
-  const nextDue = nextRecurringDateOnOrAfter(anchor, recurrence, afterCurrent);
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const searchFrom = afterCurrent.getTime() > today.getTime() ? afterCurrent : today;
+  const nextDue = nextRecurringDateOnOrAfter(anchor, recurrence, searchFrom);
   if (!nextDue || nextDue === task.dueDate) return base;
 
   const candidate = {

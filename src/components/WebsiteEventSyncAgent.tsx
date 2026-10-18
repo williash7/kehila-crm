@@ -6,7 +6,7 @@ import type { Activity } from '../lib/activities';
 const SYNC_INTERVAL_MS = 5 * 60 * 1000;
 
 export function WebsiteEventSyncAgent() {
-  const { loading, eventsData, updateEventsData } = useAppStore();
+  const { tasksReady, eventsData, updateEventsData } = useAppStore();
   const eventsRef = React.useRef<Activity[]>(eventsData);
   const updateRef = React.useRef(updateEventsData);
 
@@ -14,7 +14,7 @@ export function WebsiteEventSyncAgent() {
   React.useEffect(() => { updateRef.current = updateEventsData; }, [updateEventsData]);
 
   React.useEffect(() => {
-    if (loading || !getWebsiteSyncUrl()) return;
+    if (!tasksReady || !getWebsiteSyncUrl()) return;
     let cancelled = false;
     let running = false;
 
@@ -48,7 +48,7 @@ export function WebsiteEventSyncAgent() {
       window.clearTimeout(initial);
       window.clearInterval(interval);
     };
-  }, [loading]);
+  }, [tasksReady]);
 
   return null;
 }

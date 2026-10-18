@@ -74,7 +74,7 @@ function normalizeStandaloneTask(task: ReminderTask, now: Date): ReminderTask {
 
 export function TaskDecisionGate() {
   const {
-    loading,
+    tasksReady,
     holidayExtras,
     updateHolidayExtras,
     eventsData,
@@ -98,8 +98,11 @@ export function TaskDecisionGate() {
   // כמטלה של היום; הן נשמרות occurrenceHistory והמופע הנוכחי מקבל תאריך חדש.
   // now נמצא בתלויות כדי שגם אפליקציה שנשארה פתוחה תתקדם למחזור הבא בדיוק
   // כשמגיע זמן התזכורת שלו, בלי לדרוש רענון או שינוי נתונים אחר.
+  // tasksReady ולא רק סיום הטעינה: בפתיחה מוצגת קודם תמונת מצב שמורה,
+  // שבה משימות שכבר סומנו עלולות להיראות פתוחות. נרמול לפיה היה גם כותב
+  // אותה חזרה לגיליון ומוחק את הסימון שם — וכך הן קפצו שוב ושוב.
   React.useEffect(() => {
-    if (loading) return;
+    if (!tasksReady) return;
     const current = now;
     let changed = false;
 
@@ -170,10 +173,10 @@ export function TaskDecisionGate() {
   // update* הן פונקציות יציבות מספיק לצורך האפקט; הכנסתן לתלויות תגרום
   // לריצה בכל render כי הן נוצרות מחדש ב-AppProvider.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, holidayExtras, eventsData, projects, now]);
+  }, [tasksReady, holidayExtras, eventsData, projects, now]);
 
   const dueTasks = React.useMemo<DueTaskRef[]>(() => {
-    if (loading || !normalizationReady) return [];
+    if (!tasksReady || !normalizationReady) return [];
     const rows: DueTaskRef[] = [];
 
     Object.entries(holidayExtras || {}).forEach(([id, extra]: [string, any]) => {
@@ -204,7 +207,7 @@ export function TaskDecisionGate() {
       const bd = taskReminderDateTime(b.task)?.getTime() || 0;
       return ad - bd;
     });
-  }, [loading, normalizationReady, holidayExtras, eventsData, projects, now]);
+  }, [tasksReady, normalizationReady, holidayExtras, eventsData, projects, now]);
 
   const current = dueTasks[0];
 

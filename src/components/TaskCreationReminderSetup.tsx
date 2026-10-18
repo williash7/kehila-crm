@@ -34,7 +34,7 @@ function recentEnough(task: ReminderTask): boolean {
 
 export function TaskCreationReminderSetup() {
   const {
-    loading,
+    tasksReady,
     holidayExtras,
     updateHolidayExtras,
     eventsData,
@@ -79,7 +79,9 @@ export function TaskCreationReminderSetup() {
   }, [holidayExtras, eventsData, projects]);
 
   React.useEffect(() => {
-    if (loading) return;
+    // מחכים לנתוני הגיליון: אם נאתחל לפי תמונת המצב, משימות שנוספו בינתיים
+    // ייראו כ"חדשות" ויקפיצו חלון הגדרה מיותר.
+    if (!tasksReady) return;
     if (!initialized.current) {
       refs.forEach(ref => known.current.add(taskKey(ref)));
       initialized.current = true;
@@ -101,7 +103,7 @@ export function TaskCreationReminderSetup() {
         return [...prev, ...newlyCreated.filter(ref => !existing.has(taskKey(ref)))];
       });
     }
-  }, [loading, refs]);
+  }, [tasksReady, refs]);
 
   React.useEffect(() => {
     if (!current) return;

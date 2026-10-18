@@ -322,23 +322,43 @@ export function enqueue(action: string, data: any, error: string, reqId: string)
  * מחזיר את תשובת השרת כפי שהיא, כדי שקוראים שכן בודקים ימשיכו לעבוד.
  */
 export async function trackedPost(action: string, data: any, post: PostFn): Promise<any> {
-  return serialize(action, async () => {
-    const startedAt = Date.now();
-    const reqId = makeId();
-    let res: any;
-    try {
-      res = await post(action, data, reqId);
-    } catch (e: any) {
-      res = { success: false, error: String(e?.message || e) };
-    }
-    if (isFailure(res)) {
-      enqueue(action, data, String(res?.error || 'שגיאה לא ידועה'), reqId);
-    } else {
-      // גרסה חדשה יותר אושרה — כל גרסה ישנה שממתינה בתור תדרוס אותה.
-      dropSuperseded(action, startedAt);
-    }
-    return res;
-  });
+  inFlight.set(action, (inFlight.get(action) || 0) + 1);
+  try {
+    return await serialize(action, async () => {
+      const startedAt = Date.now();
+      const reqId = makeId();
+      let res: any;
+      try {
+        res = await post(action, data, reqId);
+      } catch (e: any) {
+        res = { success: false, error: String(e?.message || e) };
+      }
+      if (isFailure(res)) {
+        enqueue(action, data, String(res?.error || 'שגיאה לא ידועה'), reqId);
+      } else {
+        // גרסה חדשה יותר אושרה — כל גרסה ישנה שממתינה בתור תדרוס אותה.
+        dropSuperseded(action, startedAt);
+      }
+      return res;
+    });
+  } finally {
+    const left = (inFlight.get(action) || 1) - 1;
+    if (left > 0) inFlight.set(action, left); else inFlight.delete(action);
+  }
+}
+
+/** שמירות בלוק שנשלחו ועוד לא חזרה עליהן תשובה. */
+const inFlight = new Map<string, number>();
+
+/**
+ * האם יש לבלוק הזה שינוי מקומי שהשרת עוד לא אישר — בדרך או בתור.
+ *
+ * בזמן כזה התשובה של השרת ישנה מהעותק המקומי. מי שטוען נתונים חייב
+ * להעדיף את המקומי, אחרת סימון "בוצע" שעוד לא נחת נמחק ברענון.
+ */
+export function hasUnsavedBlock(action: string): boolean {
+  if ((inFlight.get(action) || 0) > 0) return true;
+  return loadQueue().some(item => item.action === action);
 }
 
 /**

@@ -12,6 +12,7 @@ import {
   getFinanceData, getFinanceDataCloud, saveFinanceData, saveFinanceDataCloud,
   getCustomHols,
   apiGetAll, readSnapshot,
+  getEventsData, getHolidayExtras, getProjects as getProjectsLocal,
   saveCRMData, saveEventsData, saveHolidayExtras,
   saveHistoryData, saveHomeVisitsData, saveProjects as saveProjectsLocal,
 } from '../lib/api';
@@ -34,7 +35,7 @@ import { Activity, normalizeActivities } from '../lib/activities';
 import { hebcalUrl } from '../lib/orgConfig';
 import { chabadHolidayItems } from '../lib/chabadDates';
 import { FinanceData, emptyFinanceData, normalizeFinanceData } from '../lib/finance';
-import { trackedPost, startAutoFlush, WriteOutcome } from '../lib/writeQueue';
+import { trackedPost, startAutoFlush, WriteOutcome, hasUnsavedBlock } from '../lib/writeQueue';
 import { ensureTaskIdsInCollections } from '../lib/taskIdentity';
 
 interface AppState {
@@ -51,6 +52,12 @@ interface AppState {
   holidays: any[];
   hebrewDate: string;
   loading: boolean;
+  /**
+   * המשימות הגיעו מהגיליון (או שהגיליון לא זמין ונשארים עם העותק המקומי).
+   * עד אז מה שעל המסך עלול להיות תמונת מצב ישנה — אסור להקפיץ לפיו חלון
+   * החלטה, ואסור לכתוב לפיו חזרה לגיליון.
+   */
+  tasksReady: boolean;
   loadingText: string;
   apiError: string | null;
   crm: Record<string, any>;
@@ -110,6 +117,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [hebrewDate, setHebrewDate] = useState<string>('טוען...');
 
   const [loading, setLoading] = useState(true);
+  const [cloudReady, setCloudReady] = useState(false);
+  const tasksReady = !loading && cloudReady;
   const [loadingText, setLoadingText] = useState('מתחבר לגיליון...');
   const [apiError, setApiError] = useState<string | null>(null);
 
@@ -212,12 +221,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setDonations(d.donations || []);
       setHk(annotateRenewals(d.hk || []));
       setFailures(d.failures || []);
+      // תמונת המצב נשמרת רק בטעינה מלאה, ולכן כל סימון "בוצע" שנעשה אחריה
+      // חסר בה. העותקים המקומיים של כל בלוק מתעדכנים בכל שמירה — הם
+      // החדשים יותר, ולכן הם קודמים לתמונה.
+      const hasLocal = (key: string) => { try { return localStorage.getItem(key) !== null; } catch { return false; } };
       const identified = ensureTaskIdsInCollections({
         // משלימים מזהים לפני הנרמול: כך גם הורה ישן שחסר לו מזהה
         // נותן למשימותיו תוצאה זהה בכל מכשיר.
-        events: d.events || [],
-        holidayExtras: d.holidayExtras || {},
-        projects: d.projects || [],
+        events: hasLocal('events_data') ? getEventsData() : (d.events || []),
+        holidayExtras: hasLocal('holiday_extras') ? getHolidayExtras() : (d.holidayExtras || {}),
+        projects: hasLocal('projects_data') ? getProjectsLocal() : (d.projects || []),
       });
       setEventsData(normalizeActivities(identified.events));
       setHolidayExtras(identified.holidayExtras);
@@ -280,10 +293,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       resolvedMerges = merges;
       setCrm(cleanedCrm);
       setNameMerges(merges);
+      // בלוק ששמירתו עוד לא אושרה (בדרך או בתור) — השרת מחזיר גרסה ישנה
+      // ממנו. לוקחים את המקומי, אחרת "בוצע" שעוד לא נחת נמחק והמשימה קופצת שוב.
       const identified = ensureTaskIdsInCollections({
-        events: cloudEvents || [],
-        holidayExtras: cloudExtras || {},
-        projects: cloudProjects || [],
+        events: hasUnsavedBlock('saveEvents') ? getEventsData() : (cloudEvents || []),
+        holidayExtras: hasUnsavedBlock('saveHolidayExtras') ? getHolidayExtras() : (cloudExtras || {}),
+        projects: hasUnsavedBlock('saveProjects') ? getProjectsLocal() : (cloudProjects || []),
       });
       const normalizedEvents = normalizeActivities(identified.events);
       const normalizedProjects = normalizeProjects(identified.projects);
@@ -299,6 +314,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (identified.changedEvents) saveEventsDataCloud(normalizedEvents);
       if (identified.changedHolidayExtras) saveHolidayExtrasCloud(identified.holidayExtras);
       if (identified.changedProjects) saveProjectsCloud(normalizedProjects);
+      setCloudReady(true);
       return { ...identified, events: normalizedEvents, projects: normalizedProjects };
     };
 
@@ -337,7 +353,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         getHomeVisitsDataCloud(),
         getProjectsCloud(),
         getFinanceDataCloud(),
-      ]).then(r => applyCloud(r[0], r[1], r[2], r[3], r[4], r[5], r[6])).catch(console.error);
+      ]).then(r => applyCloud(r[0], r[1], r[2], r[3], r[4], r[5], r[6])).catch(err => {
+        console.error(err);
+        // אין גיליון — העותק המקומי הוא הטוב ביותר שיש, ואפשר לעבוד לפיו.
+        setCloudReady(true);
+      });
     }
 
     try {
@@ -449,6 +469,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
 
     if (!opts?.silent) setLoading(false);
+    // גם כשהטעינה נכשלה לגמרי, אין טעם לחסום את המשימות לנצח.
+    setCloudReady(true);
   };
 
   const addManualDonation = (donation: any) => {
@@ -977,7 +999,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // שתופיע גם בכרטיסיית "משימות" וגם בכרטיס החג המלא). ממתין ל-loading===false
   // כדי לא ליצור כפילויות לפני שה-holidayExtras מהענן נטען.
   useEffect(() => {
-    if (loading || holidays.length === 0) return;
+    if (!tasksReady || holidays.length === 0) return;
     const list = buildHolidayList(holidays, getCustomHols(), new Date());
     const missing = computeMissingHolidayReminders(list, holidayExtras);
     if (missing.length === 0) return;
@@ -990,12 +1012,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       saveHolidayExtrasCloud(next);
       return next;
     });
-  }, [holidays, holidayExtras, loading]);
+  }, [holidays, holidayExtras, tasksReady]);
 
   // כמו התזכורת לחגים, אבל לאירועים חוזרים — יום לפני כל מופע. המזהה הייחודי
   // של המופע (dueDate על המשימה) מבטיח שכל מופע חדש מקבל תזכורת משלו.
   useEffect(() => {
-    if (loading || eventsData.length === 0) return;
+    if (!tasksReady || eventsData.length === 0) return;
     const missing = computeMissingEventReminders(eventsData, new Date());
     if (missing.length === 0) return;
     setEventsData(prev => {
@@ -1007,14 +1029,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       saveEventsDataCloud(next);
       return next;
     });
-  }, [eventsData, loading]);
+  }, [eventsData, tasksReady]);
 
   // גיבוי חד-פעמי: יוצר משימות "לשלוח תודה" עבור תרומות מ-10 הימים האחרונים
   // שנוספו לפני שהפיצ'ר הזה קיים (או הגיעו ישירות מהגיליון בלי לעבור דרך
   // addManualDonation). רץ פעם אחת בלבד — דגל קבוע ב-localStorage, אותו
   // דפוס בדיוק כמו backfillLastWeek ב-score.ts.
   useEffect(() => {
-    if (loading) return;
+    if (!tasksReady) return;
     if (localStorage.getItem('thankyou_backfill_v1_done')) return;
     localStorage.setItem('thankyou_backfill_v1_done', 'true');
     const missing = computeMissingThankYouTasks(donations, holidayExtras[STANDALONE_TASKS_ID]?.tasks || [], new Date());
@@ -1025,20 +1047,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       saveHolidayExtrasCloud(next);
       return next;
     });
-  }, [loading, donations, holidayExtras]);
+  }, [tasksReady, donations, holidayExtras]);
 
   // גיבוי חד-פעמי: ממלא תאריך אירוע גם למשימות אירוע קיימות שנוצרו לפני
   // שמשימות אירוע חדשות התחילו לקבל את תאריך האירוע אוטומטית — ראה
   // backfillEventTaskDates. רץ פעם אחת בלבד.
   useEffect(() => {
-    if (loading || eventsData.length === 0) return;
+    if (!tasksReady || eventsData.length === 0) return;
     if (localStorage.getItem('event_task_date_backfill_v1_done')) return;
     localStorage.setItem('event_task_date_backfill_v1_done', 'true');
     const { events: next, count } = backfillEventTaskDates(eventsData, new Date());
     if (count === 0) return;
     setEventsData(next);
     saveEventsDataCloud(next);
-  }, [loading, eventsData]);
+  }, [tasksReady, eventsData]);
 
   // ── החלת המראה על מסמך ה-HTML ─────────────────────────────────────────
   //
@@ -1097,7 +1119,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       shabbat, holidays, hebrewDate,
       // refresh נקרא אחרי כל פעולת כתיבה, ולכן הוא שקט: מרענן נתונים
       // בלי להחליף את המסך במסך טעינה. הטעינה הראשונה בלבד מציגה אותו.
-      loading, loadingText, apiError, crm, holidayExtras, eventsData, history, nameMerges,
+      loading, tasksReady, loadingText, apiError, crm, holidayExtras, eventsData, history, nameMerges,
       refresh: () => loadAll({ silent: true }),
       projects, updateProjects, financeData, updateFinanceData,
       addManualDonation, updateCrm, renameContact, updateCrmMany, updateHolidayExtras, updateEventsData, updateRebbeDate,
