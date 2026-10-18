@@ -67,7 +67,7 @@
  *
  * **מעדכנים אותה בכל שינוי מהותי בקובץ.**
  */
-var CODE_VERSION = '2026-08-27a';
+var CODE_VERSION = '2026-10-18-finance-sheets-v1';
 var EXPORT_SCHEMA_VERSION = 2;
 var EXPORT_MAX_LIMIT = 500;
 var CRM_MERGES_KEY = '__nameMerges__';
@@ -81,8 +81,10 @@ var SH = {
   HK:       'הוראות קבע',
   FAILURES: 'כשלי חיוב',
   ALIASES:  'מיפוי שמות',
-  RULES:    'כללי מייל',
-  SYNC:     'סנכרון נתונים',
+  RULES:        'כללי מייל',
+  SYNC:         'סנכרון נתונים',
+  FINANCE_TX:   'תנועות כספיות',
+  FINANCE_META: 'הגדרות כספיות',
 };
 
 // ── עמודות ───────────────────────────────────────────────────────────────────
@@ -115,6 +117,17 @@ var COLS = {
   ALIASES:  ['שם שגוי / כפילות', 'השם התקין'],
   RULES:    ['פעיל', 'שם הכלל', 'חיפוש בגימייל', 'סוג', 'שדות (JSON)'],
   SYNC:     ['מפתח', 'ערך'],
+
+  // הכספים נשמרים בטבלאות רגילות כדי שאפשר יהיה לבדוק ולעדכן אותם
+  // ישירות דרך Google Sheets, בלי קובץ JSON אטום. שדות מורכבים נשמרים
+  // כ-JSON בתא, וכל שדה עתידי שאינו מוכר עדיין נשמר בעמודת "שדות נוספים".
+  FINANCE_TX: [
+    'מזהה', 'סוג', 'סטטוס', 'כותרת', 'סכום', 'תאריך', 'קטגוריה',
+    'אמצעי תשלום', 'סוג שיוך', 'שם שיוך', 'הערות', 'הקצאות JSON',
+    'מקור', 'טביעת ייבוא', 'קבוצה חוזרת', 'נוצר', 'עודכן', 'גרסה',
+    'היסטוריה JSON', 'שדות נוספים JSON'
+  ],
+  FINANCE_META: ['מפתח', 'ערך JSON'],
 };
 
 /**
@@ -175,8 +188,10 @@ function setupSheet() {
   ensureSheet_(ss, SH.HK,       COLS.HK);
   ensureSheet_(ss, SH.FAILURES, COLS.FAILURES);
   ensureSheet_(ss, SH.ALIASES,  COLS.ALIASES);
-  ensureSheet_(ss, SH.RULES,    COLS.RULES);
-  ensureSheet_(ss, SH.SYNC,     COLS.SYNC);
+  ensureSheet_(ss, SH.RULES,        COLS.RULES);
+  ensureSheet_(ss, SH.SYNC,         COLS.SYNC);
+  ensureSheet_(ss, SH.FINANCE_TX,   COLS.FINANCE_TX);
+  ensureSheet_(ss, SH.FINANCE_META, COLS.FINANCE_META);
 
   seedNedarimRules_();
   flushWrites_();
@@ -803,7 +818,7 @@ function route_(action, body) {
     case 'getHistory':       return { data: readSync_('history') || [] };
     case 'getHomeVisits':    return { data: readSync_('homeVisits') || { rounds: [] } };
     case 'getProjects':      return { data: readSync_('projects') || [] };
-    case 'getFinance':       return { data: readSync_('finance') || null };
+    case 'getFinance':       return { data: readFinanceData_() || null };
     case 'getAudit':         return { data: readSync_(AUDIT_SYNC_KEY) || [] };
     // הגדרות הארגון נשמרות גם בגיליון, כדי שמכשיר נוסף יצטרך רק את
     // כתובת הגיליון ולא יעבור שוב את כל האשף.
@@ -819,7 +834,7 @@ function route_(action, body) {
     case 'saveHistory':       writeSync_('history', body.data);       return { success: true };
     case 'saveHomeVisits':    writeSync_('homeVisits', body.data);    return { success: true };
     case 'saveProjects':      writeSync_('projects', body.data);      return { success: true };
-    case 'saveFinance':       writeSync_('finance', body.data);       return { success: true };
+    case 'saveFinance':       saveFinanceData_(body.data);            return { success: true };
     case 'updateRebbe':       writeSync_('rebbeDate', body.date);     return { success: true };
     case 'saveConfig':        writeSync_('orgConfig', body.data);      return { success: true };
 
@@ -4103,6 +4118,286 @@ function deleteContactMerge_(body) {
   deleteNameMerge_(alias);
   return { success: true, aliasName: alias };
 }
+
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  אחסון כספים בטבלאות Google Sheets
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * בעבר כל FinanceData נשמר כ-JSON אחד. כשהוא עבר את מגבלת התא של Google
+ * Sheets הוא גלש לקובץ Drive חיצוני. זה עבד לאפליקציה, אבל הפך בדיקה
+ * ותיקון ישיר של תנועה בודדת למסורבלים.
+ *
+ * מעכשיו:
+ *   · "תנועות כספיות" — שורה אחת לכל תנועה.
+ *   · "הגדרות כספיות" — שורה אחת לכל שדה עליון של FinanceData.
+ *
+ * ההגירה היא שמרנית:
+ *   1. קובץ ה-JSON הישן אינו נמחק ואינו נכתב מחדש.
+ *   2. לפני ההגירה נוצרת גם תמונת גיבוי נוספת ב-Drive.
+ *   3. שדות שאיננו מכירים עדיין נשמרים ולא נזרקים.
+ *   4. קריאה ראשונה אחרי הפריסה מבצעת הגירה אוטומטית פעם אחת.
+ */
+
+var FINANCE_STORAGE_VERSION = 1;
+var FINANCE_INTERNAL_PREFIX = '__';
+var FINANCE_KNOWN_TX_KEYS = {
+  id: true, kind: true, status: true, title: true, amount: true, date: true,
+  category: true, method: true, scopeType: true, scopeName: true, notes: true,
+  allocations: true, source: true, importFingerprint: true, recurringGroup: true,
+  createdAt: true, updatedAt: true, revision: true, history: true
+};
+
+function ensureFinanceSheets_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  ensureSheet_(ss, SH.FINANCE_TX, COLS.FINANCE_TX);
+  ensureSheet_(ss, SH.FINANCE_META, COLS.FINANCE_META);
+  invalidateTable_(SH.FINANCE_TX);
+  invalidateTable_(SH.FINANCE_META);
+}
+
+function financeDecodeCell_(raw) {
+  if (raw === undefined || raw === null || raw === '') return null;
+  try {
+    var parsed = JSON.parse(String(raw));
+    if (parsed && parsed.__overflow) {
+      return JSON.parse(DriveApp.getFileById(parsed.__overflow).getBlob().getDataAsString());
+    }
+    return parsed;
+  } catch (err) {
+    return raw;
+  }
+}
+
+function financeEncodeCell_(key, value) {
+  var payload;
+  try {
+    payload = JSON.stringify(value === undefined ? null : value);
+  } catch (err) {
+    payload = JSON.stringify(null);
+  }
+
+  // גם שדה יחיד (למשל היסטוריה ארוכה במיוחד) עלול לעבור את מגבלת התא.
+  // במקרה כזה משתמשים באותו מנגנון overflow הוותיק, רק ברמת השדה.
+  if (payload.length > 45000) {
+    var safeKey = String(key || 'value').replace(/[^A-Za-z0-9_.:-]/g, '_');
+    payload = JSON.stringify({ __overflow: writeOverflow_('finance-sheet-' + safeKey, payload) });
+  }
+  return payload;
+}
+
+function financeInternalMeta_() {
+  var out = {};
+  var t = table_(SH.FINANCE_META);
+  if (!t.sheet) return out;
+  t.rows.forEach(function (row) {
+    var key = String(row[0] || '').trim();
+    if (key.indexOf(FINANCE_INTERNAL_PREFIX) === 0) out[key] = financeDecodeCell_(row[1]);
+  });
+  return out;
+}
+
+function financeStorageReady_() {
+  var t = table_(SH.FINANCE_META);
+  if (!t.sheet) return false;
+  for (var i = 0; i < t.rows.length; i++) {
+    if (String(t.rows[i][0] || '').trim() === '__storageVersion') return true;
+  }
+  return false;
+}
+
+function financeLegacyBackup_(legacy) {
+  if (!legacy || typeof legacy !== 'object') return '';
+  var stamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd-HHmmss');
+  var name = 'kehila-crm-finance-backup-before-sheet-migration-' + stamp + '.json';
+  return DriveApp.createFile(name, JSON.stringify(legacy), MimeType.PLAIN_TEXT).getId();
+}
+
+function readFinanceDataFromSheets_() {
+  ensureFinanceSheets_();
+
+  var metaTable = table_(SH.FINANCE_META);
+  var data = {};
+  metaTable.rows.forEach(function (row) {
+    var key = String(row[0] || '').trim();
+    if (!key || key.indexOf(FINANCE_INTERNAL_PREFIX) === 0) return;
+    data[key] = financeDecodeCell_(row[1]);
+  });
+
+  var txTable = table_(SH.FINANCE_TX);
+  var transactions = [];
+
+  txTable.rows.forEach(function (row) {
+    var id = fmt_(get_(row, txTable, 'מזהה'));
+    if (!id) return;
+
+    var extras = financeDecodeCell_(get_(row, txTable, 'שדות נוספים JSON'));
+    if (!extras || typeof extras !== 'object' || Array.isArray(extras)) extras = {};
+
+    var tx = {};
+    Object.keys(extras).forEach(function (key) { tx[key] = extras[key]; });
+
+    tx.id = id;
+    tx.kind = fmt_(get_(row, txTable, 'סוג')) || 'expense';
+    tx.status = fmt_(get_(row, txTable, 'סטטוס')) || 'actual';
+    tx.title = fmt_(get_(row, txTable, 'כותרת'));
+    tx.amount = asNumber_(get_(row, txTable, 'סכום'));
+    tx.date = fmt_(get_(row, txTable, 'תאריך'));
+    tx.category = fmt_(get_(row, txTable, 'קטגוריה')) || 'אחר';
+    tx.method = fmt_(get_(row, txTable, 'אמצעי תשלום'));
+    tx.scopeType = fmt_(get_(row, txTable, 'סוג שיוך')) || 'general';
+    tx.scopeName = fmt_(get_(row, txTable, 'שם שיוך'));
+    tx.notes = fmt_(get_(row, txTable, 'הערות'));
+
+    var allocations = financeDecodeCell_(get_(row, txTable, 'הקצאות JSON'));
+    tx.allocations = Array.isArray(allocations) ? allocations : [];
+
+    tx.source = fmt_(get_(row, txTable, 'מקור')) || 'manual';
+    tx.importFingerprint = fmt_(get_(row, txTable, 'טביעת ייבוא'));
+    tx.recurringGroup = fmt_(get_(row, txTable, 'קבוצה חוזרת'));
+    tx.createdAt = fmt_(get_(row, txTable, 'נוצר'));
+    tx.updatedAt = fmt_(get_(row, txTable, 'עודכן'));
+    tx.revision = Math.max(1, asNumber_(get_(row, txTable, 'גרסה')) || 1);
+
+    var history = financeDecodeCell_(get_(row, txTable, 'היסטוריה JSON'));
+    tx.history = Array.isArray(history) ? history : [];
+
+    transactions.push(tx);
+  });
+
+  data.transactions = transactions;
+  return data;
+}
+
+function writeFinanceDataToSheets_(input, internalOverride) {
+  ensureFinanceSheets_();
+
+  var data = input && typeof input === 'object'
+    ? JSON.parse(JSON.stringify(input))
+    : {};
+  var transactions = Array.isArray(data.transactions) ? data.transactions : [];
+  delete data.transactions;
+
+  var internal = financeInternalMeta_();
+  Object.keys(internalOverride || {}).forEach(function (key) {
+    internal[key] = internalOverride[key];
+  });
+  internal.__storageVersion = FINANCE_STORAGE_VERSION;
+  if (!internal.__migratedAt) internal.__migratedAt = new Date().toISOString();
+
+  var metaSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH.FINANCE_META);
+  var txSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH.FINANCE_TX);
+
+  // כותבים תחילה לגיליונות זמניים בזיכרון, ורק אז מחליפים את התוכן. מקור
+  // ה-JSON הישן נשאר גיבוי בלתי תלוי, כך שגם כשל באמצע אינו מוחק את המקור.
+  var metaRows = [];
+  Object.keys(internal).sort().forEach(function (key) {
+    metaRows.push([key, financeEncodeCell_('meta-' + key, internal[key])]);
+  });
+  Object.keys(data).forEach(function (key) {
+    metaRows.push([key, financeEncodeCell_('meta-' + key, data[key])]);
+  });
+
+  var txRows = transactions.map(function (sourceTx) {
+    var tx = sourceTx && typeof sourceTx === 'object' ? sourceTx : {};
+    var extras = {};
+    Object.keys(tx).forEach(function (key) {
+      if (!FINANCE_KNOWN_TX_KEYS[key]) extras[key] = tx[key];
+    });
+
+    return [
+      String(tx.id || ''),
+      String(tx.kind || 'expense'),
+      String(tx.status || 'actual'),
+      String(tx.title || ''),
+      asNumber_(tx.amount),
+      String(tx.date || ''),
+      String(tx.category || 'אחר'),
+      String(tx.method || ''),
+      String(tx.scopeType || 'general'),
+      String(tx.scopeName || ''),
+      String(tx.notes || ''),
+      financeEncodeCell_('alloc-' + (tx.id || 'unknown'), Array.isArray(tx.allocations) ? tx.allocations : []),
+      String(tx.source || 'manual'),
+      String(tx.importFingerprint || ''),
+      String(tx.recurringGroup || ''),
+      String(tx.createdAt || ''),
+      String(tx.updatedAt || ''),
+      Math.max(1, asNumber_(tx.revision) || 1),
+      financeEncodeCell_('history-' + (tx.id || 'unknown'), Array.isArray(tx.history) ? tx.history : []),
+      financeEncodeCell_('extras-' + (tx.id || 'unknown'), extras)
+    ];
+  }).filter(function (row) { return !!row[0]; });
+
+  if (metaSheet.getMaxRows() > 1) {
+    metaSheet.getRange(2, 1, metaSheet.getMaxRows() - 1, COLS.FINANCE_META.length).clearContent();
+  }
+  if (txSheet.getMaxRows() > 1) {
+    txSheet.getRange(2, 1, txSheet.getMaxRows() - 1, COLS.FINANCE_TX.length).clearContent();
+  }
+
+  if (metaRows.length) metaSheet.getRange(2, 1, metaRows.length, COLS.FINANCE_META.length).setValues(metaRows);
+  if (txRows.length) txSheet.getRange(2, 1, txRows.length, COLS.FINANCE_TX.length).setValues(txRows);
+
+  invalidateTable_(SH.FINANCE_META);
+  invalidateTable_(SH.FINANCE_TX);
+  return { metaRows: metaRows.length, transactionRows: txRows.length };
+}
+
+function migrateFinanceStorage_() {
+  ensureFinanceSheets_();
+
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    if (financeStorageReady_()) return readFinanceDataFromSheets_();
+
+    // readSync_ ממשיך לדעת לקרוא את קובץ ה-overflow הישן. לא משנים את
+    // הרשומה הזאת ולא מוחקים אותה; היא נשארת נתיב שחזור מלא.
+    var legacy = readSync_('finance');
+    if (!legacy || typeof legacy !== 'object') return null;
+
+    var backupId = financeLegacyBackup_(legacy);
+    writeFinanceDataToSheets_(legacy, {
+      __legacyBackupId: backupId,
+      __legacySourcePreserved: true
+    });
+    return legacy;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function readFinanceData_() {
+  ensureFinanceSheets_();
+  if (!financeStorageReady_()) return migrateFinanceStorage_();
+  return readFinanceDataFromSheets_();
+}
+
+function saveFinanceData_(data) {
+  ensureFinanceSheets_();
+
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var internal = {};
+    if (!financeStorageReady_()) {
+      // שמירה ראשונה אחרי שדרוג: שומרים קודם צילום של המקור הישן, גם אם
+      // המשתמש הגיע למסך עריכה לפני שקריאת getFinance הספיקה לבצע הגירה.
+      var legacy = readSync_('finance');
+      if (legacy && typeof legacy === 'object') {
+        internal.__legacyBackupId = financeLegacyBackup_(legacy);
+        internal.__legacySourcePreserved = true;
+      }
+    }
+    writeFinanceDataToSheets_(data || {}, internal);
+    return true;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 
 function readSync_(key) {
   var t = table_(SH.SYNC);
