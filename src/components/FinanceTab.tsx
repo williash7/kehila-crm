@@ -709,12 +709,14 @@ function TransactionEditor({ value, categories, scopeSuggestions, onClose, onSav
   const isNew = !value.id;
   const patch = <K extends keyof FinanceTransaction>(key: K, val: FinanceTransaction[K]) => setDraft(prev => ({ ...prev, [key]: val }));
   const addSplit = () => patch('allocations', [...(draft.allocations || []), { id: `split_${Date.now()}`, label: '', amount: 0 }]);
-  const valid = !!String(draft.title || '').trim() && Number(draft.amount) > 0 && !!draft.date;
+  const valid = !!String(draft.title || '').trim()
+    && Number(draft.amount) > 0
+    && (draft.status !== 'actual' || !!draft.date);
   return <div className="fixed inset-0 z-[80] bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
     <div className="bg-white w-full sm:max-w-xl max-h-[92vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl p-5 space-y-4" dir="rtl">
       <div className="flex justify-between items-center"><div><h2 className="font-['Frank_Ruhl_Libre'] text-xl font-black text-[#0D1B2A]">{isNew ? 'תנועה חדשה' : 'עריכת תנועה'}</h2><p className="text-xs text-gray-500">כל שינוי נשמר בהיסטוריה; ביטול אינו מוחק.</p></div><button onClick={onClose} className="p-2"><X size={20} /></button></div>
       <Field label="מה קרה"><select value={draft.kind || 'expense'} onChange={e => patch('kind', e.target.value)} className={INPUT}>{Object.entries(KIND_LABELS).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></Field>
-      <div className="grid grid-cols-2 gap-2"><Field label="סכום"><MoneyInput value={Number(draft.amount || 0)} onChange={v => patch('amount', v)} /></Field><Field label="תאריך / מועד"><input type="date" value={draft.date || ''} onChange={e => patch('date', e.target.value)} className={INPUT} /></Field></div>
+      <div className="grid grid-cols-2 gap-2"><Field label="סכום"><MoneyInput value={Number(draft.amount || 0)} onChange={v => patch('amount', v)} /></Field><Field label={draft.status === 'actual' ? 'תאריך' : 'תאריך / מועד (אפשר להשאיר ריק)'}><input type="date" value={draft.date || ''} onChange={e => patch('date', e.target.value)} className={INPUT} /></Field></div>
       <Field label="תיאור"><input value={draft.title || ''} onChange={e => patch('title', e.target.value)} placeholder="למשל: קניות לפורים" className={INPUT} autoFocus /></Field>
       <div className="grid grid-cols-2 gap-2"><Field label="מצב"><select value={draft.status || 'actual'} onChange={e => patch('status', e.target.value)} className={INPUT}>{Object.entries(STATUS_LABELS).filter(([id]) => id !== 'cancelled').map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></Field><Field label="קטגוריה"><input list="finance-categories" value={draft.category || ''} onChange={e => patch('category', e.target.value)} className={INPUT} /><datalist id="finance-categories">{categories.map(c => <option key={c} value={c} />)}</datalist></Field></div>
       {isNew && draft.status !== 'actual' && <Field label="חזרה חודשית"><select value={repeats} onChange={e => setRepeats(Number(e.target.value))} className={INPUT}><option value="1">פעם אחת</option><option value="3">3 חודשים</option><option value="6">6 חודשים</option><option value="12">12 חודשים</option><option value="24">24 חודשים</option></select></Field>}
