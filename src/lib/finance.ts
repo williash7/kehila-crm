@@ -266,13 +266,18 @@ function normalizeTransaction(value: unknown): FinanceTransaction | null {
   const title = String(raw.title || '').trim();
   if (!raw.id || !title || !amount) return null;
   const now = new Date().toISOString();
+  const status = isStatus(raw.status) ? raw.status : 'actual';
+  const normalizedDate = normalizeDate(raw.date || '');
   return {
     id: String(raw.id),
     kind: isKind(raw.kind) ? raw.kind : 'expense',
-    status: isStatus(raw.status) ? raw.status : 'actual',
+    status,
     title,
     amount,
-    date: normalizeDate(raw.date || '') || todayIso(),
+    // תנועה שבוצעה בפועל חייבת תאריך. התחייבות עתידית יכולה להיות
+    // מאושרת גם לפני שנקבע מועד התשלום; במקרה כזה שומרים תאריך ריק
+    // ומציגים "לא נקבע" במקום להמציא את תאריך היום.
+    date: normalizedDate || (status === 'actual' ? todayIso() : ''),
     category: String(raw.category || 'אחר').trim() || 'אחר',
     method: String(raw.method || '').trim(),
     scopeType: isScope(raw.scopeType) ? raw.scopeType : 'general',
@@ -592,8 +597,10 @@ export function summarizeFinance(
 
   const horizon = forecastUntil(data);
   const futureTransactions = data.transactions
-    .filter(tx => (tx.status === 'committed' || tx.status === 'expected') && tx.date <= horizon)
-    .sort((a, b) => a.date.localeCompare(b.date));
+    .filter(tx => (tx.status === 'committed' || tx.status === 'expected') && (!tx.date || tx.date <= horizon))
+    // התחייבות ללא מועד היא עדיין התחייבות אמיתית: מגינים עליה כבר עכשיו,
+    // אך אין ממציאים עבורה תאריך.
+    .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
   const committedRent = futureTransactions
     .filter(tx => tx.status === 'committed' && tx.kind === 'expense' && /שכיר(ות|ה)/.test(`${tx.category} ${tx.title}`))
     .reduce((sum, tx) => sum + tx.amount, 0);
