@@ -44,6 +44,18 @@ assert.strictEqual(summary.optimisticBalance, 7500, 'הכנסה צפויה מו�
 assert.strictEqual(summary.protectedAmount, 1000, 'שכירות שכבר נרשמה כהתחייבות אינה מוגנת פעמיים');
 assert.strictEqual(summary.safeToUse, 5500);
 
+const undatedCommitment = F.normalizeFinanceData({
+  ...base,
+  nextRentAmount: 0,
+  nextRentDate: '',
+  safetyReserve: 0,
+  transactions: [tx('expense', 3000, 'הוצאה מאושרת ללא מועד', 'committed', '')],
+});
+assert.strictEqual(undatedCommitment.transactions[0].date, '', 'התחייבות ללא מועד נשמרת בלי להמציא תאריך');
+const undatedSummary = F.summarizeFinance(undatedCommitment, []);
+assert.strictEqual(undatedSummary.committedExpense, 3000, 'התחייבות ללא מועד עדיין מוגנת בתזרים');
+assert.strictEqual(undatedSummary.guaranteedBalance, 7000, 'התחייבות ללא מועד מפחיתה את היתרה הבטוחה כבר עכשיו');
+
 const classifiedCash = [
   { id: 'org', name: 'חשבון', amount: 3000, date: '07/08/2026', method: 'מזומן', cashDestination: 'org_account' },
   { id: 'mine', name: 'אצלי', amount: 500, date: '08/08/2026', method: 'מזומן', cashDestination: 'personal' },
@@ -133,7 +145,9 @@ const fs = require('fs');
 const settings = require('/tmp/settings.js');
 assert.strictEqual(settings.DEFAULT_SETTINGS.showFinanceCenter, false);
 const code = fs.readFileSync('google-apps-script/Code.gs', 'utf8');
-assert.ok(code.includes("readSync_('finance')"));
+assert.ok(code.includes("readSync_('finance')"), 'מקור ה-JSON הישן נשמר כנתיב שחזור');
+assert.ok(code.includes("FINANCE_TX") && code.includes("FINANCE_META"), 'הכספים נשמרים גם בטבלאות Google Sheets ייעודיות');
+assert.ok(code.includes("readFinanceData_()") && code.includes("saveFinanceData_(body.data)"), 'נתיב האפליקציה משתמש באחסון הטבלאי החדש');
 assert.ok(/RESTORE_SYNC_KEYS[^;]+finance/s.test(code));
 const app = fs.readFileSync('src/App.tsx', 'utf8');
 assert.ok(app.includes("activeTab === 'finance'"));
