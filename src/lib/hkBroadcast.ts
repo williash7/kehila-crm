@@ -30,6 +30,49 @@ export interface Recipient {
   /** סיבת הכשל — רק בהודעת כשל חיוב */
   reason: string;
   orderIds: string[];
+  /** תרומה בתשלומי אשראי (לא הוראת קבע) — כמה תשלומים עברו מתוך כמה */
+  installments?: { paid: number; total: number };
+}
+
+// ── תרומה בתשלומי אשראי כ"הוראת קבע" לצורך הודעות ────────────────────────
+//
+// מבחינת התורם, ₪1,200 ב-12 תשלומים זה ₪100 שיורדים לו כל חודש — בדיוק כמו
+// הוראת קבע, והוא ראוי לאותה תודה חודשית. בכספים זו נשארת תרומה אחת (היא
+// כבר רשומה ביומן בסכום המלא), ולכן היא לא נכנסת ללשונית הוראות הקבע —
+// רק לרשימת מקבלי ההודעות, כל עוד נשארו בה תשלומים.
+
+export interface InstallmentPlan {
+  name: string;
+  phone?: string;
+  monthly: number;
+  paid: number;
+  total: number;
+}
+
+function parseDmy(v?: string): Date | null {
+  const m = String(v || '').trim().match(/^(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{2,4})/);
+  if (!m) return null;
+  const y = m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3]);
+  const d = new Date(y, Number(m[2]) - 1, Number(m[1]));
+  return isNaN(d.getTime()) ? null : d;
+}
+
+/** תרומות בתשלומים שעדיין רצות היום — לפי ההערה "שולם ב-N תשלומים" שהסקריפט רושם */
+export function activeInstallments(donations: any[], now: Date = new Date()): InstallmentPlan[] {
+  const out: InstallmentPlan[] = [];
+  (donations || []).forEach(d => {
+    if (!d?.name || d.status) return; // סטטוס לא ריק = חיוב שנכשל/בוטל
+    const m = String(d.notes || '').match(/(\d+)\s*תשלומים/);
+    const total = m ? Number(m[1]) : 0;
+    const amount = Number(d.amount) || 0;
+    if (total < 2 || amount <= 0) return;
+    const start = parseDmy(d.date);
+    if (!start) return;
+    const elapsed = (now.getFullYear() - start.getFullYear()) * 12 + (now.getMonth() - start.getMonth());
+    if (elapsed < 0 || elapsed >= total) return;
+    out.push({ name: d.name, monthly: Math.round(amount / total), paid: elapsed + 1, total });
+  });
+  return out;
 }
 
 /**
@@ -56,6 +99,7 @@ export function buildRecipients(
   crm: Record<string, any>,
   donors: Record<string, any>,
   threshold: number,
+  donations: any[] = [],
 ): Recipient[] {
   const failIdx = indexFailures(failures);
   const byKey = new Map<string, Recipient>();
@@ -85,6 +129,22 @@ export function buildRecipients(
       byKey.set(key, { key, name: h.name, phone, amount, reason, orderIds: h.id ? [String(h.id)] : [] });
     }
   });
+
+  // תורמים בתשלומי אשראי — בתודה ובהודעה הכללית בלבד (אין להם "כשל חיוב")
+  if (kind !== 'failure') {
+    activeInstallments(donations).forEach(plan => {
+      const phone = contactPhone(crm?.[plan.name], donors?.[plan.name]);
+      const key = phone || `name:${plan.name.trim()}`;
+      const existing = byKey.get(key);
+      if (existing) {
+        existing.amount += plan.monthly;
+        if (!existing.name.split(' / ').includes(plan.name)) existing.name += ` / ${plan.name}`;
+        if (!existing.orderIds.length) existing.installments = { paid: plan.paid, total: plan.total };
+      } else {
+        byKey.set(key, { key, name: plan.name, phone, amount: plan.monthly, reason: '', orderIds: [], installments: { paid: plan.paid, total: plan.total } });
+      }
+    });
+  }
 
   return [...byKey.values()].sort((a, b) => a.name.localeCompare(b.name, 'he'));
 }

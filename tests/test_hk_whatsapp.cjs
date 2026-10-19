@@ -77,3 +77,27 @@ assert.ok(modal.includes('<HkWhatsAppModal'));
 assert.ok(tab.includes('<HkWhatsAppModal'));
 
 console.log('✓ וואטסאפ להוראות קבע');
+
+console.log('ח. תרומה בתשלומי אשראי מקבלת הודעה כל עוד נשארו תשלומים:');
+{
+  const now = new Date();
+  const fmt = d => `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+  const monthsAgo = n => { const d = new Date(now.getFullYear(), now.getMonth() - n, 1); return fmt(d); };
+  const dons = [
+    { name: 'אבי תשלומים', date: monthsAgo(3), amount: 1200, notes: 'שולם ב-12 תשלומים' },
+    { name: 'גמר לשלם', date: monthsAgo(13), amount: 1200, notes: 'שולם ב-12 תשלומים' },
+    { name: 'חד פעמי', date: monthsAgo(0), amount: 500, notes: '' },
+    { name: 'נכשל', date: monthsAgo(1), amount: 600, notes: 'שולם ב-6 תשלומים', status: 'נכשל' },
+  ];
+  const plans = B.activeInstallments(dons, now);
+  assert.deepStrictEqual(plans.map(p => p.name), ['אבי תשלומים']);
+  assert.strictEqual(plans[0].monthly, 100);
+  assert.strictEqual(plans[0].paid, 4);
+  const crm2 = { 'אבי תשלומים': { phone: '0507777777' } };
+  const t2 = B.buildRecipients('thanks', [], [], crm2, {}, 2, dons);
+  assert.strictEqual(t2.length, 1);
+  assert.strictEqual(t2[0].amount, 100);
+  assert.deepStrictEqual(t2[0].installments, { paid: 4, total: 12 });
+  assert.strictEqual(B.buildRecipients('failure', [], [], crm2, {}, 2, dons).length, 0, 'אין "כשל חיוב" לתשלומי אשראי');
+}
+console.log('✓ תשלומי אשראי');

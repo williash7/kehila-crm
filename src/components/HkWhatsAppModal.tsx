@@ -18,7 +18,7 @@ import {
 const KINDS: BroadcastKind[] = ['thanks', 'general', 'failure'];
 
 export function HkWhatsAppModal({ onClose, initialKind = 'thanks' }: { onClose: () => void; initialKind?: BroadcastKind }) {
-  const { hk, failures, crm, donors, settings } = useAppStore();
+  const { hk, failures, crm, donors, settings, donations } = useAppStore();
   useCloseOnBack(onClose);
 
   const [kind, setKind] = useState<BroadcastKind>(initialKind);
@@ -57,8 +57,8 @@ export function HkWhatsAppModal({ onClose, initialKind = 'thanks' }: { onClose: 
 
   const threshold = settings.hkExpiringThreshold ?? 2;
   const recipients = useMemo(
-    () => buildRecipients(kind, hk, failures, crm, donors, threshold),
-    [kind, hk, failures, crm, donors, threshold],
+    () => buildRecipients(kind, hk, failures, crm, donors, threshold, donations),
+    [kind, hk, failures, crm, donors, threshold, donations],
   );
   const withPhone = recipients.filter(r => r.phone);
   const noPhone = recipients.filter(r => !r.phone);
@@ -179,7 +179,7 @@ export function HkWhatsAppModal({ onClose, initialKind = 'thanks' }: { onClose: 
         <p className="text-[11px] text-gray-500 mb-3 leading-relaxed">
           {kind === 'failure'
             ? 'נשלח רק למי שיש לו כשל חיוב פתוח — כזה שלא נכנס כסף אחריו.'
-            : 'נשלח לכל מי שיש לו הוראת קבע פעילה. מי שיש לו כמה הוראות מקבל הודעה אחת עם הסכום המצטבר.'}
+            : 'נשלח לכל מי שיש לו הוראת קבע פעילה, וגם למי שתרם בתשלומי אשראי שעוד לא הסתיימו (הסכום החודשי). מי שיש לו כמה הוראות מקבל הודעה אחת עם הסכום המצטבר.'}
         </p>
 
         {/* נוסח ההודעה */}
@@ -290,6 +290,7 @@ export function HkWhatsAppModal({ onClose, initialKind = 'thanks' }: { onClose: 
                     <div className="text-[11px] text-gray-500" dir="rtl">
                       ₪{r.amount.toLocaleString()} לחודש
                       {r.reason ? <span className="text-red-500"> · {r.reason}</span> : null}
+                      {r.installments ? <span className="text-indigo-600"> · תשלומים {r.installments.paid}/{r.installments.total}</span> : null}
                     </div>
                   </div>
                   <button
