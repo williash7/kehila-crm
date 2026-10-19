@@ -57,9 +57,18 @@ function parseDmy(v?: string): Date | null {
   return isNaN(d.getTime()) ? null : d;
 }
 
-/** תרומות בתשלומים שעדיין רצות היום — לפי ההערה "שולם ב-N תשלומים" שהסקריפט רושם */
-export function activeInstallments(donations: any[], now: Date = new Date()): InstallmentPlan[] {
-  const out: InstallmentPlan[] = [];
+export interface InstallmentRow extends InstallmentPlan {
+  amount: number;
+  date: string;
+  /** החודש של התשלום האחרון, בפורמט MM/YYYY */
+  endsMonth: string;
+  done: boolean;
+  purpose?: string;
+}
+
+/** כל התרומות בתשלומי אשראי — רצות וגמורות — לפי ההערה "שולם ב-N תשלומים" שהסקריפט רושם */
+export function installmentRows(donations: any[], now: Date = new Date()): InstallmentRow[] {
+  const out: InstallmentRow[] = [];
   (donations || []).forEach(d => {
     if (!d?.name || d.status) return; // סטטוס לא ריק = חיוב שנכשל/בוטל
     const m = String(d.notes || '').match(/(\d+)\s*תשלומים/);
@@ -69,10 +78,28 @@ export function activeInstallments(donations: any[], now: Date = new Date()): In
     const start = parseDmy(d.date);
     if (!start) return;
     const elapsed = (now.getFullYear() - start.getFullYear()) * 12 + (now.getMonth() - start.getMonth());
-    if (elapsed < 0 || elapsed >= total) return;
-    out.push({ name: d.name, monthly: Math.round(amount / total), paid: elapsed + 1, total });
+    if (elapsed < 0) return;
+    const end = new Date(start.getFullYear(), start.getMonth() + total - 1, 1);
+    out.push({
+      name: d.name,
+      monthly: Math.round(amount / total),
+      paid: Math.min(total, elapsed + 1),
+      total,
+      amount,
+      date: d.date,
+      endsMonth: `${String(end.getMonth() + 1).padStart(2, '0')}/${end.getFullYear()}`,
+      done: elapsed >= total,
+      purpose: d.purpose,
+    });
   });
-  return out;
+  // רצות קודם, ובתוכן — מי שהכי קרוב לסיום
+  return out.sort((a, b) => Number(a.done) - Number(b.done) || (b.paid / b.total) - (a.paid / a.total));
+}
+
+/** תרומות בתשלומים שעדיין רצות היום */
+export function activeInstallments(donations: any[], now: Date = new Date()): InstallmentPlan[] {
+  return installmentRows(donations, now).filter(r => !r.done)
+    .map(({ name, monthly, paid, total }) => ({ name, monthly, paid, total }));
 }
 
 /**

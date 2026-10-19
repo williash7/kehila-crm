@@ -10,6 +10,8 @@ import { ProfileModal } from './ProfileModal';
 import { useCloseOnBack } from './FullScreenView';
 import { ManualFailureDialog } from './ManualFailureDialog';
 import { HkWhatsAppModal } from './HkWhatsAppModal';
+import { InstallmentsModal } from './InstallmentsModal';
+import { activeInstallments } from '../lib/hkBroadcast';
 
 // "הסתיימה לאחרונה" — כדי לא להציג כברירת מחדל הוראות קבע שהסתיימו לפני
 // שנים ואינן רלוונטיות יותר. אפשר להרחיב לצפייה בהיסטוריה המלאה דרך המתג
@@ -31,7 +33,9 @@ function isRecentlyRelevant(h: any, threshold: number): boolean {
 }
 
 export function StandingOrdersModal({ onClose }: { onClose: () => void }) {
-  const { hk, failures, refresh, settings, updateSettings } = useAppStore();
+  const { hk, failures, refresh, settings, updateSettings, donations } = useAppStore();
+  const [instOpen, setInstOpen] = useState(false);
+  const instCount = useMemo(() => activeInstallments(donations).length, [donations]);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<'all' | HkStatus | 'errors'>('active');
   const [showSettings, setShowSettings] = useState(false);
@@ -120,6 +124,15 @@ export function StandingOrdersModal({ onClose }: { onClose: () => void }) {
             <div className="text-[10px] text-gray-500 mt-0.5">הסתיימו</div>
           </div>
         </div>
+
+        {/* תשלומי אשראי — חלון נפרד */}
+        <button
+          onClick={() => setInstOpen(true)}
+          className="w-full mb-3 bg-white rounded-xl px-3 py-2.5 border border-indigo-100 shadow-sm flex items-center justify-between text-sm"
+        >
+          <span className="font-bold text-indigo-700">💳 תשלומי אשראי פעילים ({instCount})</span>
+          <ChevronLeft size={16} className="text-indigo-300" />
+        </button>
 
         {/* Search */}
         <div className="relative mb-2">
@@ -262,6 +275,7 @@ export function StandingOrdersModal({ onClose }: { onClose: () => void }) {
       {editTarget && <EditHkDialog target={editTarget} onClose={() => setEditTarget(null)} />}
       {failureTarget && <ManualFailureDialog target={failureTarget} onClose={() => setFailureTarget(null)} />}
       {addOpen && <AddHkDialog onClose={() => setAddOpen(false)} />}
+      {instOpen && <InstallmentsModal onClose={() => setInstOpen(false)} />}
       {waOpen && <HkWhatsAppModal onClose={() => setWaOpen(false)} initialKind={filter === 'errors' ? 'failure' : 'thanks'} />}
 
       {selectedDonor && <ProfileModal name={selectedDonor} onClose={() => setSelectedDonor(null)} backLabel="הוראות קבע" />}

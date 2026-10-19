@@ -101,3 +101,20 @@ console.log('ח. תרומה בתשלומי אשראי מקבלת הודעה כל
   assert.strictEqual(B.buildRecipients('failure', [], [], crm2, {}, 2, dons).length, 0, 'אין "כשל חיוב" לתשלומי אשראי');
 }
 console.log('✓ תשלומי אשראי');
+
+console.log('ט. חלון תשלומי אשראי: רצות וגמורות, ותאריך סיום:');
+{
+  const rows = B.installmentRows([
+    { name: 'א', date: '15/03/2026', amount: 1200, notes: 'שולם ב-12 תשלומים' },
+    { name: 'ב', date: '01/01/2025', amount: 600, notes: 'שולם ב-6 תשלומים' },
+  ], new Date(2026, 9, 19));
+  assert.strictEqual(rows.length, 2);
+  assert.strictEqual(rows[0].name, 'א');
+  assert.strictEqual(rows[0].paid, 8);
+  assert.strictEqual(rows[0].endsMonth, '02/2027');
+  assert.strictEqual(rows[1].done, true);
+  assert.strictEqual(rows[1].paid, 6);
+  const modal = fs.readFileSync('src/components/StandingOrdersModal.tsx', 'utf8');
+  assert.ok(modal.includes('<InstallmentsModal'));
+}
+console.log('✓ חלון תשלומי אשראי');

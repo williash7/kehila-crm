@@ -22,6 +22,7 @@ import { ExportButton } from './ExportButton';
 import { DONATION_COLUMNS, STANDING_ORDER_COLUMNS } from '../lib/exportRows';
 import { ManualFailureDialog } from './ManualFailureDialog';
 import { HkWhatsAppModal } from './HkWhatsAppModal';
+import { InstallmentsModal } from './InstallmentsModal';
 import type { BroadcastKind } from '../lib/hkBroadcast';
 
 type MainTab = 'donations' | 'hk' | 'errors' | 'payments';
@@ -52,6 +53,7 @@ export function DonationsTab({ onAddDonation, openTarget, onOpenTargetConsumed }
   }, [openTarget?.id, openTarget?.count, donations]);
   const [selectedDonor, setSelectedDonor] = useState<string | null>(null);
   const [waKind, setWaKind] = useState<BroadcastKind | null>(null);
+  const [instOpen, setInstOpen] = useState(false);
   const [selectedDonation, setSelectedDonation] = useState<Donation | null>(null);
   const [showThankYou, setShowThankYou] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -407,13 +409,20 @@ export function DonationsTab({ onAddDonation, openTarget, onOpenTargetConsumed }
               ולכן הוא מחושב כאן לפני הייצוא. בלעדיו הקובץ היה מכיל מספרים
               בלי המידע שבגללו מסתכלים על המסך הזה מלכתחילה.
             */}
-            <div className="flex justify-between items-center gap-2 mb-2">
+            <div className="flex items-center gap-2 mb-2">
               <button
                 onClick={() => setWaKind(hkFilter === 'errors' ? 'failure' : 'thanks')}
                 className="h-9 px-3 rounded-xl bg-green-600 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm active:scale-95"
               >
                 <MessageSquare size={14} /> וואטסאפ לכולם
               </button>
+              <button
+                onClick={() => setInstOpen(true)}
+                className="h-9 px-3 rounded-xl bg-indigo-50 text-indigo-700 border border-indigo-100 text-xs font-bold shadow-sm active:scale-95"
+              >
+                💳 תשלומי אשראי
+              </button>
+              <div className="flex-1" />
               <ExportButton
                 rows={hkList.map(h => ({
                   ...h,
@@ -521,6 +530,7 @@ export function DonationsTab({ onAddDonation, openTarget, onOpenTargetConsumed }
       </div>
 
       {selectedDonor && <ProfileModal name={selectedDonor} onClose={() => setSelectedDonor(null)} backLabel="תרומות" />}
+      {instOpen && <InstallmentsModal onClose={() => setInstOpen(false)} />}
       {waKind && <HkWhatsAppModal initialKind={waKind} onClose={() => setWaKind(null)} />}
 
       {/* Donation Detail Modal */}
