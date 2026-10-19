@@ -1,5 +1,5 @@
-import React, { useMemo, useRef, useState } from 'react';
-import { ChevronRight, MessageSquare, Check, RotateCcw, Send, PhoneOff } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { ChevronRight, MessageSquare, Check, RotateCcw, Send, PhoneOff, ImagePlus, X } from 'lucide-react';
 import { useAppStore } from '../store/AppContext';
 import { useCloseOnBack } from './FullScreenView';
 import { ProfileModal } from './ProfileModal';
@@ -7,6 +7,7 @@ import { orgNameIn, signerIn } from '../lib/orgConfig';
 import {
   BroadcastKind, BroadcastLang, BROADCAST_KIND_LABEL, PLACEHOLDERS, DEFAULT_TEMPLATES,
   buildRecipients, fillTemplate, waLink, loadSent, saveSent, loadTemplate, saveTemplate, loadLangs, saveLangs,
+  loadImage, saveImage, canShareFile,
 } from '../lib/hkBroadcast';
 
 // שליחת וואטסאפ לכל בעלי הוראות הקבע — לחיצה אחת לכל אדם.
@@ -30,6 +31,28 @@ export function HkWhatsAppModal({ onClose, initialKind = 'thanks' }: { onClose: 
   const [editLang, setEditLang] = useState<BroadcastLang>('he');
   const [sent, setSent] = useState<Record<string, string>>(() => loadSent(initialKind));
   const [selectedDonor, setSelectedDonor] = useState<string | null>(null);
+  const [image, setImage] = useState<File | null>(null);
+  const [imageUrl, setImageUrl] = useState('');
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  // התמונה נשמרת לכל סוג הודעה בנפרד — תמונת סיכום חודש לתודה, אחרת להודעה כללית
+  useEffect(() => {
+    let alive = true;
+    loadImage(kind).then(f => { if (alive) setImage(f); });
+    return () => { alive = false; };
+  }, [kind]);
+
+  useEffect(() => {
+    if (!image) { setImageUrl(''); return; }
+    const url = URL.createObjectURL(image);
+    setImageUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [image]);
+
+  const pickImage = (file: File | null) => {
+    setImage(file);
+    saveImage(kind, file);
+  };
   const textRef = useRef<HTMLTextAreaElement>(null);
 
   const threshold = settings.hkExpiringThreshold ?? 2;
@@ -92,8 +115,31 @@ export function HkWhatsAppModal({ onClose, initialKind = 'thanks' }: { onClose: 
     saveSent(kind, updated);
   };
 
-  const send = (r: typeof recipients[number]) => {
-    window.open(waLink(r.phone, messageFor(r)), '_blank');
+  const send = async (r: typeof recipients[number]) => {
+    const text = messageFor(r);
+    if (image && canShareFile(image)) {
+      // גיבוי: הטקסט גם בלוח ההעתקה, למקרה שאפליקציה כלשהי משמיטה את הכיתוב
+      navigator.clipboard?.writeText(text).catch(() => {});
+      try {
+        await navigator.share({ files: [image], text });
+        markSent(r.key, true);
+      } catch (e: any) {
+        // ביטול של המשתמש בתפריט השיתוף — לא מסמנים כנשלח
+        if (e?.name !== 'AbortError') alert('השיתוף נכשל: ' + String(e?.message || e));
+      }
+      return;
+    }
+    if (image) {
+      // מחשב או דפדפן בלי שיתוף קבצים: מורידים את התמונה ופותחים את הצ'אט,
+      // ואת התמונה מצרפים ידנית — כמו במכתב התודה
+      const a = document.createElement('a');
+      a.href = imageUrl;
+      a.download = image.name || 'image.jpg';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+    window.open(waLink(r.phone, text), '_blank');
     markSent(r.key, true);
   };
 
@@ -171,15 +217,38 @@ export function HkWhatsAppModal({ onClose, initialKind = 'thanks' }: { onClose: 
           <p className="text-[10px] text-gray-400 mt-2">הנוסח נשמר אוטומטית. השדות בסוגריים מתמלאים לכל אדם בנפרד.</p>
         </div>
 
+        {/* תמונה מצורפת */}
+        <div className="bg-white rounded-2xl border border-[#EDE6D6] p-3 mb-3 shadow-sm">
+          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={e => { pickImage(e.target.files?.[0] || null); e.target.value = ''; }} />
+          {image ? (
+            <div className="flex items-center gap-3">
+              <img src={imageUrl} alt="" className="w-16 h-20 object-cover rounded-lg border border-[#EDE6D6]" />
+              <div className="flex-1 min-w-0">
+                <div className="text-xs font-bold text-[#0D1B2A]">תמונה מצורפת להודעה</div>
+                <div className="text-[11px] text-gray-500 leading-relaxed mt-0.5">
+                  בלחיצה על "שלח" ייפתח תפריט השיתוף — בוחרים וואטסאפ ואת השם של האדם. התמונה והטקסט כבר בפנים.
+                </div>
+                <button onClick={() => fileRef.current?.click()} className="text-[11px] text-[#9B7A2F] font-semibold mt-1">החלף תמונה</button>
+              </div>
+              <button onClick={() => pickImage(null)} title="הסר תמונה" className="shrink-0 p-1.5 text-gray-400"><X size={16} /></button>
+            </div>
+          ) : (
+            <button onClick={() => fileRef.current?.click()} className="w-full flex items-center justify-center gap-2 py-2 text-sm font-bold text-[#9B7A2F]">
+              <ImagePlus size={18} /> צרף תמונה להודעה
+            </button>
+          )}
+        </div>
+
         {/* תצוגה מקדימה */}
         {preview && (
           <div className="mb-3">
             <div className="text-[11px] font-bold text-gray-500 mb-1">כך זה ייראה אצל {preview.name}:</div>
             <div
               dir={langOf(preview.key) === 'he' ? 'rtl' : 'ltr'}
-              className="bg-[#DCF8C6] rounded-2xl rounded-tr-sm p-3 text-sm whitespace-pre-wrap leading-relaxed text-[#0D1B2A] shadow-sm"
+              className="bg-[#DCF8C6] rounded-2xl rounded-tr-sm p-1.5 text-sm whitespace-pre-wrap leading-relaxed text-[#0D1B2A] shadow-sm"
             >
-              {messageFor(preview)}
+              {imageUrl && <img src={imageUrl} alt="" className="w-full max-h-72 object-cover rounded-xl mb-1" />}
+              <div className="p-1.5">{messageFor(preview)}</div>
             </div>
           </div>
         )}

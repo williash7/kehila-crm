@@ -190,3 +190,55 @@ export function loadLangs(): Record<string, BroadcastLang> {
 export function saveLangs(langs: Record<string, BroadcastLang>) {
   writeJson(LANG_KEY, langs);
 }
+
+// ── תמונה מצורפת ───────────────────────────────────────────────────────────
+// קישור wa.me יכול לשאת רק טקסט. כשיש תמונה, השליחה עוברת דרך "שיתוף" של
+// הטלפון (navigator.share): וואטסאפ נפתח עם התמונה והטקסט, ובוחרים איש קשר.
+// התמונה נשמרת ב-IndexedDB (גדולה מדי ל-localStorage), כדי שלא צריך לבחור
+// אותה מחדש בכל פתיחה של המסך.
+
+const IMG_DB = 'kehila-hk-broadcast';
+const IMG_STORE = 'images';
+
+function openImgDb(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(IMG_DB, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore(IMG_STORE);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+export async function loadImage(kind: BroadcastKind): Promise<File | null> {
+  try {
+    const db = await openImgDb();
+    return await new Promise(resolve => {
+      const req = db.transaction(IMG_STORE).objectStore(IMG_STORE).get(kind);
+      req.onsuccess = () => {
+        const v = req.result as { blob: Blob; name: string; type: string } | undefined;
+        resolve(v ? new File([v.blob], v.name, { type: v.type }) : null);
+      };
+      req.onerror = () => resolve(null);
+    });
+  } catch {
+    return null;
+  }
+}
+
+export async function saveImage(kind: BroadcastKind, file: File | null): Promise<void> {
+  try {
+    const db = await openImgDb();
+    const store = db.transaction(IMG_STORE, 'readwrite').objectStore(IMG_STORE);
+    if (file) store.put({ blob: file, name: file.name, type: file.type }, kind);
+    else store.delete(kind);
+  } catch { /* לא קריטי — התמונה פשוט לא תיזכר */ }
+}
+
+/** האם הטלפון יודע לשתף קובץ לאפליקציה אחרת (אנדרואיד/אייפון כן, רוב המחשבים לא) */
+export function canShareFile(file: File): boolean {
+  try {
+    return typeof navigator !== 'undefined' && !!navigator.canShare && navigator.canShare({ files: [file] });
+  } catch {
+    return false;
+  }
+}
