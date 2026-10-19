@@ -20,6 +20,8 @@ import { OpenTargetProps } from '../lib/openTarget';
 import { ExportButton } from './ExportButton';
 import { DONATION_COLUMNS, STANDING_ORDER_COLUMNS } from '../lib/exportRows';
 import { ManualFailureDialog } from './ManualFailureDialog';
+import { HkWhatsAppModal } from './HkWhatsAppModal';
+import type { BroadcastKind } from '../lib/hkBroadcast';
 
 type MainTab = 'donations' | 'hk' | 'errors' | 'payments';
 
@@ -48,6 +50,7 @@ export function DonationsTab({ onAddDonation, openTarget, onOpenTargetConsumed }
     onOpenTargetConsumed?.();   // פעם אחת בלבד — אחרת ייפתח שוב בכניסה הבאה
   }, [openTarget?.id, openTarget?.count, donations]);
   const [selectedDonor, setSelectedDonor] = useState<string | null>(null);
+  const [waKind, setWaKind] = useState<BroadcastKind | null>(null);
   const [selectedDonation, setSelectedDonation] = useState<Donation | null>(null);
   const [showThankYou, setShowThankYou] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -403,7 +406,13 @@ export function DonationsTab({ onAddDonation, openTarget, onOpenTargetConsumed }
               ולכן הוא מחושב כאן לפני הייצוא. בלעדיו הקובץ היה מכיל מספרים
               בלי המידע שבגללו מסתכלים על המסך הזה מלכתחילה.
             */}
-            <div className="flex justify-end mb-2">
+            <div className="flex justify-between items-center gap-2 mb-2">
+              <button
+                onClick={() => setWaKind(hkFilter === 'errors' ? 'failure' : 'thanks')}
+                className="h-9 px-3 rounded-xl bg-green-600 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm active:scale-95"
+              >
+                <MessageSquare size={14} /> וואטסאפ לכולם
+              </button>
               <ExportButton
                 rows={hkList.map(h => ({
                   ...h,
@@ -485,6 +494,14 @@ export function DonationsTab({ onAddDonation, openTarget, onOpenTargetConsumed }
                 <ListSortControl value={errorSort} onChange={setErrorSort} />
               </div>
             </details>
+            {errorList.length > 0 && (
+              <button
+                onClick={() => setWaKind('failure')}
+                className="w-full h-10 rounded-xl bg-green-600 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm active:scale-95"
+              >
+                <MessageSquare size={14} /> וואטסאפ לכל מי שהחיוב שלו נכשל
+              </button>
+            )}
             {errorList.length === 0 ? (
               <EmptyState icon="✓" tone="good" title="אין שגיאות חיוב" hint="כל החיובים בחודש האחרון עברו בהצלחה." />
             ) : errorList.map((f: ChargeFailure, i: number) => (
@@ -503,6 +520,7 @@ export function DonationsTab({ onAddDonation, openTarget, onOpenTargetConsumed }
       </div>
 
       {selectedDonor && <ProfileModal name={selectedDonor} onClose={() => setSelectedDonor(null)} backLabel="תרומות" />}
+      {waKind && <HkWhatsAppModal initialKind={waKind} onClose={() => setWaKind(null)} />}
 
       {/* Donation Detail Modal */}
       {selectedDonation && !showThankYou && (

@@ -70,6 +70,7 @@ const libBundles = [
   ['lib/dashboardCards.ts', join(OUT, 'dash.js')],
   ['lib/settings.ts', join(TMP, 'settings.js')],
   ['lib/standingOrders.ts', join(OUT, 'standingOrders.js')],
+  ['lib/hkBroadcast.ts', join(OUT, 'hkBroadcast.js')],
   ['lib/projects.ts', join(OUT, 'proj.js')],
   ['lib/allDates.ts', join(OUT, 'alldates.js')],
   ['lib/api.ts', join(OUT, 'api.js')],

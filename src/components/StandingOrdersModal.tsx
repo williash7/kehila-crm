@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { EmptyState } from './EmptyState';
-import { X, Search, RefreshCw, AlertTriangle, ChevronDown, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
+import { X, Search, RefreshCw, AlertTriangle, ChevronDown, ChevronLeft, ChevronRight, Plus, MessageSquare } from 'lucide-react';
 import { useAppStore } from '../store/AppContext';
 import { getHkStatus, sortHkList, countHkByStatus, openFailureFor, indexFailures, HK_STATUS_LABEL, HK_STATUS_COLOR, HkStatus } from '../lib/standingOrders';
 import { CancelHkDialog, ChangeHkAmountDialog, RenewHkDialog, EditHkDialog, CancelHkButton } from './CancelHkDialog';
@@ -9,6 +9,7 @@ import { CampaignTag } from './CampaignTag';
 import { ProfileModal } from './ProfileModal';
 import { useCloseOnBack } from './FullScreenView';
 import { ManualFailureDialog } from './ManualFailureDialog';
+import { HkWhatsAppModal } from './HkWhatsAppModal';
 
 // "הסתיימה לאחרונה" — כדי לא להציג כברירת מחדל הוראות קבע שהסתיימו לפני
 // שנים ואינן רלוונטיות יותר. אפשר להרחיב לצפייה בהיסטוריה המלאה דרך המתג
@@ -45,6 +46,7 @@ export function StandingOrdersModal({ onClose }: { onClose: () => void }) {
   const [editTarget, setEditTarget] = useState<any | null>(null);
   const [failureTarget, setFailureTarget] = useState<any | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [waOpen, setWaOpen] = useState(false);
 
   // גם כאן כפתור "אחורה" של הטלפון סוגר את המסך במקום לצאת מהאפליקציה
   useCloseOnBack(onClose);
@@ -90,6 +92,9 @@ export function StandingOrdersModal({ onClose }: { onClose: () => void }) {
         </button>
         <h2 className="font-['Frank_Ruhl_Libre'] text-lg font-bold text-[#C9A84C]">הוראות קבע</h2>
         <div className="flex items-center gap-1">
+          <button onClick={() => setWaOpen(true)} className="p-2 -m-1 text-white/60 hover:text-white transition-colors" title="וואטסאפ לכל בעלי הוראות הקבע">
+            <MessageSquare size={19} />
+          </button>
           <button onClick={() => setAddOpen(true)} className="p-2 -m-1 text-white/60 hover:text-white transition-colors" title="הוראת קבע ידנית">
             <Plus size={20} />
           </button>
@@ -257,6 +262,7 @@ export function StandingOrdersModal({ onClose }: { onClose: () => void }) {
       {editTarget && <EditHkDialog target={editTarget} onClose={() => setEditTarget(null)} />}
       {failureTarget && <ManualFailureDialog target={failureTarget} onClose={() => setFailureTarget(null)} />}
       {addOpen && <AddHkDialog onClose={() => setAddOpen(false)} />}
+      {waOpen && <HkWhatsAppModal onClose={() => setWaOpen(false)} initialKind={filter === 'errors' ? 'failure' : 'thanks'} />}
 
       {selectedDonor && <ProfileModal name={selectedDonor} onClose={() => setSelectedDonor(null)} backLabel="הוראות קבע" />}
     </div>
