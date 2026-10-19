@@ -1,3 +1,4 @@
+import { contactPhone } from '../lib/contactPhone';
 import React, { useState } from 'react';
 import { EmptyState } from './EmptyState';
 import { useAppStore } from '../store/AppContext';
@@ -140,7 +141,7 @@ export function DonorsTab({ addTrigger }: { addTrigger?: { tab: string; count: n
 
   // סינון לפי פרטים קיימים/חסרים (טלפון, יום הולדת, יארצייט) — משתמש
   // באותם פונקציות מציאה שכבר קיימות בשאר האפליקציה (כרטיס איש קשר, תזכורות).
-  const hasPhone = (d: Donor) => !!(crm[d.name]?.phone || (d as any)['טלפון']);
+  const hasPhone = (d: Donor) => !!contactPhone(crm[d.name], d);
   const hasBirthday = (d: Donor) => !!(findGregorianBirthday(d as any) || findHebrewBirthday(d as any));
   const hasYahrzeit = (d: Donor) => findYahrzeitEntries(d as any).length > 0;
   if (detailFilter === 'hasPhone') list = list.filter(hasPhone);

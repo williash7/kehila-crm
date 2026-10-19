@@ -1,3 +1,4 @@
+import { contactPhone } from '../lib/contactPhone';
 import React, { useState, useMemo } from 'react';
 import { useAppStore } from '../store/AppContext';
 import { createHolidayDoc } from '../lib/api';
@@ -734,8 +735,7 @@ ${docs.length > 0 ? section('📄 מסמכים מקושרים',
                       </div>
                       <button 
                         onClick={() => {
-                          let p = (crm[d.name]?.phone || '').replace(/\D/g, '');
-                          if (p && p.startsWith('0')) p = '972' + p.substring(1);
+                          const p = contactPhone(crm[d.name], visibleDonors[d.name]);
                           const fn = d.name.trim().split(' ')[0] || d.name;
                           const msg = inviteText.replace('פרטי', fn);
                           const url = p ? `https://wa.me/${p}?text=${encodeURIComponent(msg)}` : `https://wa.me/?text=${encodeURIComponent(msg)}`;

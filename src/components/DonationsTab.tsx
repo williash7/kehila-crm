@@ -1,3 +1,4 @@
+import { contactPhone } from '../lib/contactPhone';
 import React, { useState, useMemo } from 'react';
 import { EmptyState } from './EmptyState';
 import { useAppStore } from '../store/AppContext';
@@ -31,7 +32,7 @@ type DonationEditFields = Omit<Partial<Donation>, 'amount'> & { amount?: number 
 export function DonationsTab({ onAddDonation, openTarget, onOpenTargetConsumed }: {
   onAddDonation: () => void;
 } & OpenTargetProps) {
-  const { donations, hk, failures, settings, refresh, crm, projects } = useAppStore();
+  const { donations, hk, failures, settings, refresh, crm, donors, projects } = useAppStore();
   const openProjects = activeProjects(projects);
   const [mainTab, setMainTab] = useState<MainTab>('donations');
 
@@ -751,7 +752,7 @@ export function DonationsTab({ onAddDonation, openTarget, onOpenTargetConsumed }
           donorName={selectedDonation.name}
           amount={selectedDonation.amount}
           date={selectedDonation.date}
-          phone={crm[selectedDonation.name]?.phone}
+          phone={contactPhone(crm[selectedDonation.name], donors[selectedDonation.name])}
           email={crm[selectedDonation.name]?.email}
           onClose={() => setShowThankYou(false)}
         />

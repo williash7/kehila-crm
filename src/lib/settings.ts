@@ -1,3 +1,4 @@
+import { contactPhone } from './contactPhone';
 import { HolidayVisibility, DEFAULT_VISIBILITY } from './holidayFilter';
 import {
   DEFAULT_BOTTOM_NAV_ORDER, DEFAULT_BOTTOM_NAV_PRIMARY, NavItemId,
@@ -221,7 +222,7 @@ function hasAddress(donor: any): boolean {
 }
 
 function hasPhone(donor: any, crmData: any): boolean {
-  return !!String(crmData?.phone || donor?.['טלפון'] || '').trim();
+  return !!contactPhone(crmData, donor);
 }
 
 function hasDonated(donor: any): boolean {

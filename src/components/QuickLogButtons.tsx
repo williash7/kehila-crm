@@ -2,13 +2,10 @@ import React, { useState } from 'react';
 import { Phone, MessageSquare } from 'lucide-react';
 import { useAppStore } from '../store/AppContext';
 import { logAction } from '../lib/score';
+import { contactPhone } from '../lib/contactPhone';
 
 function resolvePhone(donorName: string, donors: Record<string, any>, crm: Record<string, any>): string {
-  const donor = donors[donorName] || {};
-  const crmData = crm[donorName] || {};
-  let raw = String(crmData.phone || donor['טלפון'] || '').replace(/\D/g, '');
-  if (raw.startsWith('0')) raw = '972' + raw.substring(1);
-  return raw;
+  return contactPhone(crm[donorName], donors[donorName]);
 }
 
 // שורת פעולות ליצירת קשר עם איש קשר: התקשרות/וואטסאפ ישירים, ושני כפתורי

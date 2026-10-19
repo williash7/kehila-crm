@@ -1,3 +1,4 @@
+import { contactPhone } from '../lib/contactPhone';
 import React, { useState } from 'react';
 import { useAppStore } from '../store/AppContext';
 import { Plus, Users, Calendar, AlertTriangle, CheckCircle, ChevronLeft, ChevronDown, ChevronUp, Pencil, X, CalendarDays, MessageSquare, ClipboardList, Copy, Download, Search, Inbox } from 'lucide-react';
@@ -882,11 +883,11 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd, onOpenSearch, onO
               <div className="text-left shrink-0 flex flex-col items-end gap-1">
                 <div className="font-['Frank_Ruhl_Libre'] text-base font-bold text-[#9B7A2F]">₪{(d.amount || 0).toLocaleString()}</div>
                 <div className="flex gap-1">
-                  <button onClick={(e) => { e.stopPropagation(); setThankYouInfo({ name: d.name, amount: d.amount || 0, phone: crm[d.name]?.phone || (visibleDonors[d.name] as any)?.['טלפון'] || '' }); }}
+                  <button onClick={(e) => { e.stopPropagation(); setThankYouInfo({ name: d.name, amount: d.amount || 0, phone: contactPhone(crm[d.name], visibleDonors[d.name]) }); }}
                     className="bg-green-50 text-green-600 p-1.5 rounded-lg hover:bg-green-100 transition-colors flex items-center gap-1 text-[10px] font-bold" title="שלח הודעת תודה">
                     <MessageSquare size={12} /> תודה
                   </button>
-                  <button onClick={(e) => { e.stopPropagation(); setLetterInfo({ name: d.name, amount: d.amount || 0, date: d.date || '', phone: crm[d.name]?.phone || (visibleDonors[d.name] as any)?.['טלפון'] || '' }); }}
+                  <button onClick={(e) => { e.stopPropagation(); setLetterInfo({ name: d.name, amount: d.amount || 0, date: d.date || '', phone: contactPhone(crm[d.name], visibleDonors[d.name]) }); }}
                     className="bg-amber-50 text-amber-700 p-1.5 rounded-lg hover:bg-amber-100 transition-colors flex items-center gap-1 text-[10px] font-bold" title="מכתב תודה מעוצב">
                     📜 מכתב
                   </button>
@@ -936,7 +937,7 @@ export function HomeTab({ setTab, onDonationClick, onQuickAdd, onOpenSearch, onO
                   </div>
                   <div className="flex flex-col items-end shrink-0 mr-3">
                     <div className="font-['Frank_Ruhl_Libre'] font-bold text-lg text-[#C9A84C]">₪{d.amount?.toLocaleString() || 0}</div>
-                    <button onClick={(e) => { e.stopPropagation(); setThankYouInfo({ name: d.name, amount: d.amount || 0, phone: crm[d.name]?.phone || (visibleDonors[d.name] as any)?.['טלפון'] || '' }); }}
+                    <button onClick={(e) => { e.stopPropagation(); setThankYouInfo({ name: d.name, amount: d.amount || 0, phone: contactPhone(crm[d.name], visibleDonors[d.name]) }); }}
                       className="bg-green-50 text-green-600 p-1.5 rounded-lg mt-1 hover:bg-green-100 transition-colors" title="שלח הודעת תודה">
                       <MessageSquare size={14} />
                     </button>

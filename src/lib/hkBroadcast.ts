@@ -6,6 +6,9 @@
 // שליחה המונית — כל הודעה יוצאת מהטלפון שלו כמו הודעה רגילה.
 
 import { HkEntry, ChargeFailure, getHkStatus, indexFailures, openFailureFor } from './standingOrders';
+import { normalizePhone, contactPhone } from './contactPhone';
+
+export { normalizePhone };
 
 export type BroadcastKind = 'thanks' | 'general' | 'failure';
 export type BroadcastLang = 'he' | 'ru';
@@ -29,24 +32,12 @@ export interface Recipient {
   orderIds: string[];
 }
 
-/** מנרמל מספר ישראלי לפורמט ש-wa.me מקבל. מחזיר ריק אם המספר לא סביר. */
-export function normalizePhone(raw: unknown): string {
-  let p = String(raw ?? '').replace(/\D/g, '');
-  if (!p) return '';
-  if (p.startsWith('00')) p = p.slice(2);
-  if (p.startsWith('0')) p = '972' + p.slice(1);
-  else if (/^5\d{8}$/.test(p)) p = '972' + p;
-  return p.length >= 10 ? p : '';
-}
-
 /**
- * טלפון של אדם: קודם מה שרשום על ההוראה, אחר כך מה שנשמר בכרטיס איש
- * הקשר, ולבסוף מה שהגיע מהגיליון בעמודת "טלפון".
+ * טלפון של אדם — אותו מקור כמו בכרטיס איש הקשר (ראה contactPhone): תיקון
+ * ידני בכרטיס קודם, אחר כך מה שרשום על ההוראה ובגיליון. מספר לא תקין מדולג.
  */
 export function phoneFor(hk: HkEntry, crm: Record<string, any>, donors: Record<string, any>): string {
-  return normalizePhone(hk.phone)
-    || normalizePhone(crm?.[hk.name]?.phone)
-    || normalizePhone(donors?.[hk.name]?.['טלפון']);
+  return contactPhone(crm?.[hk.name], donors?.[hk.name], hk.phone);
 }
 
 /**

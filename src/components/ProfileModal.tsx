@@ -1,3 +1,4 @@
+import { contactPhone, normalizePhone, rawPhoneText } from '../lib/contactPhone';
 import React, { useState } from 'react';
 import { useAppStore } from '../store/AppContext';
 import { MessageSquare, Phone, X, Edit, Calendar, PlusCircle, ClipboardList, RefreshCw, CalendarDays, MapPin, Navigation } from 'lucide-react';
@@ -242,7 +243,14 @@ export function ProfileModal({ name, onClose, backLabel, siblings, onSelectSibli
       if (changed) {
          // העותק המקומי מתעדכן לפני הרשת. אין refresh מיידי שעלול להחזיר
          // מהשרת את הערך הישן בזמן שהשמירה עדיין ממתינה בתור.
-         updateCrm(name, { customFields: newCustomFields });
+         const patch: Record<string, any> = { customFields: newCustomFields };
+         // תיקון הטלפון כאן חייב להגיע גם לכפתורי הוואטסאפ וההתקשרות
+         if ('טלפון' in editedFields && editedFields['טלפון'] !== ((crmData.customFields || {})['טלפון'] ?? (donor as any)['טלפון'] ?? '')) {
+           const typed = String(editedFields['טלפון'] || '').trim();
+           patch.phone = normalizePhone(typed);
+           if (typed && !patch.phone) alert('נשמר, אבל מה שהוזן בשדה "טלפון" אינו מספר טלפון תקין — וואטסאפ לא יעבוד עד שיתוקן.');
+         }
+         updateCrm(name, patch);
       }
       const outcomes = await Promise.all(specs.map(spec => spec.action === 'updateDonorField'
         ? updateDonorFieldQueued(spec.data)
@@ -281,16 +289,19 @@ export function ProfileModal({ name, onClose, backLabel, siblings, onSelectSibli
   };
 
   const savePhone = async () => {
-    // Strip non-digits
-    let cleanPhone = phoneInput.replace(/\D/g, '');
-    if (cleanPhone.startsWith('0')) {
-      cleanPhone = '972' + cleanPhone.substring(1);
+    const typed = phoneInput.trim();
+    const cleanPhone = normalizePhone(typed);
+    if (!cleanPhone) {
+      alert('זה לא נראה כמו מספר טלפון. יש להזין מספר מלא, למשל 050-123-4567.');
+      return;
     }
-    updateCrm(name, { phone: cleanPhone });
+    // נשמר בשני המקומות: בשדה שכפתורי הוואטסאפ קוראים, ובשדה "טלפון"
+    // שמוצג ב"פרטים ומידע מלאים" — כדי שלא יישאר שם הערך השגוי הישן.
+    updateCrm(name, { phone: cleanPhone, customFields: { ...(crmData.customFields || {}), 'טלפון': typed } });
     const reverseMapRaw = localStorage.getItem('reverseHeaderMap');
     const reverseHeaderMap = reverseMapRaw ? JSON.parse(reverseMapRaw) : {};
     const backendFieldKey = reverseHeaderMap['טלפון'] || 'טלפון';
-    const outcome = await updateDonorFieldQueued({ name, field: backendFieldKey, value: cleanPhone });
+    const outcome = await updateDonorFieldQueued({ name, field: backendFieldKey, value: typed });
     if (outcome.status === 'failed') {
       alert('הטלפון נשמר בכרטיס המקומי, אך לא נשמר בגיליון: ' + outcome.error);
       return;
@@ -298,16 +309,13 @@ export function ProfileModal({ name, onClose, backLabel, siblings, onSelectSibli
     setEditingPhone(false);
   };
 
-  const resolvedPhone = (() => {
-    const raw = crmData.phone || (donor as any)['טלפון'] || '';
-    let n = String(raw).replace(/\D/g, '');
-    if (n.startsWith('0')) n = '972' + n.substring(1);
-    return n;
-  })();
+  const resolvedPhone = contactPhone(crmData, donor);
+  // יש משהו שמור בשדה הטלפון, אבל הוא לא מספר תקין (למשל כתובת מייל)
+  const savedPhoneInvalid = !resolvedPhone && !!rawPhoneText(crmData, donor);
 
   const openWhatsApp = () => {
     if (!resolvedPhone) {
-      setPhoneInput('');
+      setPhoneInput(savedPhoneInvalid ? '' : rawPhoneText(crmData, donor));
       setEditingPhone(true);
       return;
     }
@@ -867,7 +875,14 @@ export function ProfileModal({ name, onClose, backLabel, siblings, onSelectSibli
           <div className="fixed inset-0 bg-black/50 z-[210] flex items-center justify-center p-4">
             <div className="bg-white rounded-2xl p-5 w-full max-w-sm">
               <h3 className="font-bold text-lg mb-2">מספר טלפון ל-WhatsApp</h3>
-              <p className="text-sm text-gray-500 mb-4">הכנס את מספר הטלפון פעם אחת (יישמר באפליקציה).</p>
+              {savedPhoneInvalid ? (
+                <p className="text-sm text-red-600 mb-4 leading-relaxed">
+                  מה ששמור כרגע בשדה הטלפון אינו מספר תקין: <span dir="ltr" className="font-bold">{rawPhoneText(crmData, donor)}</span>.<br />
+                  הזינו כאן את המספר הנכון, והוא יחליף את הישן.
+                </p>
+              ) : (
+                <p className="text-sm text-gray-500 mb-4">הכנס את מספר הטלפון פעם אחת (יישמר באפליקציה).</p>
+              )}
               <input 
                 type="tel"
                 value={phoneInput}
@@ -890,13 +905,13 @@ export function ProfileModal({ name, onClose, backLabel, siblings, onSelectSibli
       {isMeetingOpen && <MeetingModal onClose={() => setIsMeetingOpen(false)} donorName={name} />}
       {isDateConverterOpen && <DateConverterModal onClose={() => setIsDateConverterOpen(false)} />}
       {isMergeOpen && <MergeContactsModal onClose={() => setIsMergeOpen(false)} presetName={name} onMerged={onClose} />}
-      {thankYouInfo && <ThankYouModal donorName={name} amount={thankYouInfo.amount} phone={crmData.phone || (donor as any)['טלפון'] || ''} onClose={() => setThankYouInfo(null)} />}
+      {thankYouInfo && <ThankYouModal donorName={name} amount={thankYouInfo.amount} phone={resolvedPhone} onClose={() => setThankYouInfo(null)} />}
       {letterInfo && (
         <ThankYouLetterModal
           donorName={name}
           amount={letterInfo.amount}
           date={letterInfo.date}
-          phone={crmData.phone || (donor as any)['טלפון'] || ''}
+          phone={resolvedPhone}
           onClose={() => setLetterInfo(null)}
         />
       )}
