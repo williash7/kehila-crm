@@ -107,8 +107,8 @@ export function HkWhatsAppModal({ onClose, initialKind = 'thanks' }: { onClose: 
   const updateGreeting = (r: typeof recipients[number], value: string) => {
     const key = greetingNameKey(r.key, langOf(r.key));
     const nextNames = { ...greetingNames };
-    if (value.trim()) nextNames[key] = value;
-    else delete nextNames[key];
+    // משאירים גם מחרוזת ריקה בזמן הקלדה, כדי שאפשר למחוק שם ישן ולהקליד חדש.
+    nextNames[key] = value;
     setGreetingNames(nextNames);
     saveGreetingNames(nextNames);
   };
@@ -302,7 +302,7 @@ export function HkWhatsAppModal({ onClose, initialKind = 'thanks' }: { onClose: 
                   <div className="min-w-0 flex-1" onClick={() => setSelectedDonor(r.name.split(' / ')[0])}>
                     <div className="text-sm font-bold text-[#0D1B2A] truncate">{r.name}</div>
                     <div className="text-[11px] text-gray-500" dir="rtl">
-                      ₪{r.amount.toLocaleString()} לחודש
+                      ₪{r.amount.toLocaleString()} {kind === 'failure' ? 'חיוב שלא הושלם' : 'לחודש'}
                       {r.reason ? <span className="text-red-500"> · {r.reason}</span> : null}
                       {r.installments ? <span className="text-indigo-600"> · תשלומים {r.installments.paid}/{r.installments.total}</span> : null}
                     </div>
