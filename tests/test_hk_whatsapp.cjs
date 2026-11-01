@@ -118,3 +118,46 @@ console.log('ט. חלון תשלומי אשראי: רצות וגמורות, ות
   assert.ok(modal.includes('<InstallmentsModal'));
 }
 console.log('✓ חלון תשלומי אשראי');
+
+console.log('י. הודעת כשל אישית, עדינה, מדויקת ומרוסנת:');
+{
+  const templateHe = B.DEFAULT_TEMPLATES.failure.he;
+  const templateRu = B.DEFAULT_TEMPLATES.failure.ru;
+  assert.ok(templateHe.includes('קודם כול') && templateHe.includes('תודה רבה'));
+  assert.ok(templateHe.includes('לא עבר הפעם'));
+  assert.ok(!templateHe.includes('לעדכן את פרטי האשראי'));
+  assert.ok(templateRu.includes('благодар') && templateRu.includes('не прошёл'));
+  const donor = { name: 'דוד כהן', amount: 80, reason: 'מידע פרטי של הספק' };
+  const msg = B.fillTemplate(templateHe, donor, { signer: 'הרב אשר', org: 'חב"ד בעליה' });
+  assert.ok(msg.includes('דוד כהן'));
+  assert.ok(msg.includes('80 ₪'));
+  assert.ok(msg.includes('חב"ד בעליה'));
+  assert.ok(!msg.includes(donor.reason), 'לא שולחים לתורם סיבת כשל פנימית');
+  assert.ok(!/\{[^}]+\}/.test(msg));
+
+  const multipleOrders = [
+    { id: '15', name: 'אותו תורם', amount: 500, active: true, remaining: 5, lastBilled: '01/09/2026', phone: '0506666666' },
+    { id: '16', name: 'אותו תורם', amount: 250, active: true, remaining: 5, lastBilled: '01/09/2026', phone: '0506666666' },
+  ];
+  const onlySecondFailed = [{ name: 'אותו תורם', order: '16', amount: 200, date: '15/10/2026', reason: 'סירוב' }];
+  const oneFailure = B.buildRecipients('failure', multipleOrders, onlySecondFailed, {}, {}, 2);
+  assert.strictEqual(oneFailure.length, 1);
+  assert.strictEqual(oneFailure[0].amount, 200, 'נשלח סכום החיוב שנכשל בלבד, לא סכום כל ההוראות');
+}
+
+console.log('יא. נוסח ישן נשמר: משדרגים רק אם לא נערך בידי המשתמש:');
+{
+  const key = 'kehila:hk-broadcast:templates';
+  const oldTemplate = 'שלום {שם},\nרצינו לעדכן שהחיוב החודשי של הוראת הקבע שלך (₪{סכום}) לא עבר החודש. ייתכן שתוקף הכרטיס פג או שהכרטיס הוחלף.\nנשמח אם תוכל/י לעדכן את פרטי האשראי — אפשר פשוט להשיב להודעה הזו ונסדר את זה יחד.\nתודה רבה על השותפות!\n\n{חותם}';
+  store[key] = JSON.stringify({ 'failure:he': oldTemplate, 'failure:ru': 'נוסח רוסי אישי של התורם' });
+  assert.strictEqual(B.loadTemplate('failure', 'he'), B.DEFAULT_TEMPLATES.failure.he);
+  assert.strictEqual(B.loadTemplate('failure', 'ru'), 'נוסח רוסי אישי של התורם');
+  B.saveTemplate('failure', 'he', 'נוסח מיוחד');
+  assert.strictEqual(B.loadTemplate('failure', 'he'), 'נוסח מיוחד');
+  delete store[key];
+
+  B.saveGreetingNames({ 'ru:972501112233': 'Яков' });
+  assert.deepStrictEqual(B.loadGreetingNames(), { 'ru:972501112233': 'Яков' });
+  assert.strictEqual(B.greetingNameKey('972501112233', 'he'), 'he:972501112233');
+}
+console.log('✓ הודעות רגישות ואוטומציה אישית');
