@@ -27,11 +27,22 @@ export interface Recipient {
   phone: string;
   /** סך החיוב החודשי בכל ההוראות הפעילות של אותו אדם */
   amount: number;
-  /** סיבת הכשל — רק בהודעת כשל חיוב */
+  /** סיבת הכשל — לניתוח פנימי בלבד, לא משולבת בהודעה כברירת מחדל */
   reason: string;
+  /** תאריך כשל החיוב, אם קיים מועד יחיד. */
+  failureDate?: string;
+  /** מספר החיובים שעדיין פתוחים עבור אותו נמען. */
+  failureCount?: number;
   orderIds: string[];
   /** תרומה בתשלומי אשראי (לא הוראת קבע) — כמה תשלומים עברו מתוך כמה */
   installments?: { paid: number; total: number };
+}
+
+/** מציג תאריך ISO בפורמט DD/MM/YYYY במכתב, ללא שינוי הנתונים במאגר. */
+function failureDateDisplay(value: string): string {
+  const raw = String(value || '').trim();
+  const iso = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  return iso ? `${iso[3].padStart(2, '0')}/${iso[2].padStart(2, '0')}/${iso[1]}` : raw;
 }
 
 // ── תרומה בתשלומי אשראי כ"הוראת קבע" לצורך הודעות ────────────────────────
@@ -134,11 +145,13 @@ export function buildRecipients(
   (hk || []).forEach(h => {
     if (!h?.name) return;
     let reason = '';
+    let failureDate = '';
     let failedAmount: number | null = null;
     if (kind === 'failure') {
       const fail = openFailureFor(h, failIdx);
       if (!fail) return;
       reason = String(fail.reason || '').trim();
+      failureDate = failureDateDisplay(fail.date);
       const reportedAmount = Number(fail.amount);
       if (Number.isFinite(reportedAmount) && reportedAmount > 0) failedAmount = reportedAmount;
     } else {
@@ -153,11 +166,20 @@ export function buildRecipients(
     const amount = failedAmount ?? (Number(h.amount) || 0);
     if (existing) {
       existing.amount += amount;
+      if (kind === 'failure') {
+        existing.failureCount = (existing.failureCount || 1) + 1;
+        if (existing.failureDate !== failureDate) existing.failureDate = '';
+      }
       if (h.id) existing.orderIds.push(String(h.id));
       if (!existing.reason && reason) existing.reason = reason;
       if (!existing.name.split(' / ').includes(h.name)) existing.name += ` / ${h.name}`;
     } else {
-      byKey.set(key, { key, name: h.name, phone, amount, reason, orderIds: h.id ? [String(h.id)] : [] });
+      byKey.set(key, {
+        key, name: h.name, phone, amount, reason,
+        failureDate: kind === 'failure' ? failureDate : undefined,
+        failureCount: kind === 'failure' ? 1 : undefined,
+        orderIds: h.id ? [String(h.id)] : [],
+      });
     }
   });
 
@@ -183,12 +205,37 @@ export function buildRecipients(
 export interface TemplateVars {
   signer: string;
   org: string;
+  lang?: BroadcastLang;
 }
 
-export function fillTemplate(template: string, r: Pick<Recipient, 'name' | 'amount' | 'reason'>, vars: TemplateVars): string {
+/** נוסח מדויק לחיוב אחד או לכמה חיובים, בלי להמציא תאריך או לייחס סכום מצטבר ליום יחיד. */
+function failureDescription(
+  r: Pick<Recipient, 'amount' | 'failureDate' | 'failureCount'>,
+  lang: BroadcastLang,
+): string {
+  const sum = (Number(r.amount) || 0).toLocaleString('he-IL');
+  const count = r.failureCount || 1;
+  const date = r.failureDate?.trim();
+  if (lang === 'ru') {
+    return count > 1
+      ? `несколько платежей по регулярному пожертвованию на общую сумму ${sum} ₪ не прошли`
+      : `платёж по регулярному пожертвованию на сумму ${sum} ₪${date ? ` от ${date}` : ''} не прошёл`;
+  }
+  return count > 1
+    ? `כמה חיובים של הוראת הקבע, בסכום כולל של ${sum} ₪, לא הושלמו`
+    : `החיוב בהוראת הקבע בסך ${sum} ₪${date ? `, מתאריך ${date}` : ''} לא הושלם`;
+}
+
+export function fillTemplate(
+  template: string,
+  r: Pick<Recipient, 'name' | 'amount' | 'reason' | 'failureDate' | 'failureCount'>,
+  vars: TemplateVars,
+): string {
   return template
+    .replace(/\{פרטי חיוב\}/g, failureDescription(r, vars.lang || 'he'))
     .replace(/\{שם\}/g, r.name)
     .replace(/\{סכום\}/g, (Number(r.amount) || 0).toLocaleString('he-IL'))
+    .replace(/\{תאריך\}/g, r.failureDate || '')
     .replace(/\{סיבה\}/g, r.reason || '')
     .replace(/\{חותם\}/g, vars.signer)
     .replace(/\{ארגון\}/g, vars.org);
@@ -200,7 +247,9 @@ export function waLink(phone: string, text: string): string {
 
 export const PLACEHOLDERS: { token: string; label: string }[] = [
   { token: '{שם}', label: 'שם' },
-  { token: '{סכום}', label: 'סכום חודשי' },
+  { token: '{סכום}', label: 'סכום' },
+  { token: '{פרטי חיוב}', label: 'פרטי חיוב (כולל תאריך)' },
+  { token: '{תאריך}', label: 'תאריך כשל' },
   { token: '{סיבה}', label: 'סיבת הכשל' },
   { token: '{חותם}', label: 'חותם' },
   { token: '{ארגון}', label: 'ארגון' },
@@ -216,8 +265,8 @@ export const DEFAULT_TEMPLATES: Record<BroadcastKind, Record<BroadcastLang, stri
     ru: 'Здравствуйте, {שם}!\n\n\nС уважением,\n{חותם}',
   },
   failure: {
-    he: 'שלום {שם},\n\nקודם כול, רציתי לומר לך תודה רבה על השותפות הקבועה שלך בפעילות {ארגון}. אנחנו מעריכים מאוד את העזרה שלך, שבזכותה אנחנו יכולים להמשיך לפעול למען הקהילה.\n\nרציתי רק לעדכן שהחיוב האחרון של הוראת הקבע, בסך {סכום} ₪, לא עבר הפעם. לפעמים זו פשוט תקלה טכנית.\n\nכשיהיה לך נוח, אשמח שנבדוק יחד איך אפשר לסדר את העניין.\n\nושוב, תודה רבה על כל השותפות והעזרה!\n\n{חותם}',
-    ru: 'Здравствуйте, {שם}!\n\nПрежде всего хочу от души поблагодарить Вас за постоянную поддержку {ארגון}. Мы очень ценим Ваше участие, благодаря которому можем продолжать нашу работу для всей общины.\n\nХотел только сообщить, что последний ежемесячный платёж в размере {סכום} ₪ на этот раз не прошёл. Иногда такое случается просто по техническим причинам.\n\nКогда Вам будет удобно, будем рады вместе разобраться, как можно решить этот вопрос.\n\nЕщё раз большое спасибо за Вашу помощь и поддержку!\n\n{חותם}',
+    he: 'שלום {שם},\n\nקודם כול, תודה רבה על השותפות הקבועה שלך בפעילות של {ארגון}. התמיכה שלך חשובה לנו מאוד, ובזכות שותפים כמוך אנחנו יכולים להמשיך לפעול למען הקהילה.\n\nרק רציתי לעדכן שלפי הרישום אצלנו, {פרטי חיוב}. לפעמים זו פשוט תקלה טכנית קטנה.\n\nכשיתאפשר לך, אשמח אם יהיה לך זמן לבדוק את העניין. ואם צריך עזרה, אפשר פשוט לענות לי כאן.\n\nתודה רבה על הכול!\n{חותם}',
+    ru: 'Здравствуйте, {שם}!\n\nПрежде всего хочу от всего сердца поблагодарить Вас за постоянную поддержку {ארגון}. Ваше участие очень важно для нашей общины.\n\nНебольшое уточнение: по нашим данным, {פרטי חיוב}. Иногда это просто технический сбой.\n\nКогда будет удобно, буду благодарен, если Вы сможете проверить. Если нужна помощь, просто ответьте на это сообщение.\n\nБольшое спасибо за Вашу поддержку!\n{חותם}',
   },
 };
 
@@ -226,6 +275,8 @@ export const DEFAULT_TEMPLATES: Record<BroadcastKind, Record<BroadcastLang, stri
 // בדיוק מאיפה שעצרת, ובחודש הבא מתחילים סבב חדש מעצמו.
 
 export function roundKey(kind: BroadcastKind, now: Date = new Date()): string {
+  // כשל חיוב הוא אירוע, לא קמפיין חודשי. אותו אירוע לא חוזר לתור בסוף החודש.
+  if (kind === 'failure') return 'kehila:hk-broadcast:sent:failure:incidents';
   return `kehila:hk-broadcast:sent:${kind}:${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 }
 
