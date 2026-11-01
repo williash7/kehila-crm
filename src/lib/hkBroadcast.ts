@@ -329,6 +329,15 @@ export function saveLangs(langs: Record<string, BroadcastLang>) {
   writeJson(LANG_KEY, langs);
 }
 
+// שם להצגה בהודעה. נשמר בנפרד משם התורם במאגר, ואפשר למשל לרשום שם ברוסית.
+const DISPLAY_NAMES_KEY = 'kehila:hk-broadcast:display-names';
+export function loadDisplayNames(): Record<string, string> {
+  return readJson<Record<string, string>>(DISPLAY_NAMES_KEY, {});
+}
+export function saveDisplayNames(names: Record<string, string>): void {
+  writeJson(DISPLAY_NAMES_KEY, names);
+}
+
 // ── תמונה מצורפת ───────────────────────────────────────────────────────────
 // קישור wa.me יכול לשאת רק טקסט. כשיש תמונה, השליחה עוברת דרך "שיתוף" של
 // הטלפון (navigator.share): וואטסאפ נפתח עם התמונה והטקסט, ובוחרים איש קשר.
