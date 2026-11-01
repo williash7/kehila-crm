@@ -143,7 +143,7 @@ export function HkWhatsAppModal({ onClose, initialKind = 'thanks' }: { onClose: 
     // לפתוח הודעת כשל שעברו עליה יותר מ-14 ימים.
     if (kind === 'failure') {
       const current = buildRecipients('failure', hk, failures, crm, donors, threshold, donations, new Date());
-      if (!current.some(item => item.key === r.key && item.orderIds.join(',') === r.orderIds.join(','))) {
+      if (!current.some(item => sentKey(item) === sentKey(r))) {
         alert('עברו יותר מ-14 ימים ממועד הכשל, ולכן ההודעה כבר אינה זמינה לשליחה.');
         return;
       }
@@ -309,6 +309,12 @@ export function HkWhatsAppModal({ onClose, initialKind = 'thanks' }: { onClose: 
           </div>
         </div>
 
+        {/* סיכום נמעני כשל: גם מי שחסר לו טלפון לא נעלם מהרשימה. */}
+        {kind === 'failure' && recipients.length > 0 && (
+          <div className="mb-3 px-3 py-2 rounded-xl bg-white border border-[#EDE6D6] text-xs text-gray-600">
+            {recipients.length} נמענים בטווח 14 הימים · {withPhone.length} עם טלפון · {noPhone.length} ללא מספר טלפון
+          </div>
+        )}
         {/* רשימה */}
         {recipients.length === 0 ? (
           <div className="text-center text-sm text-gray-500 py-8">
@@ -328,6 +334,9 @@ export function HkWhatsAppModal({ onClose, initialKind = 'thanks' }: { onClose: 
                     <div className="text-[11px] text-gray-500" dir="rtl">
                       ₪{r.amount.toLocaleString()} {kind === 'failure' ? 'חיוב שלא הושלם' : 'לחודש'}
                       {kind === 'failure' && r.failureDate ? <span> · {r.failureDate}</span> : null}
+                      {kind === 'failure' && r.failureType === 'donation'
+                        ? <span className="text-amber-700"> · אין התאמה מאומתת להוראת קבע; נוסח ההודעה כללי</span>
+                        : null}
                       {r.reason ? <span className="text-red-500"> · {r.reason}</span> : null}
                       {r.installments ? <span className="text-indigo-600"> · תשלומים {r.installments.paid}/{r.installments.total}</span> : null}
                     </div>
@@ -393,6 +402,7 @@ export function HkWhatsAppModal({ onClose, initialKind = 'thanks' }: { onClose: 
                   {noPhone.map(r => (
                     <button key={r.key} onClick={() => setSelectedDonor(r.name.split(' / ')[0])} className="w-full text-right bg-white/60 rounded-xl px-3 py-2 border border-dashed border-[#EDE6D6] text-sm text-gray-600">
                       {r.name}
+                      {kind === 'failure' && r.failureDate ? <span className="mr-2 text-[11px] text-gray-400">· {r.failureDate}</span> : null}
                     </button>
                   ))}
                 </div>
