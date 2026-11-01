@@ -284,6 +284,22 @@ export function saveLangs(langs: Record<string, BroadcastLang>) {
   writeJson(LANG_KEY, langs);
 }
 
+// שם לפנייה, לפי איש קשר ושפת ההודעה. שימושי במיוחד כאשר השם במאגר
+// בעברית אבל ההודעה ברוסית. לא משנה את רשומת איש הקשר עצמה.
+const GREETING_NAME_KEY = 'kehila:hk-broadcast:greeting-names';
+
+export function loadGreetingNames(): Record<string, string> {
+  return readJson<Record<string, string>>(GREETING_NAME_KEY, {});
+}
+
+export function saveGreetingNames(names: Record<string, string>) {
+  writeJson(GREETING_NAME_KEY, names);
+}
+
+export function greetingNameKey(contactKey: string, lang: BroadcastLang): string {
+  return `${lang}:${contactKey}`;
+}
+
 // ── תמונה מצורפת ───────────────────────────────────────────────────────────
 // קישור wa.me יכול לשאת רק טקסט. כשיש תמונה, השליחה עוברת דרך "שיתוף" של
 // הטלפון (navigator.share): וואטסאפ נפתח עם התמונה והטקסט, ובוחרים איש קשר.
