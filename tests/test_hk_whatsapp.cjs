@@ -163,4 +163,17 @@ console.log('יא. נוסח ישן נשמר: משדרגים רק אם לא נע�
   assert.deepStrictEqual(B.loadGreetingNames(), { 'ru:972501112233': 'Яков' });
   assert.strictEqual(B.greetingNameKey('972501112233', 'he'), 'he:972501112233');
 }
+
+console.log('יב. עדכון נוסח ברירת מחדל קודם תוך שמירת נוסח אישי:');
+{
+  const key = 'kehila:hk-broadcast:templates';
+  const previous = 'שלום {שם},\n\nקודם כול, תודה רבה על השותפות הקבועה שלך בפעילות של {ארגון}. התמיכה שלך חשובה לנו מאוד, ובזכות שותפים כמוך אנחנו יכולים להמשיך לפעול למען הקהילה.\n\nרק רציתי לעדכן שלפי הרישום אצלנו, {פרטי חיוב}. לפעמים זו פשוט תקלה טכנית קטנה.\n\nכשיתאפשר לך, אשמח אם יהיה לך זמן לבדוק את העניין. ואם צריך עזרה, אפשר פשוט לענות לי כאן.\n\nתודה רבה על הכול!\n{חותם}';
+  store[key] = JSON.stringify({ 'failure:he': previous });
+  assert.strictEqual(B.loadTemplate('failure', 'he'), B.DEFAULT_TEMPLATES.failure.he);
+  assert.ok(B.loadTemplate('failure', 'he').startsWith('מה שלומך, {שם}?'));
+  B.saveTemplate('failure', 'he', 'הודעה אישית שלי');
+  assert.strictEqual(B.loadTemplate('failure', 'he'), 'הודעה אישית שלי');
+  delete store[key];
+}
+
 console.log('✓ הודעות רגישות ואוטומציה אישית');
