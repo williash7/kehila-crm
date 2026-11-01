@@ -101,4 +101,40 @@ assert.strictEqual(mixed.length, 1, 'A fresh failure remains sendable when anoth
 assert.strictEqual(mixed[0].amount, 70, 'Never include an old failed charge in the sum');
 assert.strictEqual(mixed[0].failureDate, '31/10/2026');
 
+
+// כשלי חיוב חדשים שהתקבלו במערכת ללא הוראת קבע תואמת אינם נעלמים.
+// זהו המקרה שבו לשונית שגיאות מציגה חיובים מ-1/11 ו-22/10,
+// אבל מסך הוואטסאפ הציג רק הוראה קיימת מ-20/10.
+const screenshotCases = buildRecipients('failure', [
+  {...oneOrder, id:'002', name:'אילון מדיה - יוסף ונחמי אילון', amount:250, lastBilled:'01/10/2026'},
+], [
+  {name:'שלום בוהרון', date:'01/11/2026', amount:200, reason:'סירוב - מסגרת מלאה או חוק שגוי'},
+  {name:'מושקי גורליק', date:'22/10/2026', amount:100, reason:'סירוב - מסגרת מלאה או חוק שגוי'},
+  {name:'אילון מדיה - יוסף ונחמי אילון', order:'002', date:'20/10/2026', amount:250, reason:'כרטיס (002)'},
+], {
+  'שלום בוהרון':{phone:'0501111111'},
+  'אילון מדיה - יוסף ונחמי אילון':{phone:'0502222222'},
+}, {}, 2, [], new Date(2026,10,1));
+assert.strictEqual(screenshotCases.length, 3, 'Three recent failures must be in the recipient list');
+assert.deepStrictEqual(screenshotCases.map(r=>r.name).sort(), [
+  'שלום בוהרון','מושקי גורליק','אילון מדיה - יוסף ונחמי אילון',
+].sort());
+assert.strictEqual(screenshotCases.filter(r=>r.phone).length,2);
+const oldNotice = screenshotCases.find(r=>r.name==='מושקי גורליק');
+assert.strictEqual(oldNotice.failureDate,'22/10/2026');
+assert.strictEqual(oldNotice.failureType,'donation');
+assert.ok(fillTemplate(DEFAULT_TEMPLATES.failure.he,oldNotice,varsHe).includes('של התרומה'));
+assert.ok(!fillTemplate(DEFAULT_TEMPLATES.failure.he,oldNotice,varsHe).includes('הוראת הקבע'));
+const standingNotice = screenshotCases.find(r=>r.name.includes('אילון'));
+assert.strictEqual(standingNotice.failureType,'standing');
+assert.ok(fillTemplate(DEFAULT_TEMPLATES.failure.he,standingNotice,varsHe).includes('של הוראת הקבע'));
+
+// הוראת קבע שבוטלה אוטומטית ביום הקמתה עדיין דורשת טיפול,
+// בשונה מהוראה שבוטלה במכוון או חויבה בהצלחה אחר כך.
+const rejectedSetup = {...oneOrder,id:'701',name:'הוראה שלא הוקמה',startDate:'01/11/2026',
+  cancelDate:'01/11/2026',notes:'בוטל אוטומטית: סורבה ביום ההקמה',lastBilled:''};
+const setupFailure = {order:'701',name:'הוראה שלא הוקמה',date:'01/11/2026',amount:100,reason:'סורב'};
+assert.strictEqual(buildRecipients('failure',[rejectedSetup],[setupFailure],{},{},2,[],new Date(2026,10,1)).length,1);
+assert.strictEqual(buildRecipients('failure',[{...rejectedSetup,notes:''}],[setupFailure],{},{},2,[],new Date(2026,10,1)).length,0);
+
 console.log('✓ ניסוח כשל חיוב אישי, עדין ועם סכום/תאריך מדויקים');
