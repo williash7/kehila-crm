@@ -54,7 +54,7 @@ assert.strictEqual(thanks.find(r => r.name === 'שרה לוי').phone, '97252666
 assert.strictEqual(thanks.find(r => r.name === 'בלי טלפון').phone, '');
 
 console.log('ד. כשל חיוב: רק כשלים פתוחים:');
-const fail = B.buildRecipients('failure', hk, failures, crm, donors, 2);
+const fail = B.buildRecipients('failure', hk, failures, crm, donors, 2, [], new Date(2026, 9, 10));
 assert.deepStrictEqual(fail.map(r => r.name), ['יוסי נכשל']);
 assert.strictEqual(fail[0].reason, 'כרטיס פג תוקף');
 
@@ -143,7 +143,7 @@ console.log('י. הודעת כשל אישית, עדינה, מדויקת ומרו
     { id: '16', name: 'אותו תורם', amount: 250, active: true, remaining: 5, lastBilled: '01/09/2026', phone: '0506666666' },
   ];
   const onlySecondFailed = [{ name: 'אותו תורם', order: '16', amount: 200, date: '15/10/2026', reason: 'סירוב' }];
-  const oneFailure = B.buildRecipients('failure', multipleOrders, onlySecondFailed, {}, {}, 2);
+  const oneFailure = B.buildRecipients('failure', multipleOrders, onlySecondFailed, {}, {}, 2, [], new Date(2026, 9, 20));
   assert.strictEqual(oneFailure.length, 1);
   assert.strictEqual(oneFailure[0].amount, 200, 'נשלח סכום החיוב שנכשל בלבד, לא סכום כל ההוראות');
 }

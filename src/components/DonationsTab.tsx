@@ -23,7 +23,7 @@ import { DONATION_COLUMNS, STANDING_ORDER_COLUMNS } from '../lib/exportRows';
 import { ManualFailureDialog } from './ManualFailureDialog';
 import { HkWhatsAppModal } from './HkWhatsAppModal';
 import { InstallmentsModal } from './InstallmentsModal';
-import type { BroadcastKind } from '../lib/hkBroadcast';
+import { buildRecipients, type BroadcastKind } from '../lib/hkBroadcast';
 
 type MainTab = 'donations' | 'hk' | 'errors' | 'payments';
 
@@ -131,6 +131,11 @@ export function DonationsTab({ onAddDonation, openTarget, onOpenTargetConsumed }
   const [errorDateTo, setErrorDateTo] = useState('');
   const [errorSort, setErrorSort] = usePersistentListSort('kehila:list-sort:charge-failures');
   const threshold = settings.hkExpiringThreshold ?? 2;
+  // ההיסטוריה נשמרת ברשימת הכשלים; רק פעולת שליחת ההודעה מוגבלת ל-14 ימים.
+  const recentFailureContactCount = useMemo(
+    () => buildRecipients('failure', hk, failures, crm, donors, threshold, donations).length,
+    [hk, failures, crm, donors, threshold, donations],
+  );
   const failIdx = useMemo(() => indexFailures(failures), [failures]);
   // רק כשלים שעדיין פתוחים — ראה openFailureFor. כשל שנפתר מזמן לא צריך
   // לצבוע את השורה באדום ולא להקפיץ אותה לראש הרשימה.
@@ -410,12 +415,14 @@ export function DonationsTab({ onAddDonation, openTarget, onOpenTargetConsumed }
               בלי המידע שבגללו מסתכלים על המסך הזה מלכתחילה.
             */}
             <div className="flex items-center gap-2 mb-2">
-              <button
-                onClick={() => setWaKind(hkFilter === 'errors' ? 'failure' : 'thanks')}
-                className="h-9 px-3 rounded-xl bg-green-600 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm active:scale-95"
-              >
-                <MessageSquare size={14} /> וואטסאפ לכולם
-              </button>
+              {(hkFilter !== 'errors' || recentFailureContactCount > 0) && (
+                <button
+                  onClick={() => setWaKind(hkFilter === 'errors' ? 'failure' : 'thanks')}
+                  className="h-9 px-3 rounded-xl bg-green-600 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm active:scale-95"
+                >
+                  <MessageSquare size={14} /> וואטסאפ לכולם
+                </button>
+              )}
               <button
                 onClick={() => setInstOpen(true)}
                 className="h-9 px-3 rounded-xl bg-indigo-50 text-indigo-700 border border-indigo-100 text-xs font-bold shadow-sm active:scale-95"
@@ -504,13 +511,18 @@ export function DonationsTab({ onAddDonation, openTarget, onOpenTargetConsumed }
                 <ListSortControl value={errorSort} onChange={setErrorSort} />
               </div>
             </details>
-            {errorList.length > 0 && (
+            {errorList.length > 0 && recentFailureContactCount > 0 && (
               <button
                 onClick={() => setWaKind('failure')}
                 className="w-full h-10 rounded-xl bg-green-600 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm active:scale-95"
               >
                 <MessageSquare size={14} /> וואטסאפ לכל מי שהחיוב שלו נכשל
               </button>
+            )}
+            {errorList.length > 0 && recentFailureContactCount === 0 && (
+              <p className="text-[11px] text-gray-500 leading-relaxed px-1">
+                אין כרגע כשלי חיוב שניתן לשלוח לגביהם הודעה: אפשרות הפנייה זמינה רק עד 14 ימים מיום הכשל. התיעוד ההיסטורי נשאר כאן.
+              </p>
             )}
             {errorList.length === 0 ? (
               <EmptyState icon="✓" tone="good" title="אין שגיאות חיוב" hint="כל החיובים בחודש האחרון עברו בהצלחה." />
