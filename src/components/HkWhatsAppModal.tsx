@@ -33,6 +33,8 @@ export function HkWhatsAppModal({ onClose, initialKind = 'thanks' }: { onClose: 
   const [selectedDonor, setSelectedDonor] = useState<string | null>(null);
   const [greetingNames, setGreetingNames] = useState<Record<string, string>>(() => loadGreetingNames());
   const [editingGreeting, setEditingGreeting] = useState<string | null>(null);
+  // וואטסאפ לא מחזיר אישור שההודעה נשלחה. מסמנים הודעת כשל רק אחרי אישור ידני.
+  const [pendingConfirmation, setPendingConfirmation] = useState<string | null>(null);
   const [image, setImage] = useState<File | null>(null);
   const [imageUrl, setImageUrl] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
@@ -64,13 +66,19 @@ export function HkWhatsAppModal({ onClose, initialKind = 'thanks' }: { onClose: 
   );
   const withPhone = recipients.filter(r => r.phone);
   const noPhone = recipients.filter(r => !r.phone);
-  const sentCount = withPhone.filter(r => sent[r.key]).length;
-  const next = withPhone.find(r => !sent[r.key]);
+  // מפתח לפי אירוע עבור כשלים: חיוב חדש לא יתבלבל עם כשל קודם באותו טלפון.
+  const sentKey = (r: typeof recipients[number]) =>
+    kind === 'failure'
+      ? `${r.key}:${r.failureDate || 'multiple'}:${r.failureCount || 1}:${r.amount}:${r.orderIds.join(',')}`
+      : r.key;
+  const sentCount = withPhone.filter(r => sent[sentKey(r)]).length;
+  const next = withPhone.find(r => !sent[sentKey(r)]);
 
   const switchKind = (k: BroadcastKind) => {
     setKind(k);
     setTemplates({ he: loadTemplate(k, 'he'), ru: loadTemplate(k, 'ru') });
     setSent(loadSent(k));
+    setPendingConfirmation(null);
   };
 
   const langOf = (key: string): BroadcastLang => langs[key] || defaultLang;
@@ -118,6 +126,7 @@ export function HkWhatsAppModal({ onClose, initialKind = 'thanks' }: { onClose: 
     return fillTemplate(templates[lang], { ...r, name: greetingFor(r) }, {
       signer: [signerIn(lang), orgNameIn(lang)].filter(Boolean).join('\n'),
       org: orgNameIn(lang),
+      lang,
     });
   };
 
@@ -131,12 +140,16 @@ export function HkWhatsAppModal({ onClose, initialKind = 'thanks' }: { onClose: 
 
   const send = async (r: typeof recipients[number]) => {
     const text = messageFor(r);
+    const afterOpen = () => {
+      if (kind === 'failure') setPendingConfirmation(sentKey(r));
+      else markSent(sentKey(r), true);
+    };
     if (image && canShareFile(image)) {
       // גיבוי: הטקסט גם בלוח ההעתקה, למקרה שאפליקציה כלשהי משמיטה את הכיתוב
       navigator.clipboard?.writeText(text).catch(() => {});
       try {
         await navigator.share({ files: [image], text });
-        markSent(r.key, true);
+        afterOpen();
       } catch (e: any) {
         // ביטול של המשתמש בתפריט השיתוף — לא מסמנים כנשלח
         if (e?.name !== 'AbortError') alert('השיתוף נכשל: ' + String(e?.message || e));
@@ -154,7 +167,7 @@ export function HkWhatsAppModal({ onClose, initialKind = 'thanks' }: { onClose: 
       document.body.removeChild(a);
     }
     window.open(waLink(r.phone, text), '_blank');
-    markSent(r.key, true);
+    afterOpen();
   };
 
   const resetRound = () => {
@@ -192,7 +205,7 @@ export function HkWhatsAppModal({ onClose, initialKind = 'thanks' }: { onClose: 
         </div>
         <p className="text-[11px] text-gray-500 mb-3 leading-relaxed">
           {kind === 'failure'
-            ? 'הרשימה כוללת רק מי שיש לו כשל חיוב פתוח. כל הודעה נפתחת בוואטסאפ עם שם התורם והסכום שלא כובד, בנוסח אישי ועדין. יש ללחוץ על שליחה בוואטסאפ עצמו; האפליקציה אינה שולחת ברקע.'
+            ? 'הרשימה כוללת רק חיובים שנכשלו ועדיין לא נרשם אחריהם חיוב מוצלח. כל הודעה נפתחת אישית בוואטסאפ, עם סכום ותאריך כשהם ידועים; יש לשלוח בוואטסאפ עצמו, ואז לסמן שנשלח.'
             : 'נשלח לכל מי שיש לו הוראת קבע פעילה, וגם למי שתרם בתשלומי אשראי שעוד לא הסתיימו (הסכום החודשי). מי שיש לו כמה הוראות מקבל הודעה אחת עם הסכום המצטבר.'}
         </p>
 
@@ -221,7 +234,7 @@ export function HkWhatsAppModal({ onClose, initialKind = 'thanks' }: { onClose: 
             className="w-full bg-[#FAF6EE] border border-[#EDE6D6] rounded-xl p-2.5 text-sm leading-relaxed outline-none focus:border-[#C9A84C]"
           />
           <div className="flex flex-wrap gap-1.5 mt-2">
-            {PLACEHOLDERS.filter(p => kind === 'failure' || p.token !== '{סיבה}').map(p => (
+            {PLACEHOLDERS.filter(p => kind === 'failure' || !['{סיבה}', '{תאריך}', '{פרטי חיוב}'].includes(p.token)).map(p => (
               <button key={p.token} onClick={() => insertToken(p.token)} className="px-2 py-1 rounded-lg bg-[#FAF6EE] border border-[#EDE6D6] text-[11px] text-[#9B7A2F] font-semibold">
                 + {p.label}
               </button>
@@ -270,7 +283,7 @@ export function HkWhatsAppModal({ onClose, initialKind = 'thanks' }: { onClose: 
         {/* התקדמות */}
         <div className="bg-white rounded-2xl border border-[#EDE6D6] p-3 mb-3 shadow-sm">
           <div className="flex items-center justify-between text-xs mb-1.5">
-            <span className="font-bold text-[#0D1B2A]">נשלחו {sentCount} מתוך {withPhone.length}</span>
+            <span className="font-bold text-[#0D1B2A]">{kind === 'failure' ? 'סומנו כנשלחו' : 'נשלחו'} {sentCount} מתוך {withPhone.length}</span>
             <div className="flex items-center gap-3">
               <button onClick={() => setDefaultLang(l => (l === 'he' ? 'ru' : 'he'))} className="text-[11px] text-[#9B7A2F] font-semibold">
                 שפת ברירת מחדל: {defaultLang === 'he' ? 'עברית' : 'רוסית'}
@@ -295,14 +308,17 @@ export function HkWhatsAppModal({ onClose, initialKind = 'thanks' }: { onClose: 
         ) : (
           <div className="space-y-2">
             {withPhone.map(r => {
-              const done = !!sent[r.key];
+              const key = sentKey(r);
+              const done = !!sent[key];
               const isNext = next?.key === r.key;
+              const awaitingConfirmation = kind === 'failure' && pendingConfirmation === key;
               return (
                 <div key={r.key} className={`bg-white rounded-xl p-3 border shadow-sm flex items-center flex-wrap gap-2 ${isNext ? 'border-[#C9A84C]' : 'border-[#EDE6D6]'} ${done ? 'opacity-60' : ''}`}>
                   <div className="min-w-0 flex-1" onClick={() => setSelectedDonor(r.name.split(' / ')[0])}>
                     <div className="text-sm font-bold text-[#0D1B2A] truncate">{r.name}</div>
                     <div className="text-[11px] text-gray-500" dir="rtl">
                       ₪{r.amount.toLocaleString()} {kind === 'failure' ? 'חיוב שלא הושלם' : 'לחודש'}
+                      {kind === 'failure' && r.failureDate ? <span> · {r.failureDate}</span> : null}
                       {r.reason ? <span className="text-red-500"> · {r.reason}</span> : null}
                       {r.installments ? <span className="text-indigo-600"> · תשלומים {r.installments.paid}/{r.installments.total}</span> : null}
                     </div>
@@ -323,12 +339,19 @@ export function HkWhatsAppModal({ onClose, initialKind = 'thanks' }: { onClose: 
                     {langOf(r.key) === 'he' ? 'עב' : 'RU'}
                   </button>
                   {done ? (
-                    <button onClick={() => markSent(r.key, false)} title="בטל סימון" className="shrink-0 h-8 px-2.5 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold flex items-center gap-1">
+                    <button onClick={() => markSent(key, false)} title="בטל סימון" className="shrink-0 h-8 px-2.5 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold flex items-center gap-1">
                       <Check size={14} /> נשלח
+                    </button>
+                  ) : awaitingConfirmation ? (
+                    <button
+                      onClick={() => { markSent(key, true); setPendingConfirmation(null); }}
+                      className="shrink-0 h-8 px-2.5 rounded-lg bg-amber-100 border border-amber-400 text-amber-900 text-xs font-bold flex items-center gap-1"
+                    >
+                      <Check size={14} /> אישור שליחה
                     </button>
                   ) : (
                     <button onClick={() => send(r)} className="shrink-0 h-8 px-3 rounded-lg bg-green-600 text-white text-xs font-bold flex items-center gap-1 active:scale-95">
-                      <MessageSquare size={14} /> שלח
+                      <MessageSquare size={14} /> פתח בוואטסאפ
                     </button>
                   )}
                   {editingGreeting === r.key && (
@@ -374,11 +397,17 @@ export function HkWhatsAppModal({ onClose, initialKind = 'thanks' }: { onClose: 
       {withPhone.length > 0 && (
         <div className="absolute bottom-0 inset-x-0 p-3 bg-gradient-to-t from-[#FAF6EE] via-[#FAF6EE] to-transparent">
           <button
-            onClick={() => next && send(next)}
+            onClick={() => next && (kind === 'failure' && pendingConfirmation === sentKey(next)
+              ? (markSent(sentKey(next), true), setPendingConfirmation(null))
+              : send(next))}
             disabled={!next}
             className="w-full h-12 rounded-2xl bg-green-600 disabled:bg-gray-300 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg active:scale-[0.98]"
           >
-            {next ? <><Send size={16} /> שלח ל{next.name} ({sentCount + 1}/{withPhone.length})</> : <><Check size={16} /> נשלח לכולם</>}
+            {next ? (
+              kind === 'failure' && pendingConfirmation === sentKey(next)
+                ? <><Check size={16} /> סמן כנשלח אחרי שליחה ל{next.name}</>
+                : <><Send size={16} /> {kind === 'failure' ? 'פתח הודעה ל' : 'שלח ל'}{next.name} ({sentCount + 1}/{withPhone.length})</>
+            ) : <><Check size={16} /> נשלח לכולם</>}
           </button>
         </div>
       )}
