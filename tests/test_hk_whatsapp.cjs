@@ -124,11 +124,14 @@ console.log('י. הודעת כשל אישית, עדינה, מדויקת ומרו
   const templateHe = B.DEFAULT_TEMPLATES.failure.he;
   const templateRu = B.DEFAULT_TEMPLATES.failure.ru;
   assert.ok(templateHe.includes('קודם כול') && templateHe.includes('תודה רבה'));
-  assert.ok(templateHe.includes('לא עבר הפעם'));
+  assert.ok(templateHe.includes('{פרטי חיוב}'));
   assert.ok(!templateHe.includes('לעדכן את פרטי האשראי'));
-  assert.ok(templateRu.includes('благодар') && templateRu.includes('не прошёл'));
-  const donor = { name: 'דוד כהן', amount: 80, reason: 'מידע פרטי של הספק' };
-  const msg = B.fillTemplate(templateHe, donor, { signer: 'הרב אשר', org: 'חב"ד בעליה' });
+  assert.ok(templateRu.includes('благодар') && templateRu.includes('{פרטי חיוב}'));
+  const donor = { name: 'דוד כהן', amount: 80, reason: 'מידע פרטי של הספק', failureDate: '15/10/2026', failureCount: 1 };
+  const msg = B.fillTemplate(templateHe, donor, { signer: 'הרב אשר', org: 'חב"ד בעליה', lang: 'he' });
+  const msgRu = B.fillTemplate(templateRu, donor, { signer: 'Раввин Ашер', org: 'Хабад ба-Алия', lang: 'ru' });
+  assert.ok(msg.includes('לא הושלם') && msg.includes('15/10/2026'));
+  assert.ok(msgRu.includes('не прошёл') && msgRu.includes('15/10/2026'));
   assert.ok(msg.includes('דוד כהן'));
   assert.ok(msg.includes('80 ₪'));
   assert.ok(msg.includes('חב"ד בעליה'));
