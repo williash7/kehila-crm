@@ -45,6 +45,36 @@ function failureDateDisplay(value: string): string {
   return iso ? `${iso[3].padStart(2, '0')}/${iso[2].padStart(2, '0')}/${iso[1]}` : raw;
 }
 
+/** ההודעה על כשל חיוב זמינה מיום הכשל ועד סוף היום ה-14, לפי תאריך מקומי.
+ * נתון ללא תאריך תקין או מתאריך עתידי אינו מאפשר משלוח הודעת גבייה.
+ * משתמשים בימי לוח (UTC date-only), כדי שמעברי שעון קיץ לא יקצרו את החלון.
+ */
+export const FAILURE_CONTACT_DAYS = 14;
+
+function calendarDay(value: string): number | null {
+  const input = String(value || '').trim();
+  const dmy = input.match(/^(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{2,4})(?:\D|$)/);
+  const iso = input.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T\s]|$)/);
+  if (!dmy && !iso) return null;
+  const yearText = iso ? iso[1] : dmy![3];
+  const year = yearText.length === 2 ? 2000 + Number(yearText) : Number(yearText);
+  const month = Number(iso ? iso[2] : dmy![2]);
+  const day = Number(iso ? iso[3] : dmy![1]);
+  const stamp = Date.UTC(year, month - 1, day);
+  const checked = new Date(stamp);
+  if (!Number.isFinite(stamp) || checked.getUTCFullYear() !== year ||
+      checked.getUTCMonth() + 1 !== month || checked.getUTCDate() !== day) return null;
+  return stamp;
+}
+
+export function isFailureContactEligible(date: string | null | undefined, now: Date = new Date()): boolean {
+  const failed = calendarDay(date || '');
+  if (failed == null || !Number.isFinite(now.getTime())) return false;
+  const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+  const daysSince = (today - failed) / 86400000;
+  return daysSince >= 0 && daysSince <= FAILURE_CONTACT_DAYS;
+}
+
 // ── תרומה בתשלומי אשראי כ"הוראת קבע" לצורך הודעות ────────────────────────
 //
 // מבחינת התורם, ₪1,200 ב-12 תשלומים זה ₪100 שיורדים לו כל חודש — בדיוק כמו
@@ -138,6 +168,7 @@ export function buildRecipients(
   donors: Record<string, any>,
   threshold: number,
   donations: any[] = [],
+  now: Date = new Date(),
 ): Recipient[] {
   const failIdx = indexFailures(failures);
   const byKey = new Map<string, Recipient>();
@@ -149,7 +180,7 @@ export function buildRecipients(
     let failedAmount: number | null = null;
     if (kind === 'failure') {
       const fail = openFailureFor(h, failIdx);
-      if (!fail) return;
+      if (!fail || !isFailureContactEligible(fail.date, now)) return;
       reason = String(fail.reason || '').trim();
       failureDate = failureDateDisplay(fail.date);
       const reportedAmount = Number(fail.amount);
