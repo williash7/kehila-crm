@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { X, Download, MessageSquare, Mail, Loader2 } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import { LocalizedName, orgNameIn, signerIn } from '../lib/orgConfig';
@@ -30,38 +30,46 @@ const LETTER_TEXT: Record<Lang, {
   certTitle: string;
   toLabel: (g: Gender) => string;
   thanksLine: string;
+  blessing: string;
+  amountLabel: string;
   regards: string;
   body: (donorName: string, amount: number, date: string, g: Gender) => string;
 }> = {
   he: {
     dir: 'rtl',
     locale: 'he-IL',
-    certTitle: 'תעודת הוקרה ותודה',
+    certTitle: 'מכתב תודה והוקרה',
     toLabel: () => 'לכבוד',
-    thanksLine: `על תרומתך הנדיבה, המוקדשת מעומק הלב לטובת פעילות ${ORG.he} והקהילה`,
-    regards: 'בברכה,',
-    body: (donorName, amount, date) =>
-      `לכבוד ${donorName},\n\nברצוני להביע תודה עמוקה על תרומתך הנדיבה בסך ₪${amount.toLocaleString()}, שהתקבלה בתאריך ${date}.\nתרומתך תורמת רבות לפעילות ${ORG.he} ולקהילה כולה.\nיהי רצון שתתברך/י בכל הברכות הטובות!\n\nבברכה,\n${SIGNER.he}\n${ORG.he}`,
+    thanksLine: `תודה מעומק הלב על השותפות והתמיכה בפעילות ${ORG.he} ובקהילה שלנו.`,
+    blessing: 'יהי רצון שתזכו לשפע ברכה והצלחה, לבריאות, לנחת ולכל טוב בגשמיות וברוחניות.',
+    amountLabel: 'סכום התרומה',
+    regards: 'בהערכה ובתודה,',
+    body: (name, amount, date) =>
+      `לכבוד ${name},\n\nתודה מעומק הלב על תרומתך בסך ${amount.toLocaleString('he-IL')} ₪ מתאריך ${date}, ועל השותפות בפעילות ${ORG.he} ובקהילה שלנו.\nיהי רצון שתזכו לשפע ברכה והצלחה, לבריאות, לנחת ולכל טוב בגשמיות וברוחניות.\n\nבהערכה ובתודה,\n${SIGNER.he}\n${ORG.he}`,
   },
   en: {
     dir: 'ltr',
     locale: 'en-US',
-    certTitle: 'Certificate of Appreciation',
+    certTitle: 'A Letter of Thanks',
     toLabel: () => 'Dear',
-    thanksLine: `For your generous donation, given wholeheartedly in support of ${ORG.en} and our community`,
-    regards: 'Warm regards,',
-    body: (donorName, amount, date) =>
-      `Dear ${donorName},\n\nI want to express my deep gratitude for your generous donation of ₪${amount.toLocaleString()}, received on ${date}.\nYour contribution greatly supports the activities of ${ORG.en} and the entire community.\nMay you be blessed with all good blessings!\n\nWarm regards,\n${SIGNER.en}\n${ORG.en}`,
+    thanksLine: `Thank you from the heart for your generosity and for supporting ${ORG.en} and our community.`,
+    blessing: 'May you and your loved ones be blessed with health, joy, and success in all your good endeavors.',
+    amountLabel: 'Your donation',
+    regards: 'With heartfelt thanks,',
+    body: (name, amount, date) =>
+      `Dear ${name},\n\nThank you from the heart for your donation of ₪${amount.toLocaleString('en-US')} on ${date}, and for supporting ${ORG.en} and our community.\nMay you and your loved ones be blessed with health, joy, and success in all your good endeavors.\n\nWith heartfelt thanks,\n${SIGNER.en}\n${ORG.en}`,
   },
   ru: {
     dir: 'ltr',
     locale: 'ru-RU',
-    certTitle: 'Благодарственная грамота',
+    certTitle: 'Благодарственное письмо',
     toLabel: (g) => (g === 'f' ? 'Уважаемая' : 'Уважаемый'),
-    thanksLine: `За ваше щедрое пожертвование от всего сердца в поддержку ${ORG.ru} и нашей общины`,
-    regards: 'С уважением,',
-    body: (donorName, amount, date, g) =>
-      `${g === 'f' ? 'Уважаемая' : 'Уважаемый'} ${donorName},\n\nЯ хочу выразить глубокую благодарность за ваше щедрое пожертвование в размере ₪${amount.toLocaleString()}, полученное ${date}.\nВаш вклад значительно поддерживает деятельность ${ORG.ru} и всей общины.\nПусть вас благословят во всём!\n\nС уважением,\n${SIGNER.ru}\n${ORG.ru}`,
+    thanksLine: `От всего сердца благодарим Вас за щедрую поддержку ${ORG.ru} и нашей общины.`,
+    blessing: 'Пусть Всевышний благословит Вас и Ваших близких здоровьем, радостью и успехом во всех добрых делах!',
+    amountLabel: 'Ваше пожертвование',
+    regards: 'С благодарностью,',
+    body: (name, amount, date, g) =>
+      `${g === 'f' ? 'Уважаемая' : 'Уважаемый'} ${name},\n\nОт всего сердца благодарим Вас за пожертвование в размере ${amount.toLocaleString('ru-RU')} ₪ от ${date} и за поддержку ${ORG.ru} и нашей общины.\nПусть Всевышний благословит Вас и Ваших близких здоровьем, радостью и успехом во всех добрых делах!\n\nС благодарностью,\n${SIGNER.ru}\n${ORG.ru}`,
   },
 };
 
@@ -80,6 +88,7 @@ const LETTER_TEXT: Record<Lang, {
 // מוצג העיגול הדקורטיבי הרגיל כברירת מחדל.
 export function ThankYouLetterModal({ donorName, amount, date, phone, email, onClose }: Props) {
   const letterRef = useRef<HTMLDivElement>(null);
+  const previewRef = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState<'download' | 'whatsapp' | 'email' | null>(null);
   const [emailInput, setEmailInput] = useState(email || '');
   const [phoneInput, setPhoneInput] = useState(phone || '');
@@ -87,6 +96,19 @@ export function ThankYouLetterModal({ donorName, amount, date, phone, email, onC
   const [lang, setLang] = useState<Lang>('he');
   const [gender, setGender] = useState<Gender>('m');
   const [logoOk, setLogoOk] = useState(true);
+  const [recipientNames, setRecipientNames] = useState<Partial<Record<Lang, string>>>({});
+  const [previewScale, setPreviewScale] = useState(0.7);
+
+  // Keep the exported letter at a stable 450 × 638 size while fitting the preview to narrow phones.
+  useEffect(() => {
+    const element = previewRef.current;
+    if (!element) return;
+    const updateScale = () => setPreviewScale(Math.min(1, element.clientWidth / 450));
+    updateScale();
+    const observer = new ResizeObserver(updateScale);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
 
   const t = LETTER_TEXT[lang];
   const logoSrc = `${import.meta.env.BASE_URL}logo.png`;
@@ -94,7 +116,10 @@ export function ThankYouLetterModal({ donorName, amount, date, phone, email, onC
   const today = new Date();
   const displayDate = date || today.toLocaleDateString(t.locale);
 
-  const bodyText = t.body(donorName, amount, displayDate, gender);
+  const recipientName = recipientNames[lang]?.trim() || donorName;
+  const needsLocalizedName = lang !== 'he' && /[\u0590-\u05FF]/.test(recipientName);
+  const recipientFontSize = recipientName.length > 34 ? 18 : recipientName.length > 23 ? 21 : 26;
+  const bodyText = t.body(recipientName, amount, displayDate, gender);
 
   const renderImage = async (): Promise<string> => {
     if (!letterRef.current) throw new Error('no ref');
@@ -164,7 +189,7 @@ export function ThankYouLetterModal({ donorName, amount, date, phone, email, onC
     setBusy('email');
     try {
       await downloadImage();
-      const subject = encodeURIComponent(`מכתב תודה — ${donorName}`);
+      const subject = encodeURIComponent(`${t.certTitle} — ${recipientName}`);
       const body = encodeURIComponent(`${bodyText}\n\n(התמונה המעוצבת ירדה למכשיר — יש לצרף אותה להודעה)`);
       window.location.href = `mailto:${emailInput || ''}?subject=${subject}&body=${body}`;
     } finally {
@@ -229,51 +254,90 @@ export function ThankYouLetterModal({ donorName, amount, date, phone, email, onC
             </div>
           )}
 
-          {/* Letter preview / capture target */}
-          <div className="rounded-2xl overflow-hidden border border-[#EDE6D6] shadow-sm">
+          {/* Editable display name prevents Hebrew donor names from breaking Russian/English letters. */}
+          <div className="mb-3">
+            <label className="block text-[11px] font-bold text-gray-500 mb-1">שם התורם כפי שיופיע במכתב</label>
+            <input
+              value={recipientNames[lang] ?? donorName}
+              onChange={e => setRecipientNames(current => ({ ...current, [lang]: e.target.value }))}
+              dir={t.dir}
+              className="w-full bg-white border border-[#EDE6D6] rounded-xl px-3 py-2 text-sm outline-none focus:border-[#C9A84C]"
+            />
+            {needsLocalizedName && (
+              <p className="mt-1 text-[11px] text-amber-700">
+                השם עדיין בעברית — מומלץ לרשום אותו {lang === 'ru' ? 'ברוסית' : 'באנגלית'} לפני שליחת המכתב.
+              </p>
+            )}
+          </div>
+
+          {/* Always capture a fixed-size letter. Only its on-screen preview is scaled. */}
+          <div className="rounded-2xl border border-[#EDE6D6] shadow-sm bg-white overflow-hidden">
             <div
-              ref={letterRef}
-              style={{ width: 450, height: 638, direction: t.dir }}
-              className="relative bg-[#FAF6EE] flex flex-col items-center justify-between p-8 mx-auto overflow-hidden"
+              ref={previewRef}
+              className="w-full overflow-hidden flex justify-center"
+              style={{ height: Math.ceil(638 * previewScale) }}
             >
-              {/* Decorative border */}
-              <div className="absolute inset-3 border-2 border-[#C9A84C] rounded-xl pointer-events-none" />
-              <div className="absolute inset-5 border border-[#C9A84C]/40 rounded-lg pointer-events-none" />
-
-              <div className="relative z-10 flex flex-col items-center pt-4">
-                {logoOk ? (
-                  <img
-                    src={logoSrc}
-                    alt="לוגו"
-                    onError={() => setLogoOk(false)}
-                    className="w-14 h-14 rounded-full object-cover shadow-md"
-                    crossOrigin="anonymous"
-                  />
-                ) : (
-                  <div className="w-14 h-14 bg-gradient-to-br from-[#C9A84C] to-[#9B7A2F] rounded-full flex items-center justify-center font-['Frank_Ruhl_Libre'] text-2xl text-white font-black shadow-md">
-                    ח
+              <div
+                ref={letterRef}
+                dir={t.dir}
+                style={{
+                  width: 450,
+                  height: 638,
+                  transform: `scale(${previewScale})`,
+                  transformOrigin: 'top center',
+                  fontFamily: lang === 'he' ? 'Arial, sans-serif' : 'Georgia, "Times New Roman", serif',
+                }}
+                className="relative shrink-0 bg-[#FCFAF5] overflow-hidden flex flex-col items-center text-center"
+              >
+                <div className="absolute inset-[14px] border border-[#C9A84C] rounded-[18px] pointer-events-none" />
+                <div className="relative w-full shrink-0 flex flex-col items-center pt-9 px-9">
+                  {logoOk ? (
+                    <img
+                      src={logoSrc}
+                      alt="לוגו"
+                      onError={() => setLogoOk(false)}
+                      className="w-[68px] h-[68px] rounded-full object-contain bg-white"
+                      crossOrigin="anonymous"
+                    />
+                  ) : (
+                    <div className="w-[68px] h-[68px] rounded-full bg-[#C9A84C] flex items-center justify-center text-white text-3xl font-bold">ח</div>
+                  )}
+                  <div className="mt-2 max-w-[335px] text-[14px] font-bold leading-snug text-[#9B7A2F] break-words" style={{ overflowWrap: 'anywhere' }}>
+                    {ORG[lang]}
                   </div>
-                )}
-                <div className="font-['Frank_Ruhl_Libre'] text-sm font-bold text-[#9B7A2F] mt-2">{ORG[lang]}</div>
-              </div>
-
-              <div className="relative z-10 text-center flex-1 flex flex-col items-center justify-center gap-4 px-2">
-                <div className="font-['Frank_Ruhl_Libre'] text-2xl font-black text-[#0D1B2A]">{t.certTitle}</div>
-                <div className="text-sm text-[#3a3a3a] leading-relaxed">
-                  {t.toLabel(gender)}<br />
-                  <span className="font-['Frank_Ruhl_Libre'] text-xl font-bold text-[#0D1B2A] block mt-1 break-words max-w-[320px] mx-auto">{donorName}</span>
                 </div>
-                <div className="text-xs text-[#5a5a5a] leading-relaxed max-w-[320px]">
-                  {t.thanksLine}
-                </div>
-                <div className="font-['Frank_Ruhl_Libre'] text-3xl font-black text-[#C9A84C] mt-1">₪{amount.toLocaleString()}</div>
-                <div className="text-[11px] text-[#8a8a8a]">{displayDate}</div>
-              </div>
 
-              <div className="relative z-10 text-center pb-2">
-                <div className="text-xs text-[#5a5a5a]">{t.regards}</div>
-                <div className="font-['Frank_Ruhl_Libre'] text-sm font-bold text-[#0D1B2A]">{SIGNER[lang]}</div>
-                <div className="text-[10px] text-[#8a8a8a] mt-0.5">{ORG[lang]}</div>
+                <div className="relative w-full flex-1 min-h-0 flex flex-col justify-center items-center px-12 gap-[11px]">
+                  <div className="w-14 h-px bg-[#C9A84C]" />
+                  <h3 className="font-bold text-[27px] leading-[1.22] text-[#0D1B2A] max-w-[350px]">
+                    {t.certTitle}
+                  </h3>
+                  <div className="w-full">
+                    <p className="text-[15px] text-[#525964] leading-snug">{t.toLabel(gender)}</p>
+                    <div
+                      dir={t.dir}
+                      className="mt-1 mx-auto max-w-[342px] font-bold text-[#0D1B2A] leading-[1.22] break-words"
+                      style={{ fontSize: recipientFontSize, overflowWrap: 'anywhere' }}
+                    >
+                      {recipientName}
+                    </div>
+                  </div>
+                  <p className="text-[14px] leading-[1.52] text-[#4C5159] max-w-[335px]">{t.thanksLine}</p>
+                  <div className="flex flex-col gap-[3px]">
+                    <span className="text-[11px] tracking-wide font-semibold text-[#9B7A2F]">{t.amountLabel}</span>
+                    <span className="font-bold text-[33px] leading-none text-[#B28B37]" dir="ltr">
+                      {amount.toLocaleString(t.locale)} ₪
+                    </span>
+                  </div>
+                  <p className="text-[13px] leading-[1.48] text-[#4C5159] max-w-[338px]">{t.blessing}</p>
+                </div>
+
+                <div className="relative w-full shrink-0 flex flex-col items-center px-10 pb-9">
+                  <div className="w-14 h-px bg-[#C9A84C] mb-3" />
+                  <p className="text-[12px] text-[#5F6268]">{t.regards}</p>
+                  <p className="text-[16px] font-bold text-[#0D1B2A] leading-snug mt-1 max-w-[350px] break-words">{SIGNER[lang]}</p>
+                  <p className="text-[11px] text-[#888888] mt-1" dir="ltr">{displayDate}</p>
+                </div>
               </div>
             </div>
           </div>
