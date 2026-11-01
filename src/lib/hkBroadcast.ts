@@ -5,7 +5,7 @@
 // המשתמש, והוא לוחץ "שלח". אין שרת, אין עלות ואין סיכון שהמספר ייחסם על
 // שליחה המונית — כל הודעה יוצאת מהטלפון שלו כמו הודעה רגילה.
 
-import { HkEntry, ChargeFailure, getHkStatus, indexFailures, openFailureFor } from './standingOrders';
+import { HkEntry, ChargeFailure, getHkStatus } from './standingOrders';
 import { normalizePhone, contactPhone } from './contactPhone';
 
 export { normalizePhone };
@@ -33,6 +33,8 @@ export interface Recipient {
   failureDate?: string;
   /** מספר החיובים שעדיין פתוחים עבור אותו נמען. */
   failureCount?: number;
+  /** האם ניתן לזהות בוודאות את הוראת הקבע ברשומת הכשל. */
+  failureType?: 'standing' | 'donation';
   orderIds: string[];
   /** תרומה בתשלומי אשראי (לא הוראת קבע) — כמה תשלומים עברו מתוך כמה */
   installments?: { paid: number; total: number };
@@ -170,47 +172,72 @@ export function buildRecipients(
   donations: any[] = [],
   now: Date = new Date(),
 ): Recipient[] {
-  const failIdx = indexFailures(failures);
   const byKey = new Map<string, Recipient>();
 
+  if (kind === 'failure') {
+    // כשלי החיוב הם מקור האמת לפנייה. מעבר דרך רשימת ההוראות בלבד השמיט
+    // סירובים חדשים ללא מזהה הוראה תקין, וגם הוראות שבוטלו אוטומטית בהקמה.
+    // בלשונית שגיאות הסירובים האלה מופיעים, ולכן גם מסך הפנייה חייב להכיר אותם.
+    (failures || []).forEach(f => {
+      if (!f?.name || !isFailureContactEligible(f.date, now)) return;
+      const name = f.name.trim();
+      const order = String(f.order || '').trim();
+      const linked = order ? (hk || []).find(h => String(h.id || '').trim() === order) : undefined;
+      const failDay = calendarDay(f.date);
+      if (linked) {
+        const successfulDay = calendarDay(linked.lastBilled);
+        // חיוב מוצלח אחרי הכשל מוכיח שההוראה חזרה לגבות.
+        if (successfulDay !== null && failDay !== null && successfulDay >= failDay) return;
+        // אם ההוראה בוטלה ידנית או חודשה, אין לפנות על כשל היסטורי שלה.
+        // ביטול אוטומטי ביום הקמה אינו תיקון הכרטיס, ולכן אינו מסנן.
+        const setupRejected = String(linked.notes || '').includes('בוטל אוטומטית: סורבה ביום ההקמה');
+        if (linked.renewedBy || (linked.cancelDate && !setupRejected)) return;
+      }
+      const displayDate = failureDateDisplay(f.date);
+      const rawAmount = Number(String(f.amount ?? '').replace(/[^0-9.\-]/g, ''));
+      const amount = Number.isFinite(rawAmount) && rawAmount > 0 ? rawAmount : Number(linked?.amount) || 0;
+      const phoneFallback = linked?.phone
+        || (hk || []).find(h => h.name === name)?.phone;
+      const phone = contactPhone(crm?.[name], donors?.[name], phoneFallback);
+      const key = phone || `name:${name}`;
+      const reason = String(f.reason || '').trim();
+      const type = linked ? 'standing' : 'donation';
+      const existing = byKey.get(key);
+      if (existing) {
+        existing.amount += amount;
+        existing.failureCount = (existing.failureCount || 1) + 1;
+        if (existing.failureDate !== displayDate) existing.failureDate = '';
+        if (type === 'donation') existing.failureType = 'donation';
+        if (order && !existing.orderIds.includes(order)) existing.orderIds.push(order);
+        if (!existing.reason && reason) existing.reason = reason;
+        if (!existing.name.split(' / ').includes(name)) existing.name += ` / ${name}`;
+      } else {
+        byKey.set(key, {
+          key, name, phone, amount, reason,
+          failureDate: displayDate, failureCount: 1,
+          failureType: type,
+          orderIds: order ? [order] : [],
+        });
+      }
+    });
+    return [...byKey.values()].sort((a, b) => a.name.localeCompare(b.name, 'he'));
+  }
+
+  // תודה חודשית והודעה כללית: נשארות מבוססות הוראות פעילות בלבד.
   (hk || []).forEach(h => {
     if (!h?.name) return;
-    let reason = '';
-    let failureDate = '';
-    let failedAmount: number | null = null;
-    if (kind === 'failure') {
-      const fail = openFailureFor(h, failIdx);
-      if (!fail || !isFailureContactEligible(fail.date, now)) return;
-      reason = String(fail.reason || '').trim();
-      failureDate = failureDateDisplay(fail.date);
-      const reportedAmount = Number(fail.amount);
-      if (Number.isFinite(reportedAmount) && reportedAmount > 0) failedAmount = reportedAmount;
-    } else {
-      const status = getHkStatus(h, threshold);
-      if (status !== 'active' && status !== 'expiring') return;
-    }
-
+    const status = getHkStatus(h, threshold);
+    if (status !== 'active' && status !== 'expiring') return;
     const phone = phoneFor(h, crm, donors);
     const key = phone || `name:${h.name.trim()}`;
     const existing = byKey.get(key);
-    // בכשל חיוב מציינים רק את הסכום שלא עבר, ולא הוראות נוספות של אותו תורם.
-    const amount = failedAmount ?? (Number(h.amount) || 0);
+    const amount = Number(h.amount) || 0;
     if (existing) {
       existing.amount += amount;
-      if (kind === 'failure') {
-        existing.failureCount = (existing.failureCount || 1) + 1;
-        if (existing.failureDate !== failureDate) existing.failureDate = '';
-      }
       if (h.id) existing.orderIds.push(String(h.id));
-      if (!existing.reason && reason) existing.reason = reason;
       if (!existing.name.split(' / ').includes(h.name)) existing.name += ` / ${h.name}`;
     } else {
-      byKey.set(key, {
-        key, name: h.name, phone, amount, reason,
-        failureDate: kind === 'failure' ? failureDate : undefined,
-        failureCount: kind === 'failure' ? 1 : undefined,
-        orderIds: h.id ? [String(h.id)] : [],
-      });
+      byKey.set(key, { key, name: h.name, phone, amount, reason: '', orderIds: h.id ? [String(h.id)] : [] });
     }
   });
 
@@ -241,25 +268,26 @@ export interface TemplateVars {
 
 /** נוסח מדויק לחיוב אחד או לכמה חיובים, בלי להמציא תאריך או לייחס סכום מצטבר ליום יחיד. */
 function failureDescription(
-  r: Pick<Recipient, 'amount' | 'failureDate' | 'failureCount'>,
+  r: Pick<Recipient, 'amount' | 'failureDate' | 'failureCount' | 'failureType'>,
   lang: BroadcastLang,
 ): string {
   const sum = (Number(r.amount) || 0).toLocaleString('he-IL');
   const count = r.failureCount || 1;
   const date = r.failureDate?.trim();
+  const confirmedStanding = r.failureType !== 'donation';
   if (lang === 'ru') {
     return count > 1
-      ? `несколько платежей по регулярному пожертвованию на общую сумму ${sum} ₪ не прошли`
-      : `платёж по регулярному пожертвованию на сумму ${sum} ₪${date ? ` от ${date}` : ''} не прошёл`;
+      ? `несколько платежей на общую сумму ${sum} ₪ не прошли`
+      : `платёж ${confirmedStanding ? 'по регулярному пожертвованию ' : ''}на сумму ${sum} ₪${date ? ` от ${date}` : ''} не прошёл`;
   }
   return count > 1
-    ? `כמה חיובים של הוראת הקבע, בסכום כולל של ${sum} ₪, לא הושלמו`
-    : `החיוב האחרון של הוראת הקבע, בסך ${sum} ₪${date ? `, מתאריך ${date}` : ''}, לא הושלם`;
+    ? `כמה חיובים, בסכום כולל של ${sum} ₪, לא הושלמו`
+    : `החיוב האחרון ${confirmedStanding ? 'של הוראת הקבע' : 'של התרומה'}, בסך ${sum} ₪${date ? `, מתאריך ${date}` : ''}, לא הושלם`;
 }
 
 export function fillTemplate(
   template: string,
-  r: Pick<Recipient, 'name' | 'amount' | 'reason' | 'failureDate' | 'failureCount'>,
+  r: Pick<Recipient, 'name' | 'amount' | 'reason' | 'failureDate' | 'failureCount' | 'failureType'>,
   vars: TemplateVars,
 ): string {
   return template
