@@ -139,6 +139,15 @@ export function HkWhatsAppModal({ onClose, initialKind = 'thanks' }: { onClose: 
   };
 
   const send = async (r: typeof recipients[number]) => {
+    // בדיקה נוספת ברגע הלחיצה: גם מסך שנשאר פתוח מעבר לחצות לא יאפשר
+    // לפתוח הודעת כשל שעברו עליה יותר מ-14 ימים.
+    if (kind === 'failure') {
+      const current = buildRecipients('failure', hk, failures, crm, donors, threshold, donations, new Date());
+      if (!current.some(item => item.key === r.key && item.orderIds.join(',') === r.orderIds.join(','))) {
+        alert('עברו יותר מ-14 ימים ממועד הכשל, ולכן ההודעה כבר אינה זמינה לשליחה.');
+        return;
+      }
+    }
     const text = messageFor(r);
     const afterOpen = () => {
       if (kind === 'failure') setPendingConfirmation(sentKey(r));
@@ -205,7 +214,7 @@ export function HkWhatsAppModal({ onClose, initialKind = 'thanks' }: { onClose: 
         </div>
         <p className="text-[11px] text-gray-500 mb-3 leading-relaxed">
           {kind === 'failure'
-            ? 'הרשימה כוללת רק חיובים שנכשלו ועדיין לא נרשם אחריהם חיוב מוצלח. כל הודעה נפתחת אישית בוואטסאפ, עם סכום ותאריך כשהם ידועים; יש לשלוח בוואטסאפ עצמו, ואז לסמן שנשלח.'
+            ? 'מוצגים כאן רק חיובים שנכשלו ב-14 הימים האחרונים ועדיין לא נרשם אחריהם חיוב מוצלח. אחרי 14 ימים הודעת הפנייה אינה זמינה, אך הכשל נשאר ברישום. יש לשלוח בוואטסאפ עצמו ואז לסמן שנשלח.'
             : 'נשלח לכל מי שיש לו הוראת קבע פעילה, וגם למי שתרם בתשלומי אשראי שעוד לא הסתיימו (הסכום החודשי). מי שיש לו כמה הוראות מקבל הודעה אחת עם הסכום המצטבר.'}
         </p>
 
