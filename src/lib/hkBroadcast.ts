@@ -27,11 +27,23 @@ export interface Recipient {
   phone: string;
   /** סך החיוב החודשי בכל ההוראות הפעילות של אותו אדם */
   amount: number;
-  /** סיבת הכשל — רק בהודעת כשל חיוב */
+  /** סיבת הכשל — רק בהודעת כשל חיוב (לא נחשפת אוטומטית לתורם) */
   reason: string;
+  /** תאריך החיוב שנכשל, אם קיים תאריך אחד ברור. */
+  failureDate?: string;
+  /** מספר החיובים שנכשלו במאגר עבור אותו נמען. */
+  failureCount?: number;
   orderIds: string[];
   /** תרומה בתשלומי אשראי (לא הוראת קבע) — כמה תשלומים עברו מתוך כמה */
   installments?: { paid: number; total: number };
+}
+
+/** פורמט תאריך ידידותי להודעת וואטסאפ; אין צורך לשנות את הנתונים במאגר. */
+function displayFailureDate(value: string): string {
+  const raw = String(value || '').trim();
+  const iso = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (iso) return `${iso[3].padStart(2, '0')}/${iso[2].padStart(2, '0')}/${iso[1]}`;
+  return raw;
 }
 
 // ── תרומה בתשלומי אשראי כ"הוראת קבע" לצורך הודעות ────────────────────────
@@ -134,10 +146,12 @@ export function buildRecipients(
   (hk || []).forEach(h => {
     if (!h?.name) return;
     let reason = '';
+    let failureDate = '';
     if (kind === 'failure') {
       const fail = openFailureFor(h, failIdx);
       if (!fail) return;
       reason = String(fail.reason || '').trim();
+      failureDate = displayFailureDate(fail.date);
     } else {
       const status = getHkStatus(h, threshold);
       if (status !== 'active' && status !== 'expiring') return;
@@ -146,14 +160,28 @@ export function buildRecipients(
     const phone = phoneFor(h, crm, donors);
     const key = phone || `name:${h.name.trim()}`;
     const existing = byKey.get(key);
-    const amount = Number(h.amount) || 0;
+    // בהודעת כשל מציגים את סכום החיוב שנכשל, ולא בהכרח את סכום ההוראה כיום.
+    const failure = kind === 'failure' ? openFailureFor(h, failIdx) : null;
+    const reportedAmount = Number(String(failure?.amount ?? '').replace(/[^\d.]/g, ''));
+    const amount = failure && Number.isFinite(reportedAmount) && reportedAmount > 0
+      ? reportedAmount
+      : Number(h.amount) || 0;
     if (existing) {
       existing.amount += amount;
+      if (kind === 'failure') {
+        existing.failureCount = (existing.failureCount || 1) + 1;
+        if (existing.failureDate !== failureDate) existing.failureDate = '';
+      }
       if (h.id) existing.orderIds.push(String(h.id));
       if (!existing.reason && reason) existing.reason = reason;
       if (!existing.name.split(' / ').includes(h.name)) existing.name += ` / ${h.name}`;
     } else {
-      byKey.set(key, { key, name: h.name, phone, amount, reason, orderIds: h.id ? [String(h.id)] : [] });
+      byKey.set(key, {
+        key, name: h.name, phone, amount, reason,
+        failureDate: kind === 'failure' ? failureDate : undefined,
+        failureCount: kind === 'failure' ? 1 : undefined,
+        orderIds: h.id ? [String(h.id)] : [],
+      });
     }
   });
 
@@ -179,12 +207,35 @@ export function buildRecipients(
 export interface TemplateVars {
   signer: string;
   org: string;
+  lang?: BroadcastLang;
 }
 
-export function fillTemplate(template: string, r: Pick<Recipient, 'name' | 'amount' | 'reason'>, vars: TemplateVars): string {
+/**
+ * נוסח מותאם לחיוב אחד או לכמה חיובים. אם אין תאריך יחיד ואמין,
+ * משמיטים אותו — לא ממציאים תאריך ולא מייחסים סכום מצטבר לחיוב אחד.
+ */
+function failureDescription(r: Pick<Recipient, 'amount' | 'failureDate' | 'failureCount'>, lang: BroadcastLang): string {
+  const sum = (Number(r.amount) || 0).toLocaleString('he-IL');
+  const count = r.failureCount || 1;
+  const date = r.failureDate?.trim();
+  if (lang === 'ru') {
+    if (count > 1) return `несколько платежей по регулярному пожертвованию на общую сумму ${sum} ₪ не прошли`;
+    return `платёж по регулярному пожертвованию на сумму ${sum} ₪${date ? ` от ${date}` : ''} не прошёл`;
+  }
+  if (count > 1) return `כמה חיובים של הוראת הקבע, בסכום כולל של ${sum} ₪, לא הושלמו`;
+  return `החיוב בהוראת הקבע בסך ${sum} ₪${date ? `, מתאריך ${date}` : ''} לא הושלם`;
+}
+
+export function fillTemplate(
+  template: string,
+  r: Pick<Recipient, 'name' | 'amount' | 'reason' | 'failureDate' | 'failureCount'>,
+  vars: TemplateVars,
+): string {
   return template
+    .replace(/\{פרטי חיוב\}/g, failureDescription(r, vars.lang || 'he'))
     .replace(/\{שם\}/g, r.name)
     .replace(/\{סכום\}/g, (Number(r.amount) || 0).toLocaleString('he-IL'))
+    .replace(/\{תאריך\}/g, r.failureDate || '')
     .replace(/\{סיבה\}/g, r.reason || '')
     .replace(/\{חותם\}/g, vars.signer)
     .replace(/\{ארגון\}/g, vars.org);
@@ -196,7 +247,9 @@ export function waLink(phone: string, text: string): string {
 
 export const PLACEHOLDERS: { token: string; label: string }[] = [
   { token: '{שם}', label: 'שם' },
-  { token: '{סכום}', label: 'סכום חודשי' },
+  { token: '{סכום}', label: 'סכום' },
+  { token: '{פרטי חיוב}', label: 'פרטי חיוב (כולל תאריך)' },
+  { token: '{תאריך}', label: 'תאריך כשל' },
   { token: '{סיבה}', label: 'סיבת הכשל' },
   { token: '{חותם}', label: 'חותם' },
   { token: '{ארגון}', label: 'ארגון' },
@@ -212,8 +265,8 @@ export const DEFAULT_TEMPLATES: Record<BroadcastKind, Record<BroadcastLang, stri
     ru: 'Здравствуйте, {שם}!\n\n\nС уважением,\n{חותם}',
   },
   failure: {
-    he: 'שלום {שם},\nרצינו לעדכן שהחיוב החודשי של הוראת הקבע שלך (₪{סכום}) לא עבר החודש. ייתכן שתוקף הכרטיס פג או שהכרטיס הוחלף.\nנשמח אם תוכל/י לעדכן את פרטי האשראי — אפשר פשוט להשיב להודעה הזו ונסדר את זה יחד.\nתודה רבה על השותפות!\n\n{חותם}',
-    ru: 'Здравствуйте, {שם}!\nХотим сообщить, что ежемесячный платёж по вашему постоянному пожертвованию (₪{סכום}) в этом месяце не прошёл. Возможно, истёк срок действия карты или карта была заменена.\nБудем благодарны, если вы обновите данные карты — просто ответьте на это сообщение, и мы всё уладим вместе.\nСпасибо за ваше участие!\n\n{חותם}',
+    he: 'שלום {שם},\n\nקודם כול, תודה רבה על השותפות הקבועה שלך בפעילות של {ארגון}. התמיכה שלך חשובה לנו מאוד, ובזכות שותפים כמוך אנחנו יכולים להמשיך לפעול למען הקהילה.\n\nרק רציתי לעדכן שלפי הרישום אצלנו, {פרטי חיוב}. לפעמים זו פשוט תקלה טכנית קטנה.\n\nכשיתאפשר לך, אשמח אם יהיה לך זמן לבדוק את העניין. ואם צריך עזרה, אפשר פשוט לענות לי כאן.\n\nתודה רבה על הכול!\n{חותם}',
+    ru: 'Здравствуйте, {שם}!\n\nПрежде всего хочу от всего сердца поблагодарить вас за постоянную поддержку {ארגון}. Ваше участие очень важно для нашей общины.\n\nНебольшое уточнение: по нашим данным, {פרטי חיוב}. Иногда это просто технический сбой.\n\nКогда будет удобно, буду благодарен, если вы сможете проверить. Если нужна помощь, просто ответьте на это сообщение.\n\nБольшое спасибо за вашу поддержку!\n{חותם}',
   },
 };
 
@@ -246,12 +299,19 @@ export function saveSent(kind: BroadcastKind, sent: Record<string, string>) {
   writeJson(roundKey(kind), sent);
 }
 
+const OLD_FAILURE_TEMPLATES: Record<BroadcastLang, string> = {
+  he: 'שלום {שם},\nרצינו לעדכן שהחיוב החודשי של הוראת הקבע שלך (₪{סכום}) לא עבר החודש. ייתכן שתוקף הכרטיס פג או שהכרטיס הוחלף.\nנשמח אם תוכל/י לעדכן את פרטי האשראי — אפשר פשוט להשיב להודעה הזו ונסדר את זה יחד.\nתודה רבה על השותפות!\n\n{חותם}',
+  ru: 'Здравствуйте, {שם}!\nХотим сообщить, что ежемесячный платёж по вашему постоянному пожертвованию (₪{סכום}) в этом месяце не прошёл. Возможно, истёк срок действия карты или карта была заменена.\nБудем благодарны, если вы обновите данные карты — просто ответьте на это сообщение, и мы всё уладим вместе.\nСпасибо за ваше участие!\n\n{חותם}',
+};
+
 const TEMPLATE_KEY = 'kehila:hk-broadcast:templates';
 const LANG_KEY = 'kehila:hk-broadcast:lang';
 
 export function loadTemplate(kind: BroadcastKind, lang: BroadcastLang): string {
   const saved = readJson<Record<string, string>>(TEMPLATE_KEY, {});
-  return saved[`${kind}:${lang}`] ?? DEFAULT_TEMPLATES[kind][lang];
+  const text = saved[`${kind}:${lang}`];
+  if (kind === 'failure' && text === OLD_FAILURE_TEMPLATES[lang]) return DEFAULT_TEMPLATES.failure[lang];
+  return text ?? DEFAULT_TEMPLATES[kind][lang];
 }
 
 export function saveTemplate(kind: BroadcastKind, lang: BroadcastLang, text: string) {
