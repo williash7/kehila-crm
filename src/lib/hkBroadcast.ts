@@ -134,10 +134,13 @@ export function buildRecipients(
   (hk || []).forEach(h => {
     if (!h?.name) return;
     let reason = '';
+    let failedAmount: number | null = null;
     if (kind === 'failure') {
       const fail = openFailureFor(h, failIdx);
       if (!fail) return;
       reason = String(fail.reason || '').trim();
+      const reportedAmount = Number(fail.amount);
+      if (Number.isFinite(reportedAmount) && reportedAmount > 0) failedAmount = reportedAmount;
     } else {
       const status = getHkStatus(h, threshold);
       if (status !== 'active' && status !== 'expiring') return;
@@ -146,7 +149,8 @@ export function buildRecipients(
     const phone = phoneFor(h, crm, donors);
     const key = phone || `name:${h.name.trim()}`;
     const existing = byKey.get(key);
-    const amount = Number(h.amount) || 0;
+    // בכשל חיוב מציינים רק את הסכום שלא עבר, ולא הוראות נוספות של אותו תורם.
+    const amount = failedAmount ?? (Number(h.amount) || 0);
     if (existing) {
       existing.amount += amount;
       if (h.id) existing.orderIds.push(String(h.id));
@@ -212,8 +216,8 @@ export const DEFAULT_TEMPLATES: Record<BroadcastKind, Record<BroadcastLang, stri
     ru: 'Здравствуйте, {שם}!\n\n\nС уважением,\n{חותם}',
   },
   failure: {
-    he: 'שלום {שם},\nרצינו לעדכן שהחיוב החודשי של הוראת הקבע שלך (₪{סכום}) לא עבר החודש. ייתכן שתוקף הכרטיס פג או שהכרטיס הוחלף.\nנשמח אם תוכל/י לעדכן את פרטי האשראי — אפשר פשוט להשיב להודעה הזו ונסדר את זה יחד.\nתודה רבה על השותפות!\n\n{חותם}',
-    ru: 'Здравствуйте, {שם}!\nХотим сообщить, что ежемесячный платёж по вашему постоянному пожертвованию (₪{סכום}) в этом месяце не прошёл. Возможно, истёк срок действия карты или карта была заменена.\nБудем благодарны, если вы обновите данные карты — просто ответьте на это сообщение, и мы всё уладим вместе.\nСпасибо за ваше участие!\n\n{חותם}',
+    he: 'שלום {שם},\n\nקודם כול, רציתי לומר לך תודה רבה על השותפות הקבועה שלך בפעילות {ארגון}. אנחנו מעריכים מאוד את העזרה שלך, שבזכותה אנחנו יכולים להמשיך לפעול למען הקהילה.\n\nרציתי רק לעדכן שהחיוב האחרון של הוראת הקבע, בסך {סכום} ₪, לא עבר הפעם. לפעמים זו פשוט תקלה טכנית.\n\nכשיהיה לך נוח, אשמח שנבדוק יחד איך אפשר לסדר את העניין.\n\nושוב, תודה רבה על כל השותפות והעזרה!\n\n{חותם}',
+    ru: 'Здравствуйте, {שם}!\n\nПрежде всего хочу от души поблагодарить Вас за постоянную поддержку {ארגון}. Мы очень ценим Ваше участие, благодаря которому можем продолжать нашу работу для всей общины.\n\nХотел только сообщить, что последний ежемесячный платёж в размере {סכום} ₪ на этот раз не прошёл. Иногда такое случается просто по техническим причинам.\n\nКогда Вам будет удобно, будем рады вместе разобраться, как можно решить этот вопрос.\n\nЕщё раз большое спасибо за Вашу помощь и поддержку!\n\n{חותם}',
   },
 };
 
@@ -246,12 +250,23 @@ export function saveSent(kind: BroadcastKind, sent: Record<string, string>) {
   writeJson(roundKey(kind), sent);
 }
 
+// קיים דור ישן של נוסחי כשל שנשמרו מקומית דרך עורך ההודעות.
+ // משדרגים רק עותק שלא נערך, בלי לדרוס נוסח אישי שהמשתמש כתב.
+const LEGACY_FAILURE_TEMPLATES: Record<BroadcastLang, string> = {
+  he: 'שלום {שם},\nרצינו לעדכן שהחיוב החודשי של הוראת הקבע שלך (₪{סכום}) לא עבר החודש. ייתכן שתוקף הכרטיס פג או שהכרטיס הוחלף.\nנשמח אם תוכל/י לעדכן את פרטי האשראי — אפשר פשוט להשיב להודעה הזו ונסדר את זה יחד.\nתודה רבה על השותפות!\n\n{חותם}',
+  ru: 'Здравствуйте, {שם}!\nХотим сообщить, что ежемесячный платёж по вашему постоянному пожертвованию (₪{סכום}) в этом месяце не прошёл. Возможно, истёк срок действия карты или карта была заменена.\nБудем благодарны, если вы обновите данные карты — просто ответьте на это сообщение, и мы всё уладим вместе.\nСпасибо за ваше участие!\n\n{חותם}',
+};
+
 const TEMPLATE_KEY = 'kehila:hk-broadcast:templates';
 const LANG_KEY = 'kehila:hk-broadcast:lang';
 
 export function loadTemplate(kind: BroadcastKind, lang: BroadcastLang): string {
   const saved = readJson<Record<string, string>>(TEMPLATE_KEY, {});
-  return saved[`${kind}:${lang}`] ?? DEFAULT_TEMPLATES[kind][lang];
+  const customized = saved[`${kind}:${lang}`];
+  if (kind === 'failure' && customized === LEGACY_FAILURE_TEMPLATES[lang]) {
+    return DEFAULT_TEMPLATES.failure[lang];
+  }
+  return customized ?? DEFAULT_TEMPLATES[kind][lang];
 }
 
 export function saveTemplate(kind: BroadcastKind, lang: BroadcastLang, text: string) {
