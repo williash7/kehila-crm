@@ -17,9 +17,12 @@ assert.strictEqual(recipients[0].failureCount, 1);
 
 const varsHe = { signer: 'הרב אשר', org: 'חב״ד בעליה עפולה', lang: 'he' };
 const msgHe = fillTemplate(DEFAULT_TEMPLATES.failure.he, recipients[0], varsHe);
-assert.ok(msgHe.includes('שלום יעקב חיים'));
+assert.ok(msgHe.startsWith('מה שלומך, יעקב חיים?'));
+assert.ok(msgHe.includes('רציתי להודות לך על השותפות הקבועה שלך'));
+assert.ok(msgHe.includes('כשיתאפשר לך, אשמח אם תוכל לבדוק את העניין. ואם צריך עזרה, אשתדל לסייע.'));
+assert.ok(msgHe.includes('החיוב האחרון של הוראת הקבע'));
 assert.ok(msgHe.includes('50 ₪, מתאריך 20/10/2026'));
-assert.ok(msgHe.includes('תודה רבה על השותפות'));
+assert.ok(msgHe.includes('תודה רבה על הכול!'));
 assert.ok(!msgHe.includes('כרטיס לא תקין'), 'Never expose payment-failure reason automatically');
 assert.ok(!msgHe.includes('{פרטי חיוב}'));
 
@@ -55,6 +58,7 @@ assert.strictEqual(settled.length, 0, 'Never message a charge already followed b
 const noDate = fillTemplate(DEFAULT_TEMPLATES.failure.he, {
   name: 'יעקב', amount: 50, reason: '', failureDate: '', failureCount: 1,
 }, varsHe);
+assert.ok(noDate.includes('החיוב האחרון של הוראת הקבע, בסך 50 ₪, לא הושלם'));
 assert.ok(!noDate.includes('מתאריך  לא'));
 assert.strictEqual(
   roundKey('failure', new Date(2026, 9, 1)),
