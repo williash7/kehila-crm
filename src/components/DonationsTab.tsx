@@ -517,7 +517,7 @@ export function DonationsTab({ onAddDonation, openTarget, onOpenTargetConsumed }
               </div>
             </details>
             <div className="rounded-xl bg-white border border-[#EDE6D6] px-3 py-2 text-[11px] text-gray-600 leading-relaxed">
-              <span className="font-bold text-[#0D1B2A]">{failures.length} רישומי כשל בהיסטוריה</span>
+              <span className="font-bold text-[#0D1B2A]">{failures.length} רישומי כשל ברשימה</span>
               {' · '}
               <span className="font-bold text-[#9B7A2F]">{recentFailureContactCount} נמענים עם כשל פתוח מ-14 הימים האחרונים</span>
               <div className="mt-1">{recentFailureWithPhoneCount} עם מספר טלפון · {recentFailureContactCount - recentFailureWithPhoneCount} ללא מספר. רישומים ישנים נשארים במערכת לצורכי מעקב.</div>
