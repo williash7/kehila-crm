@@ -283,13 +283,26 @@ export function ThankYouLetterModal({ donorName, amount, date, phone, email, onC
                 style={{
                   width: 450,
                   height: 638,
+                  backgroundColor: '#FCFAF5',
                   transform: `scale(${previewScale})`,
                   transformOrigin: 'top center',
                   fontFamily: lang === 'he' ? 'Arial, sans-serif' : 'Georgia, "Times New Roman", serif',
                 }}
                 className="relative shrink-0 bg-[#FCFAF5] overflow-hidden flex flex-col items-center text-center"
               >
-                <div className="absolute inset-[14px] border border-[#C9A84C] rounded-[18px] pointer-events-none" />
+                {/* Explicit inline border survives html-to-image export even when theme utilities are omitted. */}
+                <div
+                  aria-hidden="true"
+                  style={{
+                    position: 'absolute',
+                    inset: 14,
+                    border: '1.5px solid #C9A84C',
+                    borderRadius: 18,
+                    pointerEvents: 'none',
+                    boxSizing: 'border-box',
+                    zIndex: 1,
+                  }}
+                />
                 <div className="relative w-full shrink-0 flex flex-col items-center pt-9 px-9">
                   {logoOk ? (
                     <img
@@ -307,7 +320,7 @@ export function ThankYouLetterModal({ donorName, amount, date, phone, email, onC
                   </div>
                 </div>
 
-                <div className="relative w-full flex-1 min-h-0 flex flex-col justify-center items-center px-12 gap-[11px]">
+                <div className="relative w-full flex-1 min-h-0 flex flex-col justify-center items-center px-12 gap-[13px]">
                   <div className="w-14 h-px bg-[#C9A84C]" />
                   <h3 className="font-bold text-[27px] leading-[1.22] text-[#0D1B2A] max-w-[350px]">
                     {t.certTitle}
