@@ -275,6 +275,9 @@ export const DEFAULT_TEMPLATES: Record<BroadcastKind, Record<BroadcastLang, stri
 // בדיוק מאיפה שעצרת, ובחודש הבא מתחילים סבב חדש מעצמו.
 
 export function roundKey(kind: BroadcastKind, now: Date = new Date()): string {
+  // לכשל חיוב זהו מעקב אחר אירוע, לא סבב חודשי: הודעה לא צריכה להישלח
+  // מחדש בכל תחילת חודש אם אותו חיוב עדיין פתוח.
+  if (kind === 'failure') return 'kehila:hk-broadcast:sent:failure:incidents';
   return `kehila:hk-broadcast:sent:${kind}:${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 }
 
