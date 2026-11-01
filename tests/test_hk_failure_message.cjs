@@ -1,5 +1,5 @@
 const assert = require('assert');
-const { buildRecipients, fillTemplate, DEFAULT_TEMPLATES } = require('/tmp/stub/hkBroadcast.js');
+const { buildRecipients, fillTemplate, DEFAULT_TEMPLATES, roundKey } = require('/tmp/stub/hkBroadcast.js');
 
 const oneOrder = {
   id: '101', name: 'יעקב חיים', active: true, amount: 100,
@@ -56,4 +56,14 @@ const noDate = fillTemplate(DEFAULT_TEMPLATES.failure.he, {
   name: 'יעקב', amount: 50, reason: '', failureDate: '', failureCount: 1,
 }, varsHe);
 assert.ok(!noDate.includes('מתאריך  לא'));
+assert.strictEqual(
+  roundKey('failure', new Date(2026, 9, 1)),
+  roundKey('failure', new Date(2026, 10, 1)),
+  'An unresolved incident should not be queued as new each month',
+);
+assert.notStrictEqual(
+  roundKey('thanks', new Date(2026, 9, 1)),
+  roundKey('thanks', new Date(2026, 10, 1)),
+  'Normal monthly thank-you rounds should still reset',
+);
 console.log('✓ ניסוח כשל חיוב אישי, עדין ועם סכום/תאריך מדויקים');
