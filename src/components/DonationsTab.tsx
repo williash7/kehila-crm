@@ -133,7 +133,8 @@ export function DonationsTab({ onAddDonation, openTarget, onOpenTargetConsumed }
   const threshold = settings.hkExpiringThreshold ?? 2;
   // ההיסטוריה נשמרת ברשימת הכשלים; רק פעולת שליחת ההודעה מוגבלת ל-14 ימים.
   const recentFailureContactCount = useMemo(
-    () => buildRecipients('failure', hk, failures, crm, donors, threshold, donations).length,
+    () => buildRecipients('failure', hk, failures, crm, donors, threshold, donations)
+      .filter(recipient => recipient.phone).length,
     [hk, failures, crm, donors, threshold, donations],
   );
   const failIdx = useMemo(() => indexFailures(failures), [failures]);
@@ -420,7 +421,10 @@ export function DonationsTab({ onAddDonation, openTarget, onOpenTargetConsumed }
                   onClick={() => setWaKind(hkFilter === 'errors' ? 'failure' : 'thanks')}
                   className="h-9 px-3 rounded-xl bg-green-600 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm active:scale-95"
                 >
-                  <MessageSquare size={14} /> וואטסאפ לכולם
+                  <MessageSquare size={14} />
+                  {hkFilter === 'errors'
+                    ? `הודעות ל-${recentFailureContactCount} נמענים (14 ימים)`
+                    : 'וואטסאפ לכולם'}
                 </button>
               )}
               <button
@@ -511,17 +515,23 @@ export function DonationsTab({ onAddDonation, openTarget, onOpenTargetConsumed }
                 <ListSortControl value={errorSort} onChange={setErrorSort} />
               </div>
             </details>
+            <div className="rounded-xl bg-white border border-[#EDE6D6] px-3 py-2 text-[11px] text-gray-600 leading-relaxed">
+              <span className="font-bold text-[#0D1B2A]">{errorList.length} רישומי כשל בהיסטוריה</span>
+              {' · '}
+              <span className="font-bold text-[#9B7A2F]">{recentFailureContactCount} נמענים עם כשל פתוח מ-14 הימים האחרונים ומספר טלפון</span>
+              <div className="mt-1">רישומים ישנים נשארים במערכת לצורכי מעקב, אך לא נשלחת לגביהם הודעת וואטסאפ.</div>
+            </div>
             {errorList.length > 0 && recentFailureContactCount > 0 && (
               <button
                 onClick={() => setWaKind('failure')}
-                className="w-full h-10 rounded-xl bg-green-600 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm active:scale-95"
+                className="w-full min-h-10 px-2 py-2 rounded-xl bg-green-600 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm active:scale-95"
               >
-                <MessageSquare size={14} /> וואטסאפ לכל מי שהחיוב שלו נכשל
+                <MessageSquare size={14} /> הודעות וואטסאפ ל-{recentFailureContactCount} נמענים (14 ימים)
               </button>
             )}
             {errorList.length > 0 && recentFailureContactCount === 0 && (
               <p className="text-[11px] text-gray-500 leading-relaxed px-1">
-                אין כרגע כשלי חיוב שניתן לשלוח לגביהם הודעה: אפשרות הפנייה זמינה רק עד 14 ימים מיום הכשל. התיעוד ההיסטורי נשאר כאן.
+                אין כרגע נמענים עם מספר טלפון הזכאים להודעה: אפשרות הפנייה זמינה רק עד 14 ימים מיום הכשל. התיעוד ההיסטורי נשאר כאן.
               </p>
             )}
             {errorList.length === 0 ? (
