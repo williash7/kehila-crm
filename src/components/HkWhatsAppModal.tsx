@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronRight, MessageSquare, Check, RotateCcw, Send, PhoneOff, ImagePlus, X } from 'lucide-react';
+import { ChevronRight, MessageSquare, Check, RotateCcw, Send, PhoneOff, ImagePlus, Pencil, X } from 'lucide-react';
 import { useAppStore } from '../store/AppContext';
 import { useCloseOnBack } from './FullScreenView';
 import { ProfileModal } from './ProfileModal';
@@ -7,7 +7,7 @@ import { orgNameIn, signerIn } from '../lib/orgConfig';
 import {
   BroadcastKind, BroadcastLang, BROADCAST_KIND_LABEL, PLACEHOLDERS, DEFAULT_TEMPLATES,
   buildRecipients, fillTemplate, waLink, loadSent, saveSent, loadTemplate, saveTemplate, loadLangs, saveLangs,
-  loadImage, saveImage, canShareFile,
+  loadImage, saveImage, canShareFile, loadGreetingNames, saveGreetingNames, greetingNameKey,
 } from '../lib/hkBroadcast';
 
 // שליחת וואטסאפ לכל בעלי הוראות הקבע — לחיצה אחת לכל אדם.
@@ -31,6 +31,8 @@ export function HkWhatsAppModal({ onClose, initialKind = 'thanks' }: { onClose: 
   const [editLang, setEditLang] = useState<BroadcastLang>('he');
   const [sent, setSent] = useState<Record<string, string>>(() => loadSent(initialKind));
   const [selectedDonor, setSelectedDonor] = useState<string | null>(null);
+  const [greetingNames, setGreetingNames] = useState<Record<string, string>>(() => loadGreetingNames());
+  const [editingGreeting, setEditingGreeting] = useState<string | null>(null);
   const [image, setImage] = useState<File | null>(null);
   const [imageUrl, setImageUrl] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
@@ -99,9 +101,21 @@ export function HkWhatsAppModal({ onClose, initialKind = 'thanks' }: { onClose: 
     });
   };
 
+  const greetingFor = (r: typeof recipients[number]) =>
+    greetingNames[greetingNameKey(r.key, langOf(r.key))]?.trim() || r.name;
+
+  const updateGreeting = (r: typeof recipients[number], value: string) => {
+    const key = greetingNameKey(r.key, langOf(r.key));
+    const nextNames = { ...greetingNames };
+    if (value.trim()) nextNames[key] = value;
+    else delete nextNames[key];
+    setGreetingNames(nextNames);
+    saveGreetingNames(nextNames);
+  };
+
   const messageFor = (r: typeof recipients[number]) => {
     const lang = langOf(r.key);
-    return fillTemplate(templates[lang], r, {
+    return fillTemplate(templates[lang], { ...r, name: greetingFor(r) }, {
       signer: [signerIn(lang), orgNameIn(lang)].filter(Boolean).join('\n'),
       org: orgNameIn(lang),
     });
@@ -178,7 +192,7 @@ export function HkWhatsAppModal({ onClose, initialKind = 'thanks' }: { onClose: 
         </div>
         <p className="text-[11px] text-gray-500 mb-3 leading-relaxed">
           {kind === 'failure'
-            ? 'נשלח רק למי שיש לו כשל חיוב פתוח — כזה שלא נכנס כסף אחריו.'
+            ? 'הרשימה כוללת רק מי שיש לו כשל חיוב פתוח. כל הודעה נפתחת בוואטסאפ עם שם התורם והסכום שלא כובד, בנוסח אישי ועדין. יש ללחוץ על שליחה בוואטסאפ עצמו; האפליקציה אינה שולחת ברקע.'
             : 'נשלח לכל מי שיש לו הוראת קבע פעילה, וגם למי שתרם בתשלומי אשראי שעוד לא הסתיימו (הסכום החודשי). מי שיש לו כמה הוראות מקבל הודעה אחת עם הסכום המצטבר.'}
         </p>
 
@@ -284,7 +298,7 @@ export function HkWhatsAppModal({ onClose, initialKind = 'thanks' }: { onClose: 
               const done = !!sent[r.key];
               const isNext = next?.key === r.key;
               return (
-                <div key={r.key} className={`bg-white rounded-xl p-3 border shadow-sm flex items-center gap-2 ${isNext ? 'border-[#C9A84C]' : 'border-[#EDE6D6]'} ${done ? 'opacity-60' : ''}`}>
+                <div key={r.key} className={`bg-white rounded-xl p-3 border shadow-sm flex items-center flex-wrap gap-2 ${isNext ? 'border-[#C9A84C]' : 'border-[#EDE6D6]'} ${done ? 'opacity-60' : ''}`}>
                   <div className="min-w-0 flex-1" onClick={() => setSelectedDonor(r.name.split(' / ')[0])}>
                     <div className="text-sm font-bold text-[#0D1B2A] truncate">{r.name}</div>
                     <div className="text-[11px] text-gray-500" dir="rtl">
@@ -293,6 +307,14 @@ export function HkWhatsAppModal({ onClose, initialKind = 'thanks' }: { onClose: 
                       {r.installments ? <span className="text-indigo-600"> · תשלומים {r.installments.paid}/{r.installments.total}</span> : null}
                     </div>
                   </div>
+                  <button
+                    onClick={() => setEditingGreeting(current => current === r.key ? null : r.key)}
+                    title="ערוך שם לפנייה האישית"
+                    aria-label={`ערוך את שם הפנייה של ${r.name}`}
+                    className="shrink-0 w-8 h-8 rounded-lg border border-[#EDE6D6] text-[#9B7A2F] flex items-center justify-center"
+                  >
+                    <Pencil size={14} />
+                  </button>
                   <button
                     onClick={() => toggleLang(r.key)}
                     title="שפת ההודעה לאדם הזה"
@@ -308,6 +330,23 @@ export function HkWhatsAppModal({ onClose, initialKind = 'thanks' }: { onClose: 
                     <button onClick={() => send(r)} className="shrink-0 h-8 px-3 rounded-lg bg-green-600 text-white text-xs font-bold flex items-center gap-1 active:scale-95">
                       <MessageSquare size={14} /> שלח
                     </button>
+                  )}
+                  {editingGreeting === r.key && (
+                    <div className="w-full order-last bg-[#FAF6EE] p-2.5 rounded-xl border border-[#EDE6D6]">
+                      <label className="block text-[11px] font-bold text-gray-600 mb-1">
+                        שם התורם כפי שיופיע בהודעה ({langOf(r.key) === 'ru' ? 'ברוסית' : 'בעברית'})
+                      </label>
+                      <input
+                        type="text"
+                        value={greetingNames[greetingNameKey(r.key, langOf(r.key))] ?? r.name}
+                        onChange={event => updateGreeting(r, event.target.value)}
+                        dir={langOf(r.key) === 'ru' ? 'ltr' : 'rtl'}
+                        className="w-full bg-white border border-[#EDE6D6] rounded-lg px-2.5 py-2 text-sm"
+                      />
+                      <p className="text-[10px] text-gray-500 mt-1">
+                        השם יישמר לשפה הזו בלבד ולא ישנה את פרטי איש הקשר במערכת.
+                      </p>
+                    </div>
                   )}
                 </div>
               );
