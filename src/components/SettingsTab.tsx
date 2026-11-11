@@ -86,8 +86,14 @@ export function SettingsTab({ openTarget, onOpenTargetConsumed }: {
       }
       const clientState = collectClientBackupState();
       const saved = await saveAccountStateToDrive(getOrg(), clientState);
-      enableAccountSync(saved.updatedAt, clientStateHash(clientState));
-      setAccountMessage('✓ המידע שבמכשיר הזה נשמר בחשבון Google. מעכשיו השינויים המקומיים יגובו אוטומטית.');
+      try {
+        enableAccountSync(saved.updatedAt, clientStateHash(clientState));
+        setAccountMessage('✓ המידע שבמכשיר הזה נשמר בחשבון Google. מעכשיו השינויים המקומיים יגובו אוטומטית.');
+      } catch (storageError: any) {
+        // ההעלאה כבר הצליחה. חשוב לא להציג אותה ככישלון ולא לגרום למשתמש
+        // ללחוץ שוב ושוב; רק הסנכרון האוטומטי המקומי לא הצליח להידלק.
+        setAccountMessage(`✓ הגיבוי נשמר בחשבון Google, אך הסנכרון האוטומטי לא הופעל כי אחסון המכשיר מלא: ${storageError?.message || storageError}`);
+      }
     } catch (error: any) {
       setAccountMessage(`החיבור לא הושלם: ${error?.message || error}`);
     } finally {
