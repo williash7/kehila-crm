@@ -242,20 +242,18 @@ export function buildRecipients(
   });
 
   // תורמים בתשלומי אשראי — בתודה ובהודעה הכללית בלבד (אין להם "כשל חיוב")
-  if (kind !== 'failure') {
-    activeInstallments(donations).forEach(plan => {
-      const phone = contactPhone(crm?.[plan.name], donors?.[plan.name]);
-      const key = phone || `name:${plan.name.trim()}`;
-      const existing = byKey.get(key);
-      if (existing) {
-        existing.amount += plan.monthly;
-        if (!existing.name.split(' / ').includes(plan.name)) existing.name += ` / ${plan.name}`;
-        if (!existing.orderIds.length) existing.installments = { paid: plan.paid, total: plan.total };
-      } else {
-        byKey.set(key, { key, name: plan.name, phone, amount: plan.monthly, reason: '', orderIds: [], installments: { paid: plan.paid, total: plan.total } });
-      }
-    });
-  }
+  activeInstallments(donations).forEach(plan => {
+    const phone = contactPhone(crm?.[plan.name], donors?.[plan.name]);
+    const key = phone || `name:${plan.name.trim()}`;
+    const existing = byKey.get(key);
+    if (existing) {
+      existing.amount += plan.monthly;
+      if (!existing.name.split(' / ').includes(plan.name)) existing.name += ` / ${plan.name}`;
+      if (!existing.orderIds.length) existing.installments = { paid: plan.paid, total: plan.total };
+    } else {
+      byKey.set(key, { key, name: plan.name, phone, amount: plan.monthly, reason: '', orderIds: [], installments: { paid: plan.paid, total: plan.total } });
+    }
+  });
 
   return [...byKey.values()].sort((a, b) => a.name.localeCompare(b.name, 'he'));
 }

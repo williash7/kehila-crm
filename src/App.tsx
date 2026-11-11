@@ -35,6 +35,7 @@ import { OpenTarget, onOpenItemRequest } from './lib/openTarget';
 import { QuickInboxTab } from './components/QuickInboxTab';
 import { DailyReminderAgent } from './components/DailyReminderAgent';
 import { X } from 'lucide-react';
+import { AccountSyncAgent } from './components/AccountSyncAgent';
 
 // תווית לכפתור "+" הגלובלי (FAB במובייל, "הוסף X" בסיידבר) לפי המסך הפעיל.
 // מסכים שלא ברשימה (דוחות, פוסטר, הגדרות) — אין פעולת "הוספה" משמעותית, הכפתור מוסתר בהם.
@@ -149,6 +150,8 @@ function AppContent() {
       )}
 
       <PendingWritesBanner />
+
+      <AccountSyncAgent />
 
       <DailyReminderAgent />
 

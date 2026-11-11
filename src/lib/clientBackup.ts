@@ -12,14 +12,33 @@ export const CLIENT_BACKUP_KEYS = [
   'custom_hols',
   'manual_donations',
   'write_queue_v1',
+  'kehila:hk-broadcast:templates',
+  'kehila:hk-broadcast:lang',
+  'kehila:hk-broadcast:greeting-names',
+  'website_sync_url_v1',
   'poster_bgImage',
   'poster_bgOverlay',
+  'poster_logo',
+  'poster_lang',
+  'poster_venue',
+  'poster_address',
+  'poster_title_1',
+  'poster_title_2',
+  'poster_footer',
+  'poster_widgets',
+  'poster_schedule_labels',
+  'poster_schedule_visible',
+  'poster_custom_schedule',
   'reverseHeaderMap',
   'data_onboarding_v1_completed',
   'rebbe_date',
   'thankyou_backfill_v1_done',
   'event_task_date_backfill_v1_done',
   'hk_monthly_reminder_reviewed',
+  'dashboard_handled_focus',
+  'dashboard_collapsed_cards',
+  'daily_reminder_last_sent_v1',
+  'event_info_notices_v1',
   'score_total',
   'score_streak',
   'score_last_action_date',
@@ -37,6 +56,11 @@ export const CLIENT_BACKUP_KEYS = [
 ] as const;
 
 const ALLOWED = new Set<string>(CLIENT_BACKUP_KEYS);
+const HK_SENT_KEY = /^kehila:hk-broadcast:sent:(?:failure:incidents|(?:thanks|general):\d{4}-\d{2})$/;
+
+function isAllowedKey(key: string): boolean {
+  return ALLOWED.has(key) || HK_SENT_KEY.test(key);
+}
 
 function safeJson(raw: string | null): any {
   if (!raw) return null;
@@ -47,6 +71,12 @@ function safeJson(raw: string | null): any {
 export function collectClientBackupState(storage: Storage = localStorage): ClientBackupState {
   const values: Record<string, string | null> = {};
   CLIENT_BACKUP_KEYS.forEach(key => { values[key] = storage.getItem(key); });
+  // סטטוס השליחה של WhatsApp כולל חודש בשם המפתח. אוספים רק את התבנית
+  // המדויקת, כדי לא להפוך קידומת כללית לדרך להחדיר מפתחות לא מוכרים.
+  for (let i = 0; i < storage.length; i++) {
+    const key = storage.key(i);
+    if (key && HK_SENT_KEY.test(key)) values[key] = storage.getItem(key);
+  }
 
   const settings = safeJson(values.app_settings_v1);
   if (settings && typeof settings === 'object') {
@@ -66,9 +96,18 @@ export function validateClientBackupState(value: any): ClientBackupState {
     throw new Error('מידע המכשיר בגיבוי אינו תקין');
   }
   Object.entries(value.values).forEach(([key, raw]) => {
-    if (!ALLOWED.has(key)) throw new Error(`מפתח מכשיר אינו מוכר: ${key}`);
+    if (!isAllowedKey(key)) throw new Error(`מפתח מכשיר אינו מוכר: ${key}`);
     if (raw !== null && typeof raw !== 'string') throw new Error(`ערך מכשיר אינו תקין: ${key}`);
+    if ((key === 'app_settings_v1' || key === 'org_config_v1') && typeof raw === 'string') {
+      const parsed = safeJson(raw);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new Error(`ערך מכשיר אינו תקין: ${key}`);
+      }
+    }
   });
+  if (!Array.isArray(value.excludedSensitive) || value.excludedSensitive.some((item: unknown) => typeof item !== 'string')) {
+    throw new Error('רשימת הסודות שהושמטו מהגיבוי אינה תקינה');
+  }
   // גיבוי ישן מכיר רק את המפתחות שהיו קיימים ביום שבו נוצר. מפתח שנוסף
   // מאוחר יותר נשמר כפי שהוא במכשיר הנוכחי; מפתח זר עדיין נדחה למעלה.
   return value as ClientBackupState;
@@ -84,24 +123,27 @@ export function restoreClientBackupState(value: ClientBackupState | undefined, s
   const state = validateClientBackupState(value);
   const currentSettings = safeJson(storage.getItem('app_settings_v1')) || {};
   const currentOrg = safeJson(storage.getItem('org_config_v1')) || {};
-  const restorableKeys = CLIENT_BACKUP_KEYS.filter(key =>
-    Object.prototype.hasOwnProperty.call(state.values, key));
+  const restorableKeys = Object.keys(state.values).filter(key => isAllowedKey(key));
   const before = Object.fromEntries(restorableKeys.map(key => [key, storage.getItem(key)]));
   let restored = 0;
 
   try {
     restorableKeys.forEach(key => {
       const raw = state.values[key];
-      if (raw === null) storage.removeItem(key);
-      else if (key === 'app_settings_v1') {
-        const next = safeJson(raw) || {};
+      if (key === 'app_settings_v1') {
+        const next = raw === null ? {} : safeJson(raw);
+        // גם קובץ ישן או פגום שהכיל אסימון אינו רשאי לייבא אותו למכשיר.
+        delete next.fbAccessToken;
         if (currentSettings.fbAccessToken) next.fbAccessToken = currentSettings.fbAccessToken;
-        storage.setItem(key, JSON.stringify(next));
+        if (Object.keys(next).length) storage.setItem(key, JSON.stringify(next));
+        else storage.removeItem(key);
       } else if (key === 'org_config_v1') {
-        const next = safeJson(raw) || {};
+        const next = raw === null ? {} : safeJson(raw);
         if (currentOrg.gsUrl) next.gsUrl = currentOrg.gsUrl;
-        storage.setItem(key, JSON.stringify(next));
-      } else storage.setItem(key, raw);
+        if (Object.keys(next).length) storage.setItem(key, JSON.stringify(next));
+        else storage.removeItem(key);
+      } else if (raw === null) storage.removeItem(key);
+      else storage.setItem(key, raw);
       restored++;
     });
   } catch (error: any) {
@@ -116,4 +158,18 @@ export function restoreClientBackupState(value: ClientBackupState | undefined, s
     throw new Error(`שחזור הגדרות המכשיר לא הושלם: ${error?.message || error}`);
   }
   return restored;
+}
+
+/** האם השחזור ישנה מידע שכבר קיים במכשיר. משמש לפני הצגת אישור מפורש. */
+export function clientBackupConflictsWithLocal(
+  value: ClientBackupState | undefined,
+  storage: Storage = localStorage,
+): boolean {
+  if (!value) return false;
+  const state = validateClientBackupState(value);
+  return Object.entries(state.values).some(([key, remote]) => {
+    if (!isAllowedKey(key)) return false;
+    const local = storage.getItem(key);
+    return local !== null && local !== remote;
+  });
 }

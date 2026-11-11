@@ -12,11 +12,16 @@ import { collectLegacyYahrzeits } from '../lib/family';
 import { AppearanceCard } from './AppearanceCard';
 import { CardTitle, Explain } from './Explain';
 import { addMeetingQueued } from '../lib/api';
-import { getOrg, resetOrg } from '../lib/orgConfig';
+import { getOrg, resetOrg, saveOrg } from '../lib/orgConfig';
 import { SetupWizard } from './SetupWizard';
 import { HolidayCategory, CATEGORY_LABEL, CATEGORY_HINT, groupHolidayNames } from '../lib/holidayFilter';
-import { isSignedIn, signOut, currentAccount, isGoogleLoginAvailable } from '../lib/googleAuth';
-import { deleteConfigFromDrive } from '../lib/driveConfig';
+import { isSignedIn, signIn, signOut, currentAccount, isGoogleLoginAvailable } from '../lib/googleAuth';
+import { deleteConfigFromDrive, loadAccountStateFromDrive, saveAccountStateToDrive } from '../lib/driveConfig';
+import { collectClientBackupState, restoreClientBackupState } from '../lib/clientBackup';
+import {
+  accountSyncBaseline, clientStateHash, disableAccountSync, enableAccountSync,
+  hasAccountSyncConflict, isAccountSyncEnabled,
+} from '../lib/accountSync';
 import { DataOnboardingWizard } from './DataOnboardingWizard';
 import { NavigationSettingsCard } from './NavigationSettingsCard';
 import { AuditLogCard } from './AuditLogCard';
@@ -61,6 +66,53 @@ export function SettingsTab({ openTarget, onOpenTargetConsumed }: {
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncProgress, setSyncProgress] = useState<{ done: number; total: number } | null>(null);
   const [syncResult, setSyncResult] = useState<string | null>(null);
+  const [accountBusy, setAccountBusy] = useState(false);
+  const [accountMessage, setAccountMessage] = useState('');
+
+  const connectAndBackup = async () => {
+    setAccountBusy(true);
+    setAccountMessage('');
+    try {
+      await signIn(true);
+      const remote = await loadAccountStateFromDrive();
+      const hasPreviousBackup = !!remote?.updatedAt
+        && Object.keys(remote.clientState.values).length > 0
+        && (!isAccountSyncEnabled() || remote.updatedAt !== accountSyncBaseline());
+      if (hasPreviousBackup && !window.confirm(
+        'כבר קיים בחשבון גיבוי ממכשיר אחר.\n\nלשמור עכשיו את המידע שבמכשיר הזה במקומו? שום מידע בגיליון לא יימחק.'
+      )) {
+        setAccountMessage('לא בוצע שינוי. אפשר לבחור „שחזר מהחשבון” כדי להביא את הגיבוי הקיים.');
+        return;
+      }
+      const clientState = collectClientBackupState();
+      const saved = await saveAccountStateToDrive(getOrg(), clientState);
+      enableAccountSync(saved.updatedAt, clientStateHash(clientState));
+      setAccountMessage('✓ המידע שבמכשיר הזה נשמר בחשבון Google. מעכשיו השינויים המקומיים יגובו אוטומטית.');
+    } catch (error: any) {
+      setAccountMessage(`החיבור לא הושלם: ${error?.message || error}`);
+    } finally {
+      setAccountBusy(false);
+    }
+  };
+
+  const restoreFromAccount = async () => {
+    if (!window.confirm('לשחזר את ההעדפות והמידע המקומי מחשבון Google למכשיר הזה? נתוני אנשי הקשר והתרומות שבגיליון אינם משתנים.')) return;
+    setAccountBusy(true);
+    setAccountMessage('');
+    try {
+      if (!isSignedIn()) await signIn(true);
+      const remote = await loadAccountStateFromDrive();
+      if (!remote?.updatedAt) throw new Error('לא נמצא גיבוי בחשבון');
+      restoreClientBackupState(remote.clientState);
+      saveOrg({ ...remote.config, configured: true });
+      const restoredState = collectClientBackupState();
+      enableAccountSync(remote.updatedAt, remote.updatedAt ? clientStateHash(restoredState) : '');
+      window.location.reload();
+    } catch (error: any) {
+      setAccountMessage(`השחזור לא הושלם: ${error?.message || error}`);
+      setAccountBusy(false);
+    }
+  };
 
   React.useEffect(() => {
     if (openTarget?.group) setGroup(openTarget.group);
@@ -239,9 +291,13 @@ export function SettingsTab({ openTarget, onOpenTargetConsumed }: {
             )}
             {isGoogleLoginAvailable() && (
               <div className="text-xs text-gray-400 mt-0.5">
-                {isSignedIn()
-                  ? `✓ מחובר כ-${currentAccount() || 'חשבון גוגל'} · ההגדרות נשמרות לחשבון`
-                  : '○ לא מחובר לחשבון גוגל — במכשיר חדש תצטרך להגדיר שוב'}
+                {currentAccount() && hasAccountSyncConflict()
+                  ? `⚠ נמצא שינוי חדש יותר בחשבון. הגיבוי האוטומטי נעצר כדי לא לדרוס אותו.`
+                  : currentAccount() && isAccountSyncEnabled()
+                  ? `✓ מקושר ל-${currentAccount()} · הגיבוי האוטומטי פעיל`
+                  : currentAccount()
+                  ? `○ מחובר כ-${currentAccount()}, אך הגיבוי המקומי עדיין לא הופעל במכשיר הזה`
+                  : '○ לא מקושר לחשבון Google — המידע המקומי קיים רק במכשיר הזה'}
               </div>
             )}
           </div>
@@ -257,7 +313,7 @@ export function SettingsTab({ openTarget, onOpenTargetConsumed }: {
                 if (window.confirm('לנתק את האפליקציה מהארגון הנוכחי?\n\nההגדרות יימחקו מהמכשיר הזה ומחשבון הגוגל, והאפליקציה תחזור למסך הכניסה. הנתונים בגיליון Google לא יימחקו.')) {
                   // מנקים גם את ההגדרות ששמורות בחשבון, אחרת כניסה חוזרת
                   // הייתה מחזירה אותן מיד ו"ניתוק" לא היה מנתק כלום.
-                  const done = () => { resetOrg(); signOut(); window.location.reload(); };
+                  const done = () => { disableAccountSync(); resetOrg(); signOut(); window.location.reload(); };
                   if (isSignedIn()) deleteConfigFromDrive().then(done, done);
                   else done();
                 }
@@ -267,6 +323,32 @@ export function SettingsTab({ openTarget, onOpenTargetConsumed }: {
               נתק
             </button>
           </div>
+          {isGoogleLoginAvailable() && (
+            <div className="mt-3 pt-3 border-t border-[#EDE6D6]">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <button
+                  onClick={connectAndBackup}
+                  disabled={accountBusy}
+                  className="py-2.5 rounded-xl bg-[#C9A84C] text-[#0D1B2A] text-sm font-bold disabled:opacity-60"
+                >
+                  {accountBusy ? 'עובד…' : currentAccount() ? 'גבה עכשיו לחשבון' : 'חבר ושמור בחשבון Google'}
+                </button>
+                {currentAccount() && (
+                  <button
+                    onClick={restoreFromAccount}
+                    disabled={accountBusy}
+                    className="py-2.5 rounded-xl bg-gray-100 text-gray-700 text-sm font-bold disabled:opacity-60"
+                  >
+                    שחזר מהחשבון
+                  </button>
+                )}
+              </div>
+              <p className="text-[11px] text-gray-500 mt-2 leading-relaxed">
+                אנשי קשר, תרומות ואירועים נשמרים בגיליון. ההעדפות, הטיוטות ותור השינויים של המכשיר נשמרים בתיקייה פרטית של האפליקציה בחשבון Google.
+              </p>
+              {accountMessage && <div className="text-xs text-[#9B7A2F] mt-2 leading-relaxed">{accountMessage}</div>}
+            </div>
+          )}
         </div>
         <div data-entity-id="settings-data-onboarding" className="bg-white rounded-2xl p-4 shadow-sm border border-[#EDE6D6] space-y-3">
           <div className="flex items-start gap-3">

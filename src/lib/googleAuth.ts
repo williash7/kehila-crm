@@ -71,7 +71,10 @@ export async function signIn(interactive = true): Promise<string> {
   if (!GOOGLE_CLIENT_ID) throw new Error('לא הוגדר Client ID של גוגל');
 
   const existing = readToken();
-  if (existing) return existing.token;
+  if (existing) {
+    if (!currentAccount()) await fetchEmail(existing.token).catch(() => undefined);
+    return existing.token;
+  }
 
   await loadGis();
 
@@ -87,8 +90,9 @@ export async function signIn(interactive = true): Promise<string> {
         }
         const expiresAt = Date.now() + (Number(resp.expires_in || 3600) - 60) * 1000;
         localStorage.setItem(TOKEN_KEY, JSON.stringify({ token: resp.access_token, expiresAt }));
-        fetchEmail(resp.access_token).catch(() => undefined);
-        resolve(resp.access_token);
+        // מחכים רק לניסיון זיהוי החשבון, כדי שהסנכרון שנבחר זה עתה יהיה
+        // משויך לחשבון כבר באותה טעינה. כשל בתצוגת המייל אינו מבטל כניסה.
+        fetchEmail(resp.access_token).finally(() => resolve(resp.access_token));
       },
     });
     client.requestAccessToken();

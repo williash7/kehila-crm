@@ -1,8 +1,12 @@
 import React, { useState } from 'react';
 import { Loader2, AlertCircle, ShieldCheck } from 'lucide-react';
 import { signIn, isGoogleLoginAvailable } from '../lib/googleAuth';
-import { loadConfigFromDrive } from '../lib/driveConfig';
+import { loadAccountStateFromDrive } from '../lib/driveConfig';
 import { saveOrg } from '../lib/orgConfig';
+import {
+  clientBackupConflictsWithLocal, collectClientBackupState, restoreClientBackupState,
+} from '../lib/clientBackup';
+import { clientStateHash, enableAccountSync } from '../lib/accountSync';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // מסך הכניסה.
@@ -29,14 +33,34 @@ export function SignInScreen({ onReady, onManual }: {
     setError('');
     try {
       await signIn();
-      const cfg = await loadConfigFromDrive();
+      const accountState = await loadAccountStateFromDrive();
+      const cfg = accountState?.config;
 
       if (cfg?.gsUrl && cfg?.orgName?.he) {
         // כבר הוגדר בעבר במכשיר אחר — טוענים וממשיכים ישר לאפליקציה
+        const remoteState = accountState?.clientState;
+        const hasRemoteClientData = !!remoteState && Object.keys(remoteState.values).length > 0;
+        const conflicts = clientBackupConflictsWithLocal(remoteState);
+        const approvedRestore = !conflicts || window.confirm(
+          'נמצא במכשיר הזה מידע מקומי שונה מהגיבוי בחשבון.\n\nלשחזר מהחשבון ולהחליף את ההעדפות, הטיוטות ותור הכתיבה המקומיים? נתוני הגיליון לא ישתנו.'
+        );
+        if (!approvedRestore) {
+          setError('לא בוצע שינוי במכשיר. אפשר להמשיך בהגדרה ידנית או לנסות שוב ולבחור בשחזור.');
+          return;
+        }
+        restoreClientBackupState(remoteState);
         saveOrg({ ...cfg, configured: true });
+        const localState = collectClientBackupState();
+        // קובץ ישן ללא מצב מכשיר נכתב מחדש רק אחרי הכניסה המפורשת הזו.
+        enableAccountSync(
+          accountState?.updatedAt || '',
+          hasRemoteClientData && accountState?.updatedAt ? clientStateHash(localState) : '',
+        );
         onReady();
       } else {
-        // חשבון חדש — ממשיכים לאשף, והוא יישמר לחשבון בסיום
+        // רק חשבון שאין בו קובץ כלל מקבל הרשאת גיבוי אוטומטי. קובץ קיים
+        // עם הגדרה חסרה נשאר ללא שינוי עד בחירה מפורשת במסך ההגדרות.
+        if (!accountState) enableAccountSync('', '');
         onManual();
       }
     } catch (e: any) {
@@ -70,7 +94,8 @@ export function SignInScreen({ onReady, onManual }: {
               <ShieldCheck size={14} className="shrink-0 mt-0.5 text-[#C9A84C]/70" />
               <span>
                 האפליקציה מבקשת גישה <b className="text-white/60">רק לתיקייה הפרטית שלה</b> — לא לקבצים,
-                לא למיילים ולא לגיליונות שלך. שם נשמרות ההגדרות, כדי שבמכשיר הבא לא תצטרך להגדיר שוב.
+                לא למיילים ולא לגיליונות שלך. שם נשמרים החיבור והמידע המקומי של האפליקציה,
+                כדי שבמכשיר הבא לא תצטרך להגדיר שוב.
               </span>
             </div>
 

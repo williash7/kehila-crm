@@ -82,6 +82,8 @@ const libBundles = [
   ['lib/backupHistory.ts', join(OUT, 'backupHistory.js')],
   ['lib/restore.ts', join(OUT, 'restore.js')],
   ['lib/clientBackup.ts', join(OUT, 'clientBackup.js')],
+  ['lib/accountSync.ts', join(OUT, 'accountSync.js')],
+  ['lib/driveConfig.ts', join(OUT, 'driveConfig.js')],
   ['lib/featureCatalog.ts', join(OUT, 'featureCatalog.js')],
   ['lib/paymentLedger.ts', join(OUT, 'paymentLedger.js')],
   ['lib/reconciliation.ts', join(OUT, 'reconciliation.js')],
